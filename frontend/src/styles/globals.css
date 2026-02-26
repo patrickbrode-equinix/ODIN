@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------ */
+/* ROOT / LIGHT THEME                               */
+/* ------------------------------------------------ */
+:root {
+  --font-size: 13px;
+
+  --background: #F6F7F9;
+  --foreground: #1F2937;
+
+  --card: #ffffff;
+  --card-foreground: #1F2937;
+
+  --popover: #ffffff;
+  --popover-foreground: #1F2937;
+
+  --primary: #2563EB;
+  --primary-foreground: #ffffff;
+
+  --secondary: #F3F4F6;
+  --secondary-foreground: #1F2937;
+
+  --muted: #E5E7EB;
+  --muted-foreground: #6B7280;
+
+  --accent: #F9FAFB;
+  --accent-foreground: #1F2937;
+
+  --destructive: #EF4444;
+  --destructive-foreground: #ffffff;
+
+  --border: #E5E7EB;
+  --input: #ffffff;
+  --input-background: #ffffff;
+
+  --switch-background: #D1D5DB;
+
+  --ring: #2563EB;
+
+  --chart-1: #2563EB;
+  --chart-2: #10B981;
+  --chart-3: #F59E0B;
+  --chart-4: #8B5CF6;
+  --chart-5: #EF4444;
+
+  --radius: 0.75rem;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1F2937;
+  --sidebar-primary: #2563EB;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #F9FAFB;
+  --sidebar-accent-foreground: #1F2937;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #2563EB;
+}
+
+/* ------------------------------------------------ */
+/* DARK THEME – SOLID (OPTION A)                    */
+/* ------------------------------------------------ */
+.dark {
+  --background: #0E1320;
+  --foreground: #F9FAFB;
+
+  /* 🔧 Cards etwas heller */
+  --card: #242F42;
+  --card-foreground: #F9FAFB;
+
+  /* 🔧 Popover identisch zu Card */
+  --popover: #242F42;
+  --popover-foreground: #F9FAFB;
+
+  --primary: #3B82F6;
+  --primary-foreground: #ffffff;
+
+  /* 🔧 Secondary klar unterscheidbar */
+  --secondary: #2B364A;
+  --secondary-foreground: #F9FAFB;
+
+  --muted: #2B364A;
+  --muted-foreground: #9CA3AF;
+
+  --accent: #2B364A;
+  --accent-foreground: #F9FAFB;
+
+  --destructive: #EF4444;
+  --destructive-foreground: #ffffff;
+
+  /* 🔧 Border etwas dunkler für Trennung */
+  --border: #374151;
+
+  /* 🔧 Inputs deutlich sichtbar */
+    --input: #1B2433;
+    --input: #202C40;
+
+  --ring: #3B82F6;
+
+  --sidebar: #111827;
+  --sidebar-foreground: #F9FAFB;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1F2937;
+  --sidebar-accent-foreground: #F9FAFB;
+  --sidebar-border: #374151;
+  --sidebar-ring: #3B82F6;
+}
+
+/* ------------------------------------------------ */
+/* TAILWIND TOKEN MAPPING                           */
+/* ------------------------------------------------ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ------------------------------------------------ */
+/* BASE                                             */
+/* ------------------------------------------------ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+@layer components {
+  input,
+  textarea,
+  select {
+    background-color: hsl(var(--input));
+    border: 1px solid hsl(var(--border));
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: hsl(var(--ring));
+    box-shadow:
+      0 0 0 1px hsl(var(--ring)),
+      0 0 0 4px color-mix(in oklab, hsl(var(--ring)) 30%, transparent);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+

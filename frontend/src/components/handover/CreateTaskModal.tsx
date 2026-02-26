@@ -1,0 +1,183 @@
+import React, { useState, useEffect } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { X, Calendar, User, Clock, Repeat } from "lucide-react";
+import { Button } from "../ui/button";
+import { createHandover } from "./handover.api";
+import { useAuth } from "../../context/AuthContext";
+import { HandoverItem } from "./handover.types";
+import { api } from "../../api/api";
+
+interface CreateTaskModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    employees?: string[];
+}
+
+export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: CreateTaskModalProps) {
+    const { user } = useAuth();
+    const [employees, setEmployees] = useState<string[]>(propEmployees || []);
+    const [assignee, setAssignee] = useState("");
+
+    // Fetch all employees from DB on open
+    useEffect(() => {
+        if (!isOpen) return;
+        if (propEmployees && propEmployees.length > 0) return; // use prop if provided
+        api.get("/admin/users").then(res => {
+            const names: string[] = (res.data || []).map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
+            setEmployees(names);
+        }).catch(() => {
+            setEmployees([]);
+        });
+    }, [isOpen]);
+    const [dueDatetime, setDueDatetime] = useState("");
+    const [description, setDescription] = useState("");
+    const [recurrence, setRecurrence] = useState("none");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+
+        if (!assignee || !dueDatetime || !description) {
+            alert("Bitte alle Pflichtfelder ausfüllen.");
+            setIsSubmitting(false);
+            return;
+        }
+
+        if (!window.confirm("Aufgabe wirklich erstellen?")) {
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            const payload: any = {
+                // Task specific
+                type: "Task",
+                assigneeName: assignee,
+                dueDatetime: new Date(dueDatetime).toISOString(),
+                recurrence: recurrence !== "none" ? recurrence : "",
+                description: description,
+
+                // Meta
+                status: "Offen",
+                createdBy: user?.displayName || "Unknown",
+                createdAt: new Date().toISOString(),
+                takenBy: null,
+                priority: "Medium",
+
+                // Empty Ticket Data
+                ticketNumber: "",
+                ticketType: "",
+                activity: "",
+                systemName: "",
+                customerName: "",
+                area: "",
+                commitAt: null,
+                remainingTime: "",
+            };
+
+            await createHandover(payload as HandoverItem);
+            onClose();
+        } catch (err) {
+            console.error("Failed to create task", err);
+            alert("Failed to create task.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-card border border-border rounded-xl shadow-xl z-50 p-6 focus:outline-none">
+                    <div className="flex justify-between items-center mb-6">
+                        <Dialog.Title className="text-lg font-bold flex items-center gap-2">
+                            <Calendar className="w-5 h-5 text-primary" />
+                            Neue Aufgabe erstellen
+                        </Dialog.Title>
+                        <Dialog.Close asChild>
+                            <button className="text-muted-foreground hover:text-foreground">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </Dialog.Close>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="space-y-4">
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium flex items-center gap-2">
+                                    <User className="w-4 h-4" /> Mitarbeiter <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                    value={assignee}
+                                    onChange={(e) => setAssignee(e.target.value)}
+                                >
+                                    <option value="" disabled>
+                                        {employees.length === 0 ? "Laden..." : "Bitte wählen"}
+                                    </option>
+                                    {/* Special Azubi option */}
+                                    <option value="AZUBI">— Azubi —</option>
+                                    {employees.map(e => <option key={e} value={e}>{e}</option>)}
+
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium flex items-center gap-2">
+                                    <Clock className="w-4 h-4" /> Fällig bis <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                    value={dueDatetime}
+                                    onChange={(e) => setDueDatetime(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium flex items-center gap-2">
+                                <Repeat className="w-4 h-4" /> Wiederholung
+                            </label>
+                            <select
+                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                value={recurrence}
+                                onChange={(e) => setRecurrence(e.target.value)}
+                            >
+                                <option value="none">Keine</option>
+                                <option value="daily">Täglich</option>
+                                <option value="weekly">Wöchentlich</option>
+                                <option value="monthly">Monatlich</option>
+                            </select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Beschreibung <span className="text-red-500">*</span></label>
+                            <textarea
+                                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Was ist zu tun?"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4">
+                            <Button type="button" variant="ghost" onClick={onClose}>
+                                Abbrechen
+                            </Button>
+                            <Button type="submit" disabled={isSubmitting}>
+                                {isSubmitting ? "Speichern..." : "Erstellen"}
+                            </Button>
+                        </div>
+
+                    </form>
+                </Dialog.Content>
+            </Dialog.Portal>
+        </Dialog.Root>
+    );
+}
