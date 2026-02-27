@@ -113,11 +113,9 @@ cp backend/.env.example backend/.env
 # Edit: set DB_PASSWORD, JWT_SECRET, QUEUE_INGEST_KEY
 
 # 2. Start all services
-docker compose up
-# Or for Podman:
-# podman-compose up
-
-# Start in detached mode
+docker compose up -d
+# Or for Podman (uses explicit Podman config):
+# podman-compose -f podman-compose.yml up -d
 docker compose up -d
 
 # 3. View logs

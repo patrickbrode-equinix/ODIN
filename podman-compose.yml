@@ -1,0 +1,129 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  podman-compose.yml
+#
+#  Services:  postgres | backend | frontend
+#  Networks:  shift-net  (created here — NOT external)
+#
+#  Usage:
+#    Local dev:   podman-compose up
+#    Production:  podman-compose -f podman-compose.yml -f docker-compose.prod.yml up -d
+#
+#  All secrets live in backend/.env  (copy from backend/.env.example)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: dispatcher-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-oes_merged}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shift-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-oes_merged}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── pgAdmin ────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dispatcher-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
+    networks:
+      - shift-net
+    depends_on:
+      - postgres
+
+  # ── Backend (Node / Express) ───────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: dispatcher-backend:local
+    container_name: dispatcher-backend
+    restart: unless-stopped
+    working_dir: /app
+    # Dev override: mount source + node_modules volume so code changes hot-reload
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    ports:
+      - "${PORT:-5055}:${PORT:-5055}"
+    environment:
+      PORT: ${PORT:-5055}
+      NODE_ENV: ${NODE_ENV:-development}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Override DB connection to use the compose service name + DATABASE_URL
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:${DB_PORT:-5432}/${DB_NAME:-oes_merged}"
+    command: npm run dev
+    depends_on:
+      postgres:
+        condition: service_healthy # wait for pg_isready before starting
+    networks:
+      - shift-net
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:${PORT:-5055}/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend (Vite dev server) ─────────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: dispatcher-frontend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      NODE_ENV: development
+      # Tells vite.config.ts where to proxy /api requests
+      BACKEND_URL: "http://backend:${PORT:-5055}"
+    command: sh -c "npm install --prefer-offline && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - shift-net
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data: # persistent DB data — survives container restarts
+  pgadmin_data: # persistent pgAdmin data
+  backend_node_modules:
+  frontend_node_modules:
+
+    # ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  shift-net:
+    driver: bridge # created here; no longer external
