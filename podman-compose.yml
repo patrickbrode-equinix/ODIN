@@ -102,8 +102,7 @@ services:
       # Tells vite.config.ts where to proxy /api requests normally, but statically built
       VITE_API_BASE_URL: "http://backend:${PORT:-8001}"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - shift-net
 
