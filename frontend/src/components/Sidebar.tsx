@@ -69,38 +69,32 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
     >
       {/* HEADER */}
       <div
-        className={`w-full border-b border-sidebar-border flex items-center ${isCollapsed ? "justify-center" : "px-3"} transition-all ${isCollapsed ? "h-20" : "h-24"
+        className={`w-full border-b border-sidebar-border flex items-center ${isCollapsed ? "justify-center" : "px-3"} transition-all ${isCollapsed ? "h-20" : "h-32"
           }`}
       >
         {!isCollapsed ? (
-          <div className="flex items-center drop-shadow-[0_0_15px_rgba(0,216,255,0.25)] w-full pl-2 pr-1 py-1">
-            <div className="relative w-16 h-16 md:w-20 md:h-20 shrink-0 mr-4 md:mr-6 flex items-center justify-center">
+          <div className="flex flex-col justify-center w-full px-1 py-2 overflow-hidden gap-1">
+            <div className="flex items-center gap-3 w-full pl-1">
               <img
                 src="/app/ODIN_Logo.png"
                 alt="ODIN Logo"
-                className="absolute w-[150%] h-[150%] max-w-none object-contain drop-shadow-[0_0_15px_rgba(0,216,255,0.4)] pointer-events-none"
-                style={{ left: '-25%', top: '-25%' }}
+                className="w-12 h-12 md:w-14 md:h-14 object-contain shrink-0 drop-shadow-[0_0_12px_rgba(0,216,255,0.6)]"
               />
-            </div>
-            <div className="flex flex-col justify-center min-w-0 flex-1 z-10">
-              <span className="text-[26px] md:text-3xl font-black tracking-widest text-[#00d8ff] drop-shadow-[0_0_8px_rgba(0,216,255,0.5)] leading-none mt-1">
-                O.D.I.N
-              </span>
-              <div className="text-[10px] md:text-[11px] leading-[1.15] font-medium tracking-tight text-slate-400 mt-1 whitespace-normal">
-                <span className="text-[#00d8ff] font-bold">O</span>perations{" "}
-                <span className="text-[#00d8ff] font-bold">D</span>ispatching{" "}
-                <span className="text-slate-500">and</span>{" "}
-                <br />
-                <span className="text-[#00d8ff] font-bold">I</span>ntelligence{" "}
-                <span className="text-[#00d8ff] font-bold">N</span>ode
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <span className="text-[28px] font-black tracking-[0.15em] text-[#00d8ff] drop-shadow-[0_0_10px_rgba(0,216,255,0.8)] leading-none">
+                  O.D.I.N
+                </span>
               </div>
+            </div>
+            <div className="text-[10px] md:text-[11px] leading-snug font-semibold text-[#00d8ff] drop-shadow-[0_0_8px_rgba(0,216,255,0.7)] text-left pl-1 whitespace-normal">
+              Operations Dispatching and Intelligence Node
             </div>
           </div>
         ) : (
           <img
             src="/app/ODIN_Logo.png"
             alt="ODIN Logo"
-            className="w-12 h-12 object-contain drop-shadow-[0_0_12px_rgba(56,189,248,0.5)] mt-2"
+            className="w-12 h-12 object-contain drop-shadow-[0_0_12px_rgba(0,216,255,0.6)] mt-2"
           />
         )}
       </div>
