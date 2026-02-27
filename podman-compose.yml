@@ -43,7 +43,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
-      - "5050:80"
+      - "8003:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
@@ -57,26 +57,20 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: dispatcher-backend:local
+    image: dispatcher-backend:prod
     container_name: dispatcher-backend
     restart: unless-stopped
-    working_dir: /app
-    # Dev override: mount source + node_modules volume so code changes hot-reload
-    volumes:
-      - ./backend:/app
-      - backend_node_modules:/app/node_modules
     ports:
-      - "${PORT:-5055}:${PORT:-5055}"
+      - "${PORT:-8001}:${PORT:-8001}"
     environment:
-      PORT: ${PORT:-5055}
-      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-8001}
+      NODE_ENV: ${NODE_ENV:-production}
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
       # Override DB connection to use the compose service name + DATABASE_URL
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:${DB_PORT:-5432}/${DB_NAME:-oes_merged}"
-    command: npm run dev
     depends_on:
       postgres:
         condition: service_healthy # wait for pg_isready before starting
@@ -87,29 +81,26 @@ services:
         - "CMD"
         - "node"
         - "-e"
-        - "require('http').get('http://localhost:${PORT:-5055}/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        - "require('http').get('http://localhost:${PORT:-8001}/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
 
-  # ── Frontend (Vite dev server) ─────────────────────────────────────────────
+  # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
   frontend:
-    image: node:20-alpine
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: dispatcher-frontend:prod
     container_name: dispatcher-frontend
     restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
     ports:
-      - "5173:5173"
+      - "8000:8000"
     environment:
-      CHOKIDAR_USEPOLLING: "true"
-      NODE_ENV: development
-      # Tells vite.config.ts where to proxy /api requests
-      BACKEND_URL: "http://backend:${PORT:-5055}"
-    command: sh -c "npm install --prefer-offline && npm run dev -- --host 0.0.0.0"
+      NODE_ENV: production
+      # Tells vite.config.ts where to proxy /api requests normally, but statically built
+      VITE_API_BASE_URL: "http://backend:${PORT:-8001}"
     depends_on:
       backend:
         condition: service_healthy

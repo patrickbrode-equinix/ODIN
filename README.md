@@ -59,14 +59,14 @@ Key variables:
 
 | Variable | Dev default | What it does |
 |----------|------------|-------------|
-| `PORT` | `5055` | Backend listen port |
+| `PORT` | `8001` | Backend listen port |
 | `DATABASE_URL` | *(unset → use DB_** | Preferred: full postgres connection URL |
 | `DB_HOST` | `localhost` | Used when DATABASE_URL not set |
 | `DB_PASSWORD` | — | **Required** — no default |
 | `JWT_SECRET` | dev-insecure | **Required in production** |
 | `QUEUE_INGEST_KEY` | — | **Required in production** |
-| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
-| `BACKEND_URL` | `http://127.0.0.1:5055` | Vite dev proxy target |
+| `CORS_ORIGINS` | `http://localhost:8000` | Comma-separated allowed origins |
+| `BACKEND_URL` | `http://127.0.0.1:8001` | Vite dev proxy target |
 
 ---
 
@@ -85,18 +85,18 @@ cp backend/.env.example backend/.env
 
 # 3. Start backend (terminal 1)
 cd backend && npm run dev
-# → listening on http://localhost:5055
+# → listening on http://localhost:8001
 # → startup log shows: DB connected ✅
 
 # 4. Start frontend (terminal 2)
 cd frontend && npm run dev
-# → http://localhost:5173
-# → /api/* proxied to http://127.0.0.1:5055 via vite.config.ts
+# → http://localhost:8000
+# → /api/* proxied to http://127.0.0.1:8001 via vite.config.ts
 ```
 
 **Verify:**
 ```bash
-curl http://localhost:5055/api/health
+curl http://localhost:8001/api/health
 # → {"status":"ok","db":"connected"}
 ```
 
@@ -127,18 +127,18 @@ docker compose logs -f postgres
 
 | Service | Container | Port |
 |---------|-----------|------|
-| postgres | `dispatcher-postgres` | internal only |
-| pgadmin | `dispatcher-pgadmin` | `localhost:5050` (Login: `admin@admin.com` / `admin`) |
-| backend | `dispatcher-backend` | `localhost:5055` |
-| frontend | `dispatcher-frontend` | `localhost:5173` |
+| postgres | `dispatcher-postgres` | `localhost:8002` |
+| pgadmin | `dispatcher-pgadmin` | `localhost:8003` (Login: `admin@admin.com` / `admin`) |
+| backend | `dispatcher-backend` | `localhost:8001` |
+| frontend | `dispatcher-frontend` | `localhost:8000` |
 
 **Verify:**
 ```bash
 # Health endpoint
-curl http://localhost:5055/api/health
+curl http://localhost:8001/api/health
 
 # Frontend reachable
-curl -s http://localhost:5173 | head -5
+curl -s http://localhost:8000 | head -5
 
 # Postgres reachable from backend container
 docker exec -it dispatcher-backend node -e \
@@ -175,20 +175,20 @@ docker compose logs backend --tail=50
 **Verify login flow end-to-end:**
 ```bash
 # 1. Health check
-curl -f http://VM_IP:5055/api/health
+curl -f http://VM_IP:8001/api/health
 # → {"status":"ok","db":"connected"}
 
 # 2. Login (replace credentials)
-TOKEN=$(curl -s -X POST http://VM_IP:5055/api/auth/login \
+TOKEN=$(curl -s -X POST http://VM_IP:8001/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"YOUR_PASSWORD"}' \
   | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).token))")
 
 # 3. Authenticated request (load dashboard data)
-curl -s -H "Authorization: Bearer $TOKEN" http://VM_IP:5055/api/shifts | head -c 200
+curl -s -H "Authorization: Bearer $TOKEN" http://VM_IP:8001/api/shifts | head -c 200
 
 # 4. Frontend reachable (if serving static build)
-curl -sf http://VM_IP:5173 > /dev/null && echo "Frontend OK"
+curl -sf http://VM_IP:8000 > /dev/null && echo "Frontend OK"
 ```
 
 **With nginx reverse proxy (recommended for production):**
@@ -199,18 +199,18 @@ server {
 
     # Frontend
     location / {
-        proxy_pass http://localhost:5173;
+        proxy_pass http://localhost:8000;
     }
 
     # Backend API — same-origin proxy
     location /api/ {
-        proxy_pass http://localhost:5055;
+        proxy_pass http://localhost:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location /uploads/ {
-        proxy_pass http://localhost:5055;
+        proxy_pass http://localhost:8001;
     }
 }
 ```
@@ -226,9 +226,9 @@ server {
 | `DB_PASSWORD must be set` | `.env` missing or empty `DB_PASSWORD` | Copy `.env.example` → `.env`, set value |
 | Backend exits immediately in prod | Missing `JWT_SECRET` or `QUEUE_INGEST_KEY` | Check startup log, set required vars |
 | `ECONNREFUSED` on postgres | Backend started before postgres ready | `depends_on: condition: service_healthy` handles this; check postgres logs |
-| Frontend shows blank / 404 on `/api` | Vite proxy not running | In Docker, confirm `BACKEND_URL: http://backend:5055` is set |
+| Frontend shows blank / 404 on `/api` | Vite proxy not running | In Docker, confirm `BACKEND_URL: http://backend:8001` is set |
 | CORS error in browser | `CORS_ORIGINS` doesn't match your frontend origin | Set `CORS_ORIGINS=https://your-domain.com` |
-| Port 5055 already in use | Another process on the port | `PORT=5056 docker compose up` — uses new port everywhere |
+| Port 8001 already in use | Another process on the port | `PORT=8005 docker compose up` — uses new port everywhere |
 
 ---
 
