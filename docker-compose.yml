@@ -21,7 +21,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-oes_merged}
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in backend/.env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -71,7 +71,7 @@ services:
       - ./backend/.env # single source of truth
     environment:
       # Override DB connection to use the compose service name + DATABASE_URL
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@postgres:${DB_PORT:-5432}/${DB_NAME:-oes_merged}"
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:${DB_PORT:-5432}/${DB_NAME:-oes_merged}"
       NODE_ENV: development
     command: npm run dev
     depends_on:
