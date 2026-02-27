@@ -10,11 +10,18 @@ import db from "../db.js";
 /* ———————————————————————————————— */
 
 export async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
+  // TEMP BYPASS: Grant Root access automatically for VM testing
+  req.user = {
+    id: 1,
+    email: "admin@local",
+    group: "root",
+    approved: true,
+    isRoot: true,
+  };
+  req.isRoot = true;
+  return next();
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Missing auth token" });
-  }
+  const authHeader = req.headers.authorization;
 
   try {
     const token = authHeader.split(" ")[1];

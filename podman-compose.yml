@@ -18,6 +18,7 @@ services:
     image: postgres:15-alpine
     container_name: dispatcher-postgres
     restart: unless-stopped
+    env_file: .env
     environment:
       POSTGRES_DB: ${DB_NAME:-oes_merged}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -38,6 +39,7 @@ services:
     image: dpage/pgadmin4
     container_name: dispatcher-pgadmin
     restart: unless-stopped
+    env_file: .env
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
@@ -62,6 +64,7 @@ services:
     restart: unless-stopped
     ports:
       - "${PORT:-8001}:${PORT:-8001}"
+    env_file: .env
     environment:
       PORT: ${PORT:-8001}
       NODE_ENV: ${NODE_ENV:-production}

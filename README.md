@@ -75,13 +75,27 @@ Key variables:
 Requires: Node.js 20, PostgreSQL 15 running locally.
 
 ```bash
-# 1. Install dependencies
+# 1. IClone the repo and configure your environment variables:
+git clone https://github.com/patrickbrode-equinix/ODIN.git
+cd dispatcher-system
+
+# Create the main environment file
+cp .env.example .env
+
+# Edit .env and set your secrets:
+# - DB_PASSWORD
+# - JWT_SECRET
+# - QUEUE_INGEST_KEY
+```
+
+> [!NOTE]
+> 🛑 **LOGIN CURRENTLY DISABLED FOR TESTING:**
+> Authentication is temporarily bypassed. You will automatically be logged in as an Admin.
+
+```bash
+# 2. Install dependencies
 cd backend && npm install
 cd ../frontend && npm install
-
-# 2. Configure environment
-cp backend/.env.example backend/.env
-# Edit backend/.env: set DB_PASSWORD + JWT_SECRET + QUEUE_INGEST_KEY
 
 # 3. Start backend (terminal 1)
 cd backend && npm run dev
@@ -178,14 +192,10 @@ docker compose logs backend --tail=50
 curl -f http://VM_IP:8001/api/health
 # → {"status":"ok","db":"connected"}
 
-# 2. Login (replace credentials)
-TOKEN=$(curl -s -X POST http://VM_IP:8001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"YOUR_PASSWORD"}' \
-  | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).token))")
-
-# 3. Authenticated request (load dashboard data)
-curl -s -H "Authorization: Bearer $TOKEN" http://VM_IP:8001/api/shifts | head -c 200
+# 2. Authenticated request (login is currently bypassed, all requests act as Root Admin)
+# Token is not strictly required right now, but normally you would use:
+# TOKEN=$(curl -.../api/auth/login...)
+curl -s http://VM_IP:8001/api/shifts | head -c 200
 
 # 4. Frontend reachable (if serving static build)
 curl -sf http://VM_IP:8000 > /dev/null && echo "Frontend OK"
