@@ -2,7 +2,7 @@
 /* LOGIN PAGE – DISPATCHER CONSOLE                  */
 /* ------------------------------------------------ */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -18,9 +18,16 @@ import { Label } from "../ui/label";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth(); // TEMP BYPASS: get isAuthenticated
 
   const from = location.state?.from?.pathname || "/dashboard";
+
+  // TEMP BYPASS: Auto-redirect if already authenticated (e.g. via our fake root user)
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, from]);
 
   /* ------------------------------------------------ */
   /* STATE                                           */
@@ -46,7 +53,7 @@ export default function Login() {
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
-          "Login fehlgeschlagen. Bitte prüfen."
+        "Login fehlgeschlagen. Bitte prüfen."
       );
     } finally {
       setLoading(false);

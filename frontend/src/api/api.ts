@@ -48,7 +48,8 @@ api.interceptors.response.use(
       localStorage.removeItem("auth_user");
 
       // Hard redirect (Context-unabhängig, sicher)
-      window.location.href = "/login";
+      // TEMP BYPASS: disabled for VM testing
+      // window.location.href = "/login";
     }
 
     return Promise.reject(error);
