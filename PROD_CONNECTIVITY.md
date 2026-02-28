@@ -12,6 +12,7 @@ Wenn die Container direkt Ports auf der Host-Netzwerkschnittstelle binden (z.B. 
 2. **CORS freigeben:** Das Backend muss die Herkunft des Frontends erlauben.
    - Setze in Portainer die Environment-Variable `CORS_ORIGINS`:
      - **Beispiel:** `CORS_ORIGINS=http://10.X.X.X:8000` oder `https://odin.firma.de`
+   - *Hinweis: `CORS_ORIGINS` akzeptiert auch mehrere Origins als Komma-separierte Liste, z.B. `http://localhost:8000,https://odin.firma.de`.*
 
 *Hinweis: Ohne gesetzte `VITE_API_BASE_URL` versucht das Axios-Frontend Requests relativ an `/api` auf seinem eigenen Host (Port 8000) zu schicken. Ohne Proxy-Routing für `/api` führt das typischerweise zu einem **404-Fehler**, da der Frontend-Container keine API bereitstellt.*
 
@@ -39,6 +40,7 @@ Wenn ein Nginx Server vor den Docker-Containern sitzt und denselben Domain-Host 
        proxy_pass http://odin-backend:8001;
    }
    ```
+   *Hinweis: Sowohl `/api` als auch `/api/` sollten funktionieren, aber es wird empfohlen, Requests im Frontend konsistent mit `/api` zu senden (ohne doppelte Slashes). Das Backend erwartet `/api` üblicherweise als Prefix.*
 3. **CORS:** CORS ist hier unkritisch, da Browser Requests zur selben Origin (`https://odin.firma.de`) senden.
 
 ---
@@ -50,3 +52,5 @@ Die Anwendung wurde so umgebaut, dass sie **beide** Szenarien ohne Code-Änderun
 - Präzisierung des 404-Fehlers in Szenario A (gilt primär, wenn kein Proxy-Routing existiert).
 - Ergänzung des "Mixed Content" Hinweises zur HTTPS-Voraussetzung.
 - Anpassung des Nginx Snippets für Szenario B (`proxy_pass http://odin-backend:8001;`) inkl. Note zum Server des statischen Builds.
+- Hinweis ergänzt: `CORS_ORIGINS` akzeptiert Komma-separierte Listen.
+- Hinweis ergänzt: Konsistenz bei `/api` Prefix-Slashes in Proxy-Routing.
