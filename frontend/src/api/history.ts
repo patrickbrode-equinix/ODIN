@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface ShiftChangeLog {
     id: number;
@@ -24,5 +24,5 @@ export async function fetchShiftHistory(params: {
     if (params.limit) q.append("limit", String(params.limit));
 
     const res = await api.get(`/schedules/history?${q.toString()}`);
-    return res.data;
+    return asArray(res.data, "fetchShiftHistory");
 }

@@ -2,7 +2,7 @@
 /* TICKET HANDOVER – API CLIENT                     */
 /* ------------------------------------------------ */
 
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface TicketHandover {
     id: number;
@@ -28,5 +28,5 @@ export async function createTicketHandover(
 
 export async function getTicketHandovers(): Promise<TicketHandover[]> {
     const { data } = await api.get("/ticket-handover");
-    return data;
+    return asArray(data, "getTicketHandovers");
 }

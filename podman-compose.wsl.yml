@@ -1,22 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  docker-compose.yml  (Podman Desktop compatible)
+#  podman-compose.wsl.yml
 #
-#  Uses host networking to avoid aardvark-dns issues on WSL2 without systemd.
-#  Healthchecks removed (require systemd timers not available in WSL2).
+#  WSL2-specific compose file — uses host networking to avoid aardvark-dns
+#  issues on WSL2 without systemd.
 #
 #  Services:  postgres | pgadmin | backend | frontend
-#  Ports (all on host network):
-#    - PostgreSQL:  5432
-#    - Backend:     8001
-#    - Frontend:    8000
-#    - pgAdmin:     8003
 #
-#  Usage (Podman Desktop):
-#    1. Open Podman Desktop
-#    2. Click "Play" on this compose file via Compose tab
-#
-#  Usage (CLI):
-#    podman compose up -d --build
+#  Usage:
+#    podman-compose -f podman-compose.wsl.yml up -d --build
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -43,7 +34,7 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_LISTEN_PORT: 8003
     volumes:
       - pgadmin_data:/var/lib/pgadmin
@@ -56,7 +47,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: odin-backend:dev
+    image: odin-backend:prod
     container_name: odin-backend
     restart: unless-stopped
     network_mode: host
@@ -65,21 +56,21 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-dev-key-123}
+      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
       DB_HOST: localhost
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@localhost:${DB_PORT:-5432}/${DB_NAME:-odin}"
     depends_on:
       - postgres
 
-  # ── Frontend (Vite Static Build) ───────────────────────────────────────────
+  # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: "/api"
-    image: odin-frontend:dev
+    image: odin-frontend:prod
     container_name: odin-frontend
     restart: unless-stopped
     network_mode: host

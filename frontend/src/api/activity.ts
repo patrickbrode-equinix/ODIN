@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface ActivityLogEntry {
     id: number;
@@ -22,10 +22,10 @@ export async function getActivityLog(params: {
     end?: string;
 }) {
     const res = await api.get<ActivityLogEntry[]>("/activity", { params });
-    return res.data;
+    return asArray(res.data, "getActivityLog");
 }
 
 export async function getActivityStats() {
     const res = await api.get<{ module: string, count: string }[]>("/activity/stats");
-    return res.data;
+    return asArray(res.data, "getActivityStats");
 }

@@ -11,7 +11,7 @@ export interface KioskMessage {
 
 export async function fetchActiveKioskMessages(shiftCode: string): Promise<KioskMessage[]> {
     try {
-        const res = await api.get("/api/kiosk/messages/active", {
+        const res = await api.get("/kiosk/messages/active", {
             params: { shift: shiftCode }
         });
         return res.data?.data || [];
@@ -22,5 +22,5 @@ export async function fetchActiveKioskMessages(shiftCode: string): Promise<Kiosk
 }
 
 export async function acknowledgeMessage(id: number, shiftCode: string) {
-    await api.post(`/api/kiosk/messages/${id}/ack`, { shift: shiftCode });
+    await api.post(`/kiosk/messages/${id}/ack`, { shift: shiftCode });
 }

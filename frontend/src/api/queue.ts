@@ -1,5 +1,5 @@
 // Queue API Client — uses the shared axios instance (JWT auto-injected via interceptor)
-import { api } from "./api";
+import { api, asArray, asObject } from "./api";
 
 export interface QueueGroup {
     name: string;
@@ -37,24 +37,24 @@ export interface GroupSummary {
 export const QueueApi = {
     getGroups: async (): Promise<Record<string, QueueGroup[]>> => {
         const res = await api.get("/queue/groups");
-        return res.data;
+        return asObject(res.data, "QueueApi.getGroups") as Record<string, QueueGroup[]>;
     },
 
     getTickets: async (queueType?: string): Promise<Ticket[]> => {
         const res = await api.get("/queue/tickets", {
             params: queueType ? { queueType } : undefined,
         });
-        return res.data;
+        return asArray(res.data, "QueueApi.getTickets");
     },
 
     getDueToday: async (): Promise<Ticket[]> => {
         const res = await api.get("/queue/tickets");
-        return res.data;
+        return asArray(res.data, "QueueApi.getDueToday");
     },
 
     getMeta: async () => {
         const res = await api.get("/queue/tickets");
-        const tickets: Ticket[] = res.data;
+        const tickets = asArray(res.data, "QueueApi.getMeta");
         return { total: tickets.length, lastUpdate: new Date().toISOString() };
     },
 
