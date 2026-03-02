@@ -26,7 +26,8 @@ services:
     image: postgres:15-alpine
     container_name: odin-postgres
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-odin}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -39,12 +40,12 @@ services:
     image: dpage/pgadmin4
     container_name: odin-pgadmin
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8003:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
-      PGADMIN_LISTEN_PORT: 8003
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
@@ -56,19 +57,24 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: odin-backend:dev
+    image: odin-backend:prod
     container_name: odin-backend
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8001:8001"
     environment:
-      PORT: ${PORT:-8001}
-      NODE_ENV: ${NODE_ENV:-production}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      PORT: 8001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
+      JWT_EXPIRES_IN: 8h
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-dev-key-123}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
-      DB_HOST: localhost
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@localhost:${DB_PORT:-5432}/${DB_NAME:-odin}"
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-odin}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
     depends_on:
       - postgres
 
@@ -79,13 +85,14 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: "/api"
-    image: odin-frontend:dev
+    image: odin-frontend:prod
     container_name: odin-frontend
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8000:8000"
     environment:
       NODE_ENV: production
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      VITE_API_BASE_URL: "/api"
     depends_on:
       - backend
 
