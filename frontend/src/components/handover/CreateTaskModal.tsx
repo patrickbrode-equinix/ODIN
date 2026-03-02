@@ -23,7 +23,8 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
         if (!isOpen) return;
         if (propEmployees && propEmployees.length > 0) return; // use prop if provided
         api.get("/admin/users").then(res => {
-            const names: string[] = (res.data || []).map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
+            const empList = Array.isArray(res.data) ? res.data : [];
+            const names: string[] = empList.map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
             setEmployees(names);
         }).catch(() => {
             setEmployees([]);

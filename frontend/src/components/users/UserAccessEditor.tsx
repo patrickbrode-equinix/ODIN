@@ -118,7 +118,7 @@ export function UserAccessEditor({
 
     try {
       const groupsRes = await api.get<GroupRow[]>("/groups");
-      const groups = groupsRes.data || [];
+      const groups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
 
       const groupRow = groups.find(
         (g) => normalizeKey(g.key) === normalizedGroup

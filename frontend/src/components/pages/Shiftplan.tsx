@@ -251,39 +251,29 @@ export default function Shiftplan() {
     const out: Record<string, any> = {};
     const searchLower = searchTerm.toLowerCase();
 
-    for (const [name, plan] of Object.entries(schedule || {})) {
+    const safeSchedule = (schedule && typeof schedule === 'object') ? schedule : {};
+    for (const [name, plan] of Object.entries(safeSchedule)) {
+      if (!plan || typeof plan !== 'object' || Array.isArray(plan)) continue;
       if (hiddenEmployees.has(name)) continue;
 
       // [NEW] SEARCH FILTER
       if (searchTerm && !name.toLowerCase().includes(searchLower)) continue;
 
       // [NEW] WARNINGS FILTER (Only show employees with warnings?)
-      // We need to check if ANY warning exists for this employee in this month
-      // warningsComputed is array of { label: "Name", ... }
       if (showWarningsOnly) {
-        const hasWarning = warningsComputed.some(w => w.label === name);
+        const hasWarning = Array.isArray(warningsComputed) && warningsComputed.some(w => w.label === name);
         if (!hasWarning) continue;
       }
-
-      // [NEW] CHECK SHIFTS FOR ATTRIBUTES
-      // If "Show Night Only" is active, we should maybe allow employees who have AT LEAST ONE night shift?
-      // Or filter the DAYS? Usually users want to filter EMPLOYEES.
-      // Let's filter Employees who have relevant shifts.
 
       const planTyped = plan as Record<number, string>;
       const shifts = Object.values(planTyped);
 
       if (showNightOnly) {
-        // Check if ANY shift is N
         const hasNight = shifts.some(s => s === 'N');
         if (!hasNight) continue;
       }
 
       if (showWeekendOnly) {
-        // This is tricky. User wants to see WHO works on weekend?
-        // We check if employee has shifts on Sat/Sun
-        // We need year/month to know which days are weekends.
-        // Let's iterate days.
         let hasWeekendShift = false;
         for (const [dayKey, code] of Object.entries(planTyped)) {
           const d = Number(dayKey);
@@ -385,13 +375,13 @@ export default function Shiftplan() {
         fetchConstraintViolations(label).catch(e => { console.error("Constraint violations failed", e); return []; })
       ]);
 
-      setViolations(violationsData || []);
-      setCoverageViolations(coverageViolationsData);
-      setStaffingResults(staffingData);
-      setAbsences(absencesData);
-      setAbsenceConflicts(conflictsData || []);
+      setViolations(Array.isArray(violationsData) ? violationsData : []);
+      setCoverageViolations(Array.isArray(coverageViolationsData) ? coverageViolationsData : []);
+      setStaffingResults(Array.isArray(staffingData) ? staffingData : []);
+      setAbsences(Array.isArray(absencesData) ? absencesData : []);
+      setAbsenceConflicts(Array.isArray(conflictsData) ? conflictsData : []);
       setConstraintsMap(constraintsData);
-      setConstraintViolations(constraintViolationsData || []);
+      setConstraintViolations(Array.isArray(constraintViolationsData) ? constraintViolationsData : []);
     } catch (err) {
       console.error("Error loading month data:", err);
     }
@@ -401,7 +391,7 @@ export default function Shiftplan() {
   useEffect(() => {
     if (viewMode === "month") {
       fetchViolations(selectedYear, selectedMonthIndex + 1)
-        .then(setViolations)
+        .then(v => setViolations(Array.isArray(v) ? v : []))
         .catch(err => console.error("Violations Load Error:", err));
 
       loadData(selectedYear, selectedMonthIndex + 1);
@@ -422,9 +412,12 @@ export default function Shiftplan() {
   useEffect(() => {
     fetchMonths()
       .then((months) => {
-        setMonthsWithData(months);
+        setMonthsWithData(Array.isArray(months) ? months : []);
       })
-      .catch((err) => console.error("LOAD MONTHS ERROR:", err));
+      .catch((err) => {
+        console.error("LOAD MONTHS ERROR:", err);
+        setMonthsWithData([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -447,14 +440,14 @@ export default function Shiftplan() {
       clearSelection();
 
       const data = await fetchSchedule(monthLabel);
-      const sched = data?.schedule || {};
-      const meta = data?.meta;
+      const sched = (data && typeof data === 'object' && data.schedule) ? data.schedule : {};
+      const meta = (data && typeof data === 'object') ? data.meta : null;
 
       setSchedule(sched);
       shiftStore.setSchedule(monthLabel, sched);
       shiftStore.setSelectedMonth(monthLabel);
 
-      if (meta?.year && meta?.month) {
+      if (meta && typeof meta === 'object' && meta.year && meta.month) {
         const days = new Date(meta.year, meta.month, 0).getDate();
         setDaysInMonth(days);
         shiftStore.setDaysInMonth(days);
@@ -735,7 +728,7 @@ export default function Shiftplan() {
         await importSchedule(label, parsed);
       }
       const months = await fetchMonths();
-      setMonthsWithData(months);
+      setMonthsWithData(Array.isArray(months) ? months : []);
       if (viewMode === "year") await loadYear(selectedYear);
       else await loadSchedule(activeMonthLabel);
     } catch (err) {

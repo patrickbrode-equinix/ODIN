@@ -1,0 +1,35 @@
+# Walkthrough: Fix ODIN Build & Runtime Errors
+
+## Problem
+The ODIN app crashed at runtime with `TypeError: n.map is not a function` because several API client files returned `res.data` directly without type guards. When the backend returned unexpected data, unguarded `.map()` calls crashed the React UI. Additionally, [kiosk.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/kiosk.ts) had a double `/api` prefix bug causing 404s.
+
+## Changes Made
+
+### Bug Fix
+| File | Change |
+|------|--------|
+| [kiosk.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/kiosk.ts) | Fixed double `/api` prefix: `/api/kiosk/...` → `/kiosk/...` |
+
+### Defensive Guards Added
+| File | Change |
+|------|--------|
+| [queue.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/queue.ts) | Added [asArray](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/api.ts#81-94)/[asObject](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/api.ts#95-110) guards to 4 functions |
+| [activity.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/activity.ts) | Added [asArray](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/api.ts#81-94) guards to 2 functions |
+| [history.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/history.ts) | Added [asArray](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/api.ts#81-94) guard to [fetchShiftHistory](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/history.ts#14-29) |
+| [ticketHandover.ts](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/ticketHandover.ts) | Added [asArray](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/api.ts#81-94) guard to [getTicketHandovers](file:///c:/Users/Admin/Desktop/Merged/frontend/src/api/ticketHandover.ts#29-33) |
+
+## Verification
+
+Podman containers built via [.\dev.ps1](file:///c:/Users/Admin/Desktop/Merged/dev.ps1). Browser verification confirms all pages load without errors:
+
+````carousel
+![Dashboard loads with 170 active tickets, no console errors](C:\Users\Admin\.gemini\antigravity\brain\5049861f-9114-46ea-b569-149bdd729aa2\.system_generated\click_feedback\click_feedback_1772444496448.png)
+<!-- slide -->
+![Schichtplan renders full employee grid with shift codes – no TypeError crash](C:\Users\Admin\.gemini\antigravity\brain\5049861f-9114-46ea-b569-149bdd729aa2\.system_generated\click_feedback\click_feedback_1772444583533.png)
+````
+
+> [!NOTE]
+> Port 8000 (containerized frontend) returned connection refused — the Vite dev server on port 5173 was used for verification. If you need port 8000, check that the `odin-frontend` container is running: `podman ps | grep frontend`
+
+## Browser Recording
+![Full verification flow](C:\Users\Admin\.gemini\antigravity\brain\5049861f-9114-46ea-b569-149bdd729aa2\verify_odin_app_1772444287213.webp)

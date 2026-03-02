@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface Absence {
     id: number;
@@ -27,7 +27,7 @@ export async function fetchAbsences(year?: number, month?: number): Promise<Abse
     if (month) params.append("month", String(month));
 
     const res = await api.get(`/absences?${params.toString()}`);
-    return res.data;
+    return asArray(res.data, "fetchAbsences");
 }
 
 export async function createAbsence(data: Omit<Absence, "id">): Promise<Absence> {
@@ -42,5 +42,5 @@ export async function deleteAbsence(id: number): Promise<{ success: boolean }> {
 
 export async function fetchAbsenceConflicts(year: number, month: number): Promise<AbsenceConflict[]> {
     const res = await api.get(`/absences/conflicts?year=${year}&month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchAbsenceConflicts");
 }

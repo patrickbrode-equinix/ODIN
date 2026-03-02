@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface StaffingRule {
     shift_type: string;
@@ -15,7 +15,7 @@ export interface StaffingResult {
 
 export const fetchStaffingRules = async (): Promise<StaffingRule[]> => {
     const res = await api.get<StaffingRule[]>("/staffing/rules");
-    return res.data;
+    return asArray(res.data, "fetchStaffingRules");
 };
 
 export const saveStaffingRule = async (rule: StaffingRule) => {
@@ -25,7 +25,7 @@ export const saveStaffingRule = async (rule: StaffingRule) => {
 
 export const fetchStaffingResults = async (year: number, month: number): Promise<StaffingResult[]> => {
     const res = await api.get<StaffingResult[]>(`/staffing/results?year=${year}&month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchStaffingResults");
 };
 
 export const recomputeStaffing = async (year: number, month: number) => {

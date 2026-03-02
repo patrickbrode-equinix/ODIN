@@ -161,9 +161,10 @@ export function ShiftplanTable({
   // For C3: Last Update + Asset Count Display
   const tickets = useCommitStore((s) => s.tickets);
   const lastUpdate = useMemo(() => {
-    if (!tickets || tickets.length === 0) return null;
+    const safeTickets = Array.isArray(tickets) ? tickets : [];
+    if (safeTickets.length === 0) return null;
     let maxTime = 0;
-    for (const t of tickets as any[]) {
+    for (const t of safeTickets as any[]) {
       if (t.updated_at) {
         const time = new Date(t.updated_at).getTime();
         if (time > maxTime) maxTime = time;
@@ -203,7 +204,9 @@ export function ShiftplanTable({
   // [NEW] Violations Map
   const violationsMap = useMemo(() => {
     const m = new Map<string, ShiftViolation[]>();
-    for (const v of violations || []) {
+    const safeViolations = Array.isArray(violations) ? violations : [];
+    for (const v of safeViolations) {
+      if (!v || !v.date || !v.employee_name) continue;
       const d = new Date(v.date);
       const day = d.getDate();
       const key = cellKey(v.employee_name, day);
@@ -216,7 +219,9 @@ export function ShiftplanTable({
 
   const warningByDateKey = useMemo(() => {
     const m = new Map<string, UnderstaffWarning[]>();
-    for (const w of warnings || []) {
+    const safeWarnings = Array.isArray(warnings) ? warnings : [];
+    for (const w of safeWarnings) {
+      if (!w || !w.dateKey) continue;
       const arr = m.get(w.dateKey) ?? [];
       arr.push(w);
       m.set(w.dateKey, arr);
@@ -322,7 +327,7 @@ export function ShiftplanTable({
                 <th className="sticky bg-[#0f111a] border-r border-white/5 p-2 w-8" rowSpan={2}>
                   <span className="sr-only">Stats</span>
                 </th>
-                {weekGroups.map((g, idx) => (
+                {(Array.isArray(weekGroups) ? weekGroups : []).map((g, idx) => (
                   <th
                     key={`${g.label}-${idx}`}
                     colSpan={g.span}
@@ -357,16 +362,19 @@ export function ShiftplanTable({
                   const hasWarning = dayWarnings.length > 0;
 
                   // [NEW] C2: Red Highlight for Empty Days
-                  const isDayEmpty = !employees.some((name) => schedule[name] && schedule[name][day]);
+                  const isDayEmpty = Array.isArray(employees) && !employees.some((name) => {
+                    const empSched = (schedule && typeof schedule === 'object') ? (schedule as any)[name] : null;
+                    return empSched && empSched[day];
+                  });
 
                   const titleParts: string[] = [];
                   titleParts.push(`${weekdayAbbrev(d)} ${day}.${pad2(monthIndex1)}.${year}`);
                   if (holidayName) titleParts.push(`Feiertag: ${holidayName}`);
-                  if (hasWarning) titleParts.push(`Unterbesetzung: ${dayWarnings.map((w) => w.label).join(" | ")}`);
+                  if (hasWarning) titleParts.push(`Unterbesetzung: ${(Array.isArray(dayWarnings) ? dayWarnings : []).map((w) => w.label).join(" | ")}`);
 
                   // [NEW] Staffing Status Indicator
                   const dateStr = dateKey(year, monthIndex1, day);
-                  const resultForDay = staffingResults.filter(r => r.date.startsWith(dateStr));
+                  const resultForDay = (Array.isArray(staffingResults) ? staffingResults : []).filter(r => r && r.date && r.date.startsWith(dateStr));
                   const isFail = resultForDay.some(r => r.status === "FAIL");
                   const isWarn = resultForDay.some(r => r.status === "WARN");
                   const isOk = resultForDay.length > 0 && !isFail && !isWarn;
@@ -376,8 +384,8 @@ export function ShiftplanTable({
                   else if (isWarn) dotColor = "bg-yellow-500";
                   else if (isOk) dotColor = "bg-green-500";
 
-                  const staffingTooltip = resultForDay.length > 0
-                    ? "\n\nStaffing:\n" + resultForDay.map(r => `${r.shift_type}: ${r.actual}/${r.min} (${r.status})`).join("\n")
+                  const staffingTooltip = Array.isArray(staffingResults) && staffingResults.length > 0
+                    ? "\n\nStaffing:\n" + staffingResults.filter(r => r.date.startsWith(dateStr)).map(r => `${r.shift_type}: ${r.actual}/${r.min} (${r.status})`).join("\n")
                     : "";
 
                   const thContent = (
@@ -475,7 +483,7 @@ export function ShiftplanTable({
             </thead>
 
             <tbody>
-              {employees.map((name) => {
+              {Array.isArray(employees) && employees.map((name) => {
                 const isSelected = selectedRow === name;
                 const hasRowSelected = selectedRow !== null;
                 return (
@@ -564,7 +572,8 @@ export function ShiftplanTable({
 
                       {Array.from({ length: daysInMonth }, (_, d) => {
                         const day = d + 1;
-                        const shift = schedule[name]?.[day];
+                        const empSched = (schedule && typeof schedule === 'object') ? (schedule as any)[name] : null;
+                        const shift = empSched ? empSched[day] : null;
                         const info = shift ? shiftTypes[shift] : null;
                         const key = dateKey(year, monthIndex1, day);
                         const hasWarning = (warningByDateKey.get(key) ?? []).length > 0;
@@ -579,10 +588,12 @@ export function ShiftplanTable({
                         // Ideally coverage is per shift type, but we show a generic badge here if the day has issues
                         // We check if this cell's shift type matches a coverage violation for this day
                         let hasCoverageIssue = false;
-                        if (coverageViolations && shift) {
+                        const safeCoverage = Array.isArray(coverageViolations) ? coverageViolations : [];
+                        if (safeCoverage.length > 0 && shift) {
                           const s = String(shift).toUpperCase();
                           // Find violation for this day
-                          const dayIssues = coverageViolations.filter(v => {
+                          const dayIssues = safeCoverage.filter(v => {
+                            if (!v || !v.date) return false;
                             const vd = new Date(v.date);
                             return vd.getDate() === day;
                           });
@@ -601,8 +612,9 @@ export function ShiftplanTable({
                         // [NEW] Absence Logic
                         // Check if this cell falls into an absence range
                         const currentDate = new Date(year, monthIndex1 - 1, day);
-                        const absence = absences.find(a => {
-                          if (a.employee_name !== name) return false;
+                        const safeAbsences = Array.isArray(absences) ? absences : [];
+                        const absence = safeAbsences.find(a => {
+                          if (!a || a.employee_name !== name) return false;
                           const start = new Date(a.start_date);
                           const end = new Date(a.end_date);
                           // Reset times for safe comparison
@@ -613,8 +625,9 @@ export function ShiftplanTable({
                         });
 
                         // [NEW] Absence Conflict Logic
-                        const conflict = absenceConflicts.find(c => {
-                          if (c.employee_name !== name) return false;
+                        const safeConflicts = Array.isArray(absenceConflicts) ? absenceConflicts : [];
+                        const conflict = safeConflicts.find(c => {
+                          if (!c || c.employee_name !== name) return false;
                           const d = new Date(c.date);
                           return d.getDate() === day && d.getMonth() === monthIndex1 - 1 && d.getFullYear() === year;
                         });
@@ -697,7 +710,7 @@ export function ShiftplanTable({
                               <div className="absolute -top-1 -right-1 z-20">
                                 <div
                                   className="text-[10px] cursor-help bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center shadow-md animate-pulse"
-                                  title={cellViolations?.map(v =>
+                                  title={(Array.isArray(cellViolations) ? cellViolations : []).map(v =>
                                     v.violation_type === "REST_TIME" ? `Ruhezeit! ${v.details.msg}` : `Wechsel! ${v.details.msg}`
                                   ).join("\n")}
                                 >

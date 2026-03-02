@@ -93,6 +93,7 @@ services:
     environment:
       NODE_ENV: production
       VITE_API_BASE_URL: "/api"
+      BACKEND_URL: "http://backend:8001"
     depends_on:
       - backend
 

@@ -15,7 +15,7 @@ router.post("/snapshot", async (req, res) => {
 
   // SAFETY GATE: Reject if queue_type is missing
   if (!queue_type) {
-    console.error("[OES][SNAPSHOT] Reject: missing queue_type");
+    console.error("[ODIN][SNAPSHOT] Reject: missing queue_type");
     return res.status(400).json({ ok: false, error: "MISSING_QUEUE_TYPE" });
   }
 
@@ -40,7 +40,7 @@ router.post("/snapshot", async (req, res) => {
 
   // DIAGNOSTICS
   const payloadSize = JSON.stringify(req.body).length;
-  console.log(`[OES][SNAPSHOT] Ingest type=${queue_type} items=${items?.length || 0} Size: ${payloadSize}b`);
+  console.log(`[ODIN][SNAPSHOT] Ingest type=${queue_type} items=${items?.length || 0} Size: ${payloadSize}b`);
 
   const client = await import("../db.js").then((mod) => mod.default.connect());
 
@@ -68,7 +68,7 @@ router.post("/snapshot", async (req, res) => {
         const externalId = item.ticketId || item["Activity #"] || item["Ticket"] || (item.id && !item.id.startsWith("UNKNOWN") ? item.id : null);
 
         if (!externalId) {
-          console.warn("[OES][SNAPSHOT] Skipping item missing stable ID:", JSON.stringify(item).substring(0, 50));
+          console.warn("[ODIN][SNAPSHOT] Skipping item missing stable ID:", JSON.stringify(item).substring(0, 50));
           continue;
         }
 

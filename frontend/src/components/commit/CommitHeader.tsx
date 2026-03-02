@@ -65,7 +65,8 @@ export function CommitHeader({
       try {
         const res = await api.get("/commit/filters");
         if (!alive) return;
-        useCommitStore.getState().setFilters(res.data ?? []);
+        const valid = Array.isArray(res.data) ? res.data : [];
+        useCommitStore.getState().setFilters(valid);
       } catch {
         /* handled globally */
       }
@@ -98,8 +99,8 @@ export function CommitHeader({
         lines[0].includes(";")
           ? ";"
           : lines[0].includes("\t")
-          ? "\t"
-          : ",";
+            ? "\t"
+            : ",";
 
       const header = lines[0].split(delimiter).map((h) => h.trim());
 
@@ -196,11 +197,10 @@ export function CommitHeader({
               <button
                 key={f.id}
                 onClick={() => applyFilter(active ? null : f)}
-                className={`px-3 py-1 rounded-full text-sm border transition ${
-                  active
+                className={`px-3 py-1 rounded-full text-sm border transition ${active
                     ? "bg-primary text-primary-foreground"
                     : "bg-background hover:bg-accent"
-                }`}
+                  }`}
               >
                 {f.label}
               </button>

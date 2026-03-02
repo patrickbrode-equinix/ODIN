@@ -87,7 +87,8 @@ export default function Users() {
   async function loadUsers() {
     try {
       const res = await api.get<User[]>("/admin/users");
-      setUsers(res.data || []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setUsers(list);
     } catch (err) {
       console.error("LOAD USERS ERROR:", err);
     } finally {

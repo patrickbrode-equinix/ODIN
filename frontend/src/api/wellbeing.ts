@@ -2,7 +2,7 @@
 /* WELLBEING API CLIENT                             */
 /* ------------------------------------------------ */
 
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export type WellbeingConfig = {
     id: number;
@@ -39,7 +39,7 @@ export const updateWellbeingConfig = async (data: Partial<WellbeingConfig>) => {
 
 export const fetchWellbeingMetrics = async (year: number, month: number) => {
     const res = await api.get<WellbeingMetric[]>(`/wellbeing/metrics?year=${year}&month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchWellbeingMetrics");
 };
 
 export const computeWellbeingMetrics = async (year: number, month: number) => {

@@ -41,7 +41,7 @@ export function DispatcherHeader({
   return (
     <div className="flex items-center justify-between p-4 bg-card border rounded-2xl">
       <div>
-        <h2 className="text-xl font-bold">Dispatcher Console</h2>
+        <h2 className="text-xl font-bold">ODIN</h2>
         <p className="text-muted-foreground">
           KW {weekNumber} |{" "}
           {format(from, "dd.MM.yyyy")} –{" "}

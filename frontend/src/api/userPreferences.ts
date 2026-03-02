@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asObject } from "./api";
 
 export interface ShiftplanPreferences {
     searchTerm?: string;
@@ -12,10 +12,10 @@ export interface ShiftplanPreferences {
 
 export async function getShiftplanPreferences(): Promise<ShiftplanPreferences> {
     const res = await api.get("/user/preferences/shiftplan");
-    return res.data;
+    return asObject(res.data, "getShiftplanPreferences") as ShiftplanPreferences;
 }
 
 export async function updateShiftplanPreferences(prefs: ShiftplanPreferences): Promise<ShiftplanPreferences> {
     const res = await api.put("/user/preferences/shiftplan", prefs);
-    return res.data;
+    return asObject(res.data, "updateShiftplanPreferences") as ShiftplanPreferences;
 }

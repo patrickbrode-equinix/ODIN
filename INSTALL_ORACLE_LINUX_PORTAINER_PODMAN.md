@@ -1,144 +1,142 @@
-# ODIN Installation Guide (Oracle Linux + Podman + Portainer)
+# Installationsanleitung ODIN (Oracle Linux, Portainer, Podman)
 
-Dieses Dokument ist der finale, offizielle Leitfaden für das Deployment von ODIN auf einer Oracle Linux (Version 8 oder 9) Virtual Machine. Das Setup verwendet **Podman** als Container-Engine und **Portainer** zur Orchestrierung (via Compose-Syntax).
+Dieses Dokument beschreibt das Deployment der ODIN Applikation via Portainer und Podman Compose unter Oracle Linux. Es wird **kein `env_file`** verwendet; alle Umgebungsvariablen werden direkt in Portainer verwaltet. Dies gewährt maximale Stabilität und Sicherheit in Produktionsumgebungen.
 
-> **Achtung (Risiko-Policy):** Alle Category-C Konventionen (wie `X-OES-INGEST-KEY`, Routing-Pfade, Storage-Keys) bleiben systemweit unberührt, um die Kompatibilität zu 100% sicherzustellen. Es werden keine lokalen `env_file`s gemountet.
-
----
+Wichtige Category-C Contracts (wie der `X-OES-INGEST-KEY`, die `/dispatcher` Route oder Storage Keys) bleiben bei diesem Setup unverändert erhalten und müssen transparent ans Backend weitergereicht werden.
 
 ## 1. Voraussetzungen
 
-- **OS:** Oracle Linux 8 oder 9 (frische Installation empfohlen)
-- **Pakete:** `podman`, `podman-compose` (oder das native `podman compose` Plugin)
-- **Netzwerk:** Firewalld (oder iptables) für die Verwaltung der Freigaben
+- Ein System unter **Oracle Linux (Version 8 oder 9)**.
+- Die folgenden Pakete müssen auf dem System verfügbar sein:
+  - `podman`
+  - `podman-compose` (oder alternativ das Podman Compose Plugin)
+  - `firewalld` (falls die System-Firewall genutzt wird)
 
 ## 2. VM Vorbereitung
 
-Führe diese Befehle als `root` (oder via `sudo`) auf der Oracle Linux VM aus.
+Führe als `root` (oder via `sudo`) die folgenden Befehle auf der VM aus, um das System vorzubereiten:
 
-### 2.1 System aktualisieren & Podman installieren
 ```bash
-# System aktualisieren (optional aber empfohlen)
+# Optional: System aktualisieren
 sudo dnf update -y
 
-# Podman RPMs installieren
+# Podman und Compose-Tools installieren
 sudo dnf install -y podman podman-compose
 ```
 
-### 2.2 Podman Socket für Portainer aktivieren (Rootless oder Rootful)
-*Für ein server-weites Portainer empfiehlt sich oft das Rootful-Socket für den Administrator.*
-```bash
-sudo systemctl enable --now podman.socket
-```
-
-### 2.3 Firewall Konfigurieren (Firewalld)
-Öffne die benötigten Public-Ports. 
-*Hinweis: Port `8002` (Postgres) wird **nicht** nach außen geöffnet, da die Client-Verbindung ausschließlich im internen Docker-Netzwerk erfolgt.*
+**Firewall-Konfiguration (falls `firewalld` aktiv ist):**
+Es müssen die Ports für das Frontend (8000), das Backend (8001) und optional pgAdmin (8003) extern freigegeben werden. 
+*Hinweis: Port 8002 (Postgres) sollte standardmäßig **NICHT** nach außen geöffnet werden, da die Applikation intern mit der Datenbank kommuniziert. Falls Postgres-Port 8002 in Compose nach außen published ist, sollte er in Production optional deaktiviert bleiben (Security).*
 
 ```bash
-# Frontend UI
-sudo firewall-cmd --zone=public --add-port=8000/tcp --permanent
-# Backend API
-sudo firewall-cmd --zone=public --add-port=8001/tcp --permanent
-# (Optional) pgAdmin Management
-sudo firewall-cmd --zone=public --add-port=8003/tcp --permanent
+# Ports für Frontend, Backend und (optional) pgAdmin öffnen
+sudo firewall-cmd --permanent --add-port=8000/tcp  # Frontend
+sudo firewall-cmd --permanent --add-port=8001/tcp  # Backend API
+sudo firewall-cmd --permanent --add-port=8003/tcp  # pgAdmin (optional)
 
-# Regeln neu laden
+# Optional: Ports für Portainer öffnen (falls extern erreichbar sein soll)
+# Empfehlung: nur 9443 extern öffnen; 9000 nur intern/VPN.
+sudo firewall-cmd --permanent --add-port=9443/tcp
+sudo firewall-cmd --permanent --add-port=9000/tcp
+
+# Regeln anwenden
 sudo firewall-cmd --reload
 ```
 
----
+## 3. Portainer Setup
 
-## 3. Portainer Setup (Skip, falls bereits vorhanden)
-
-Falls noch kein Portainer existiert, starte ihn einmalig (hier als Rootful-Beispiel via Podman):
+Falls Portainer bereits auf der VM läuft, kann dieser Abschnitt **übersprungen** werden.
+Falls nicht, hier ein minimales Standard-Setup für Portainer unter Podman:
 
 ```bash
-sudo podman volume create portainer_data
-sudo podman run -d -p 8000:8000 -p 9443:9443 --name portainer \
+# Portainer Volume anlegen
+podman volume create portainer_data
+
+# Portainer Container starten
+podman run -d -p 9000:9000 -p 9443:9443 --name portainer \
     --restart=always \
     -v /run/podman/podman.sock:/var/run/docker.sock:Z \
     -v portainer_data:/data \
     portainer/portainer-ce:latest
 ```
-*Portainer ist dann via `https://<VM-IP>:9443` erreichbar. Erstelle dort den initialen Admin-User.*
+Das Socket-Mapping `/run/podman/podman.sock -> /var/run/docker.sock` ist beabsichtigt, damit Portainer Podman verwalten kann.
 
----
+Rufe anschließend `https://<VM-IP>:9443` (oder `http://<VM-IP>:9000`) auf und erstelle den initialen Admin-Account.
 
 ## 4. Stack Deployment in Portainer
 
-Das Deployment in Portainer ist der sicherste und stabilste Weg für ODIN.
+Das Deployment erfolgt als Compose-Stack in der Portainer UI.
 
-1. Öffne Portainer und klicke auf dein lokales Environment.
-2. Navigiere im Menü links zu **"Stacks"** und klicke auf **"Add stack"**.
-3. **Name:** `odin` (Empfohlen, um den Prefix `odin-*` für Container zu triggern).
-4. **Build Method:** Wähle **"Repository"** (Git) oder **"Web editor"** (Paste der Compose-File).
-   - *Tipp:* Das Verwenden von `podman-compose.yml` aus diesem Repository ist präferiert, `docker-compose.yml` verhält sich aber absolut identisch.
+1. Gehe in Portainer auf dein Local Environment.
+2. Navigiere zu **Stacks** -> **Add stack**.
+3. **Name:** `odin`
+4. **Deployment-Methode:**
+   - **Variante A (Git Repository):** Wähle "Repository" und gib die URL des Git-Repos ein, sowie den Pfad zum Compose-File (bevorzugt `podman-compose.yml`, falls vorhanden, ansonsten `docker-compose.yml`).
+   - **Variante B (Web Editor):** Wähle "Web editor" und kopiere den Inhalt der `podman-compose.yml` (oder `docker-compose.yml`) direkt in das Textfeld.
 
----
+## 5. Pflicht-ENV Variablen
 
-## 5. Pflicht-ENV Variablen (Portainer "Env" Tab)
+Alle notwendigen Variablen werden im Bereich "Environment variables" in Portainer eingetragen ("Add environment variable"). Es wird **kein** `.env` File gemountet!
 
-Beim Erstellen des Stacks gehst du in den Bereich **"Environment variables"** (Advanced mode = Copy/Paste). Diese Werte steuern die gesamte App. **Es gibt kein `env_file`.** 
+| Variable | Beispielwert / Notiz |
+| :--- | :--- |
+| **`DB_NAME`** | `odin` (Default ist ok) |
+| **`DB_HOST`** | `postgres` |
+| **`DB_PORT`** | `5432` |
+| **`DB_USER`** | `odin_db_admin` |
+| **`DB_PASSWORD`** | `<Ein-sehr-sicheres-Passwort>` |
+| **`JWT_SECRET`** | `<Ein-Sicherer-Zufalls-String>` |
+| **`QUEUE_INGEST_KEY`** | `<Crawler-Security-Key>` (Wichtig für *Category-C* Ingest) |
+| **`CORS_ORIGINS`** | `http://<VM-IP>:8000` (oder die HTTPS Domain des Frontends) |
+| **`VITE_API_BASE_URL`** | `http://<VM-IP>:8001` (oder die HTTPS Domain des Backends) |
 
-| Variable | Beispiel | Beschreibung |
-| :--- | :--- | :--- |
-| `DB_NAME` | `odin` | Name der Postgres-Datenbank. |
-| `DB_HOST` | `postgres` | Compose Service-Name der Datenbank. |
-| `DB_PORT` | `5432` | Interner Port der DB. |
-| `DB_USER` | `admin_odin` | Sicheres Postgres-Login. |
-| `DB_PASSWORD` | `SuperSecret!!` | Sicheres Postgres-Passwort. |
-| `JWT_SECRET` | `a3f8b...` | Zwingend für Sicherheit! (Generiere 64 Zeichen Hex). |
-| `QUEUE_INGEST_KEY` | `CrawlerKey!` | Zwingend für den Crawler zur Datenübermittlung. |
-| `CORS_ORIGINS` | `http://<VM-IP>:8000` | Wer darf das Backend aufrufen? (Komma-separiert für mehrere). |
-| `VITE_API_BASE_URL` | `http://<VM-IP>:8001` | **Wichtig:** Wohin schickt der Browser des Users die API-Calls? |
-
-> *Optional für pgAdmin:* `PGADMIN_EMAIL=admin@firma.de` und `PGADMIN_PASSWORD=secret`
-
----
+*Zusätzlich optionale Variablen:*
+- `PGADMIN_EMAIL`: z.B. `admin@firma.de`
+- `PGADMIN_PASSWORD`: z.B. `PgAdminSecurePass!`
+- `JWT_EXPIRES_IN`: z.B. `12h` oder `7d`
 
 ## 6. Deploy & Verify
 
-1. Klicke unten auf **"Deploy the stack"**.
-2. Portainer lädt die Images und führt den Build durch. 
-3. Gehe in den Stack "odin" und prüfe die Logs der Container `odin-backend` und `odin-postgres`.
+1. Klicke unten auf **Deploy the stack**.
+2. **Portainer Logs:** Prüfe in der Container-Übersicht die Logs des `backend`- und `postgres`-Containers, um sicherzustellen, dass die Schema-Initialisierung (`initSchema`) und der Start fehlerfrei liefen.
+3. **Healthcheck Backend (Terminal auf der VM):**
+   ```bash
+   curl -i http://localhost:8001/api/health
+   ```
+   Erwartet wird ein HTTP `200 OK`.
+4. **Frontend Check:**
+   Rufe im Browser `http://<VM-IP>:8000` auf. Das Login-Fenster sollte erscheinen.
 
-**Healthcheck Backend (auf der VM):**
-```bash
-curl -i http://localhost:8001/api/health
-# Erwartet: HTTP 200 OK
-```
+## 7. Connectivity Szenarien
 
-**Healthcheck Frontend (im eigenen Browser):**
-Öffne `http://<VM-IP>:8000` – Du solltest den ODIN Login-Bildschirm sehen.
+Je nach Infrastruktur wird das ODIN Setup unterschiedlich angebunden (siehe auch `PROD_CONNECTIVITY.md`):
 
----
-
-## 7. Connectivity Szenarien (Kurzfassung)
-
-Wie in der `PROD_CONNECTIVITY.md` definiert, steuert Portainer das Routing:
-
-- **Szenario A (Ohne Reverse Proxy - Default für dieses Setup):** `VITE_API_BASE_URL` **MUSS** auf die externe IP/Domain (`http://<VM-IP>:8001`) gesetzt sein. Das Frontend ruft die API direkt am Browser vorbei auf.
-- **Szenario B (Mit Reverse Proxy wie Nginx):** Lasse `VITE_API_BASE_URL` in Portainer **leer**. Das Frontend nutzt intern `/api` und der Proxy leitet diese Anfragen an Port 8001 weiter.
-
----
+- **Szenario A (Portainer Direct / Host Routing):** Kein Nginx/Proxy. Der Browser kommuniziert direkt auf Port 8000 (Frontend) und 8001 (Backend). **Wichtig:** `VITE_API_BASE_URL` *muss* in Portainer auf `http://<VM-IP>:8001` gesetzt werden. `CORS_ORIGINS` muss analog konfiguriert werden.
+- **Szenario B (Reverse Proxy):** Nginx, Traefik o.ä. sitzt davor und routet Traffic derselben Domain. Das Frontend wird unter `/` und das Backend unter `/api` serviert. In diesem Fall *muss* `VITE_API_BASE_URL` in Portainer **leer** bleiben oder gelöscht werden, sodass das Frontend relative Requests an `/api` sendet.
 
 ## 8. Troubleshooting
 
-| Fehlerbild | Ursache & Lösung |
-| :--- | :--- |
-| **API Requests brechen ab mit 404 Not Found** auf `/api/irgendwas` im Frontend. | **Ursache:** Du betreibst keinen Proxy, hast aber in Portainer `VITE_API_BASE_URL` vergessen/leer gelassen. Das Frontend versucht vergeblich, sich selbst auf Port 8000 zu rufen. |
-| **CORS Fehler (Network Error / Blocked by CORS)** in der Browser-Console. | **Ursache:** Die URL im Browser passt nicht zur `CORS_ORIGINS` Variable im Backend. Stelle sicher, dass `http://<VM-IP>:8000` exakt (ohne schließenden Slash) im Portainer-Env des Backends steht. |
-| **Mixed Content Warning** (Konsole). | **Ursache:** Dein Frontend hostet via `https://`, aber die `VITE_API_BASE_URL` zielt auf `http://`. Sichere Kontexte dürfen keine unsicheren aufrufen. Nutze HTTPS für beide oder HTTP für beide. |
-| **Backend "FATAL: Connection refused" / kann DB nicht erreichen.** | **Ursache:** `DB_HOST`, `DB_USER` oder `DB_PASSWORD` in Portainer sind falsch geschrieben oder die DB bootet noch (`pg_isready` Healthcheck schlägt fehl). |
-| **Teile des UI laden endlos (Spinner). DB Schema fehlt.** | **Ursache:** Initiales Setup (`backend/db/initSchema.js`) lief auf einen Fehler. Prüfe die Logs des `odin-backend` Containers. Normalerweise baut ODIN die Tabellen beim ersten Start selbst. Starte den Backend-Container 1x neu. |
+- **Fehler: 404 Not Found auf `/api` Calls**
+  - *Ursache:* Das Frontend rennt ohne vorgeschalteten Reverse Proxy (Szenario A) und die URL für das Backend fehlt.
+  - *Lösung:* Setze `VITE_API_BASE_URL=http://<VM-IP>:8001` in den Portainer Configs des Stacks und deploye neu.
+- **Fehler: CORS blocked im Browser (F12 Konsole)**
+  - *Ursache:* Das Backend (Port 8001) lehnt Requests der Frontend-Domain ab.
+  - *Lösung:* Überprüfe den Wert von `CORS_ORIGINS`. Er muss exakt den Frontend-Ursprung beinhalten (z.B. `http://<VM-IP>:8000`).
+- **Fehler: Mixed Content Error**
+  - *Ursache:* Das Frontend wird via HTTPS aufgerufen, das Backend aber nur via HTTP. Ein Browser wird diese unsicheren API-Gespräche blockieren.
+  - *Lösung:* Auch das Backend muss hinter einem SSL-Proxy laufen (Szenario B nutzen oder separaten Proxy einrichten) und `VITE_API_BASE_URL` muss mit `https://...` beginnen.
+- **Fehler: Backend-Container stürzt ab, kann Stack/DB nicht erreichen**
+  - *Ursache:* Falscher `DB_HOST` oder inkonsistente `DB_PASSWORD` Konfiguration.
+  - *Lösung:* Sicherstellen, dass `DB_HOST=postgres` ist und die Credentials vom Backend exakt zu denen des Postgres-Containers passen. `DB_HOST` muss exakt dem Compose-Service-Namen entsprechen (standard: `postgres`).
+- **Fehler: initSchema oder Migrationen laufen nicht durch**
+  - *Lösung:* Container Logs des Backends prüfen. Wenn die Datenbank vom Backend vor der Startbereitschaft aufgerufen wurde, hilft oft ein Neustart (Restart) des `backend` Containers in Portainer.
 
 ---
 
-## 9. Definition of Done (Checkliste)
-
-- [ ] VM ist up-to-date und Firewall-Regeln (`8000`, `8001`, `8003`) sind aktiv.
-- [ ] Portainer Stack `odin` ist erfolgreich (grün) deployed.
-- [ ] Kein Container wirft "env_file not found" Errors.
-- [ ] Das Frontend (`http://<VM-IP>:8000`) ist im Browser erreichbar und zeigt "ODIN" Branding.
-- [ ] Login (API Call) funktioniert ohne 404 oder CORS-Errors im Netzwerk-Tab.
+## Definition of Done (Checklist)
+- [ ] Ports 8000 und 8001 in der Firewall freigeschaltet (Postgres 8002 ist dicht).
+- [ ] Portainer Ports (9443/9000) kollidieren nicht mit ODIN.
+- [ ] Stack ist in Portainer deployed, ohne Verwendung einer `.env` Datei.
+- [ ] Alle Pflicht-ENVs (insb. Secrets, `CORS_ORIGINS` und `VITE_API_BASE_URL`) sind korrekt im Stack via Web-UI eingetragen.
+- [ ] HTTP-Healthcheck an Port 8001 (`/api/health`) liefert `200 OK`.
+- [ ] UI im Browser unter Port 8000 erreichbar und Login-API wird via Browser nicht als CORS-Fehler oder 404 abgewiesen.

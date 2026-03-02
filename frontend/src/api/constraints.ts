@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export interface EmployeeConstraints {
     no_night?: boolean;
@@ -20,7 +20,8 @@ export async function fetchConstraints(): Promise<Record<string, EmployeeConstra
     const res = await api.get("/constraints");
     // Convert array to map: { "Müller": { ... } }
     const out: Record<string, EmployeeConstraints> = {};
-    (res.data || []).forEach((row: any) => {
+    const list = Array.isArray(res.data) ? res.data : [];
+    list.forEach((row: any) => {
         out[row.employee_name] = row.constraints;
     });
     return out;
@@ -32,5 +33,5 @@ export async function saveConstraints(employee_name: string, constraints: Employ
 
 export async function fetchViolations(month: string): Promise<ConstraintViolation[]> {
     const res = await api.get(`/constraints/violations?month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchConstraintViolations");
 }

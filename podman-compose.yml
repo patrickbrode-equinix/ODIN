@@ -16,10 +16,10 @@ services:
   # ── PostgreSQL ─────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
-    container_name: dispatcher-postgres
+    container_name: odin-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-oes_merged}
+      POSTGRES_DB: ${DB_NAME:-odin}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
@@ -27,7 +27,7 @@ services:
     networks:
       - shift-net
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-oes_merged}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-odin}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,14 +36,14 @@ services:
   # ── pgAdmin ────────────────────────────────────────────────────────────────
   pgadmin:
     image: dpage/pgadmin4
-    container_name: dispatcher-pgadmin
+    container_name: odin-pgadmin
     restart: unless-stopped
+    ports:
+      - "8003:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "8003:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
@@ -57,50 +57,46 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: dispatcher-backend:prod
-    container_name: dispatcher-backend
+    image: odin-backend:prod
+    container_name: odin-backend
     restart: unless-stopped
     ports:
-      - "${PORT:-8001}:${PORT:-8001}"
+      - "8001:8001"
     environment:
-      PORT: ${PORT:-8001}
-      NODE_ENV: ${NODE_ENV:-production}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
-      # Override DB connection to use the compose service name + DATABASE_URL
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:${DB_PORT:-5432}/${DB_NAME:-oes_merged}"
+      PORT: 8001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
+      JWT_EXPIRES_IN: 8h
+      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-dev-key-123}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-odin}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
     depends_on:
       postgres:
-        condition: service_healthy # wait for pg_isready before starting
+        condition: service_healthy
     networks:
       - shift-net
-    healthcheck:
-      test:
-        - "CMD"
-        - "node"
-        - "-e"
-        - "require('http').get('http://localhost:${PORT:-8001}/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
 
-  # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
+  # ── Frontend (Vite Static Build) ───────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: dispatcher-frontend:prod
-    container_name: dispatcher-frontend
+      args:
+        VITE_API_BASE_URL: "/api"
+    image: odin-frontend:prod
+    container_name: odin-frontend
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       NODE_ENV: production
-      # Tells vite.config.ts where to proxy /api requests normally, but statically built
-      VITE_API_BASE_URL: "http://backend:${PORT:-8001}"
+      VITE_API_BASE_URL: "/api"
+      BACKEND_URL: "http://backend:8001"
     depends_on:
       - backend
     networks:

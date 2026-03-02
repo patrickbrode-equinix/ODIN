@@ -3,7 +3,7 @@
 /* COVERAGE & SKILLS API CLIENT                     */
 /* ------------------------------------------------ */
 
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export type EmployeeSkills = {
     employee_name: string;
@@ -38,7 +38,7 @@ export type CoverageViolation = {
 
 export const fetchSkills = async () => {
     const res = await api.get<EmployeeSkills[]>("/coverage/skills");
-    return res.data;
+    return asArray(res.data, "fetchSkills");
 };
 
 export const updateSkills = async (data: Partial<EmployeeSkills>) => {
@@ -48,12 +48,12 @@ export const updateSkills = async (data: Partial<EmployeeSkills>) => {
 
 export const fetchRules = async () => {
     const res = await api.get<CoverageRule[]>("/coverage/rules");
-    return res.data;
+    return asArray(res.data, "fetchRules");
 };
 
 export const fetchCoverageViolations = async (year: number, month: number) => {
     const res = await api.get<CoverageViolation[]>(`/coverage/violations?year=${year}&month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchCoverageViolations");
 };
 
 export const computeCoverage = async (year: number, month: number) => {

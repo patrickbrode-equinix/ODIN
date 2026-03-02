@@ -1,5 +1,5 @@
 /* ------------------------------------------------ */
-/* FORGOT PASSWORD – DISPATCHER CONSOLE             */
+/* FORGOT PASSWORD – ODIN             */
 /* ------------------------------------------------ */
 
 import { useState } from "react";
@@ -36,7 +36,7 @@ export default function ForgotPassword() {
           <CardHeader className="text-center space-y-4">
             <img
               src="/app/Dispatcher-transparent.png"
-              alt="Dispatcher Console"
+              alt="ODIN"
               className="mx-auto h-14 w-auto"
             />
 

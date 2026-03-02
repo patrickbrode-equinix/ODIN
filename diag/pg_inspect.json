@@ -1,0 +1,411 @@
+[
+     {
+          "Id": "497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc",
+          "Created": "2026-02-28T16:18:23.753728841+01:00",
+          "Path": "docker-entrypoint.sh",
+          "Args": [
+               "postgres"
+          ],
+          "State": {
+               "OciVersion": "1.2.1",
+               "Status": "running",
+               "Running": true,
+               "Paused": false,
+               "Restarting": false,
+               "OOMKilled": false,
+               "Dead": false,
+               "Pid": 4334,
+               "ConmonPid": 4332,
+               "ExitCode": 0,
+               "Error": "",
+               "StartedAt": "2026-02-28T16:19:07.392402557+01:00",
+               "FinishedAt": "0001-01-01T00:00:00Z",
+               "Health": {
+                    "Status": "healthy",
+                    "FailingStreak": 0,
+                    "Log": [
+                         {
+                              "Start": "2026-03-01T08:32:38.423581185+01:00",
+                              "End": "2026-03-01T08:32:38.466343789+01:00",
+                              "ExitCode": 0,
+                              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+                         },
+                         {
+                              "Start": "2026-03-01T08:32:49.420728539+01:00",
+                              "End": "2026-03-01T08:32:49.438330899+01:00",
+                              "ExitCode": 0,
+                              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+                         },
+                         {
+                              "Start": "2026-03-01T08:33:00.428132736+01:00",
+                              "End": "2026-03-01T08:33:00.466788941+01:00",
+                              "ExitCode": 0,
+                              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+                         },
+                         {
+                              "Start": "2026-03-01T08:33:11.618939902+01:00",
+                              "End": "2026-03-01T08:33:11.675066998+01:00",
+                              "ExitCode": 0,
+                              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+                         },
+                         {
+                              "Start": "2026-03-01T08:33:22.463523594+01:00",
+                              "End": "2026-03-01T08:33:22.509116078+01:00",
+                              "ExitCode": 0,
+                              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+                         }
+                    ]
+               },
+               "CgroupPath": "/libpod_parent/e41697e30e36d6e07de02185dbbf49ad123beeef7146bbc164b46a33c01499a3/libpod-497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc",
+               "CheckpointedAt": "0001-01-01T00:00:00Z",
+               "RestoredAt": "0001-01-01T00:00:00Z"
+          },
+          "Image": "cd848ee12e8efaf62a09b7e7290a287c21f332a32779048afb970d497374bb04",
+          "ImageDigest": "sha256:2bf082886c059b4cf5af3f9e8d3a8916c35699062899061c13bc32d5921c631a",
+          "ImageName": "docker.io/library/postgres:15-alpine",
+          "Rootfs": "",
+          "Pod": "e41697e30e36d6e07de02185dbbf49ad123beeef7146bbc164b46a33c01499a3",
+          "ResolvConfPath": "/run/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/resolv.conf",
+          "HostnamePath": "/run/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/hostname",
+          "HostsPath": "/run/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/hosts",
+          "StaticDir": "/var/lib/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata",
+          "OCIConfigPath": "/var/lib/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/config.json",
+          "OCIRuntime": "crun",
+          "ConmonPidFile": "/run/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/conmon.pid",
+          "PidFile": "/run/containers/storage/overlay-containers/497b230a26854e642648ae8e45a31730750f2da3b242cda5e1ad1b14230917cc/userdata/pidfile",
+          "Name": "odin-postgres",
+          "RestartCount": 0,
+          "Driver": "overlay",
+          "MountLabel": "",
+          "ProcessLabel": "",
+          "AppArmorProfile": "",
+          "EffectiveCaps": [
+               "CAP_CHOWN",
+               "CAP_DAC_OVERRIDE",
+               "CAP_FOWNER",
+               "CAP_FSETID",
+               "CAP_KILL",
+               "CAP_NET_BIND_SERVICE",
+               "CAP_SETFCAP",
+               "CAP_SETGID",
+               "CAP_SETPCAP",
+               "CAP_SETUID",
+               "CAP_SYS_CHROOT"
+          ],
+          "BoundingCaps": [
+               "CAP_CHOWN",
+               "CAP_DAC_OVERRIDE",
+               "CAP_FOWNER",
+               "CAP_FSETID",
+               "CAP_KILL",
+               "CAP_NET_BIND_SERVICE",
+               "CAP_SETFCAP",
+               "CAP_SETGID",
+               "CAP_SETPCAP",
+               "CAP_SETUID",
+               "CAP_SYS_CHROOT"
+          ],
+          "ExecIDs": [],
+          "GraphDriver": {
+               "Name": "overlay",
+               "Data": {
+                    "LowerDir": "/var/lib/containers/storage/overlay/effc05ac59e7e0a78321912f604fc8d6c1da539213fe8d8ccef51da808762b59/diff:/var/lib/containers/storage/overlay/3b9d8cb336f3ed80de0f28f9a5649675af5eeb9d56056c8849f55e4045c4126a/diff:/var/lib/containers/storage/overlay/b5079fe4eee9cc1964e13f009d5bd8631a316e876a835630fdb22031e66c7c15/diff:/var/lib/containers/storage/overlay/f4276142944d6646b720841ff976d38e5e0e55d98c42b3ea3aa554a4ab83d296/diff:/var/lib/containers/storage/overlay/2d494cca84c25ea0a88877e5d307f0ebf5e767549b52f036091aab76905335d5/diff:/var/lib/containers/storage/overlay/5146000665e38a803b7875e2ab3b7126fec7360628e66a90b518f889d3cce9de/diff:/var/lib/containers/storage/overlay/bcde05a44fa7ca8b36b45d3b661fcad337cfdb93c64eef9770cdae841c0edc5e/diff:/var/lib/containers/storage/overlay/ec6be87d39e3dff3b6cf2177e2dd761b5be7ed77f003f49b054b3535dabf2dfc/diff:/var/lib/containers/storage/overlay/437a9224ce4476a897bcea32f61793b8be3b608a99706a7f2ade9820be1a5484/diff:/var/lib/containers/storage/overlay/2f6018115218ac7c2a8d4ea892cced8c39952a44ab05c7414ac0c9d395ac3aa0/diff:/var/lib/containers/storage/overlay/989e799e634906e94dc9a5ee2ee26fc92ad260522990f26e707861a5f52bf64e/diff",
+                    "MergedDir": "/var/lib/containers/storage/overlay/1d29515167101370ba605e4c52763912a9236acc10b99ba5581bba17b8d1bf83/merged",
+                    "UpperDir": "/var/lib/containers/storage/overlay/1d29515167101370ba605e4c52763912a9236acc10b99ba5581bba17b8d1bf83/diff",
+                    "WorkDir": "/var/lib/containers/storage/overlay/1d29515167101370ba605e4c52763912a9236acc10b99ba5581bba17b8d1bf83/work"
+               }
+          },
+          "Mounts": [
+               {
+                    "Type": "volume",
+                    "Name": "merged_postgres_data",
+                    "Source": "/var/lib/containers/storage/volumes/merged_postgres_data/_data",
+                    "Destination": "/var/lib/postgresql/data",
+                    "Driver": "local",
+                    "Mode": "",
+                    "Options": [
+                         "nosuid",
+                         "nodev",
+                         "rbind"
+                    ],
+                    "RW": true,
+                    "Propagation": "rprivate"
+               }
+          ],
+          "Dependencies": [],
+          "NetworkSettings": {
+               "EndpointID": "",
+               "Gateway": "",
+               "IPAddress": "",
+               "IPPrefixLen": 0,
+               "IPv6Gateway": "",
+               "GlobalIPv6Address": "",
+               "GlobalIPv6PrefixLen": 0,
+               "MacAddress": "",
+               "Bridge": "",
+               "SandboxID": "",
+               "HairpinMode": false,
+               "LinkLocalIPv6Address": "",
+               "LinkLocalIPv6PrefixLen": 0,
+               "Ports": {
+                    "5432/tcp": null
+               },
+               "SandboxKey": "/run/netns/netns-b820da95-5290-8117-b7ea-6c88543dc6e7",
+               "Networks": {
+                    "merged_shift-net": {
+                         "EndpointID": "",
+                         "Gateway": "10.89.0.1",
+                         "IPAddress": "10.89.0.2",
+                         "IPPrefixLen": 24,
+                         "IPv6Gateway": "",
+                         "GlobalIPv6Address": "",
+                         "GlobalIPv6PrefixLen": 0,
+                         "MacAddress": "d6:22:4a:39:df:51",
+                         "NetworkID": "40eacf0ab170eef8bd25b104f47e1132ce3f3d0151f7728c261d85bc2132aa70",
+                         "DriverOpts": null,
+                         "IPAMConfig": null,
+                         "Links": null,
+                         "Aliases": [
+                              "postgres",
+                              "497b230a2685"
+                         ]
+                    }
+               }
+          },
+          "Namespace": "",
+          "IsInfra": false,
+          "IsService": false,
+          "KubeExitCodePropagation": "invalid",
+          "lockNumber": 2,
+          "Config": {
+               "Hostname": "497b230a2685",
+               "Domainname": "",
+               "User": "",
+               "AttachStdin": false,
+               "AttachStdout": false,
+               "AttachStderr": false,
+               "Tty": false,
+               "OpenStdin": false,
+               "StdinOnce": false,
+               "Env": [
+                    "PGDATA=/var/lib/postgresql/data",
+                    "LANG=en_US.utf8",
+                    "PG_MAJOR=15",
+                    "PG_SHA256=ae14f24c14727e0b2ded1c5553031666099bd1054db3ef44bfa6e2bd6d554a56",
+                    "POSTGRES_DB=odin",
+                    "GOSU_VERSION=1.19",
+                    "PG_VERSION=15.17",
+                    "POSTGRES_USER=postgres",
+                    "POSTGRES_PASSWORD=odin_test_pw",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "container=podman",
+                    "DOCKER_PG_LLVM_DEPS=llvm19-dev \t\tclang19",
+                    "HOME=/root",
+                    "HOSTNAME=497b230a2685"
+               ],
+               "Cmd": [
+                    "postgres"
+               ],
+               "Image": "docker.io/library/postgres:15-alpine",
+               "Volumes": null,
+               "WorkingDir": "/",
+               "Entrypoint": [
+                    "docker-entrypoint.sh"
+               ],
+               "OnBuild": null,
+               "Labels": {
+                    "PODMAN_SYSTEMD_UNIT": "podman-compose@merged.service",
+                    "com.docker.compose.container-number": "1",
+                    "com.docker.compose.project": "merged",
+                    "com.docker.compose.project.config_files": "podman-compose.yml",
+                    "com.docker.compose.project.working_dir": "/mnt/c/Users/Admin/Desktop/Merged",
+                    "com.docker.compose.service": "postgres",
+                    "io.podman.compose.config-hash": "381751bb2dc2017b82a914fa564e2bd5dd23990d9fe4dc98b7193a8c946c01d8",
+                    "io.podman.compose.project": "merged",
+                    "io.podman.compose.service": "postgres",
+                    "io.podman.compose.version": "1.5.0"
+               },
+               "Annotations": {
+                    "io.container.manager": "libpod",
+                    "io.kubernetes.cri-o.SandboxID": "e41697e30e36d6e07de02185dbbf49ad123beeef7146bbc164b46a33c01499a3",
+                    "org.opencontainers.image.stopSignal": "2",
+                    "org.systemd.property.KillSignal": "2",
+                    "org.systemd.property.TimeoutStopUSec": "uint64 10000000"
+               },
+               "StopSignal": "SIGINT",
+               "Healthcheck": {
+                    "Test": [
+                         "CMD-SHELL",
+                         "pg_isready -U postgres -d odin"
+                    ],
+                    "StartPeriod": 10000000000,
+                    "Interval": 10000000000,
+                    "Timeout": 5000000000,
+                    "Retries": 5
+               },
+               "HealthcheckOnFailureAction": "none",
+               "HealthLogDestination": "local",
+               "HealthcheckMaxLogCount": 5,
+               "HealthcheckMaxLogSize": 500,
+               "CreateCommand": [
+                    "podman",
+                    "create",
+                    "--name=odin-postgres",
+                    "--pod=pod_merged",
+                    "--label",
+                    "io.podman.compose.config-hash=381751bb2dc2017b82a914fa564e2bd5dd23990d9fe4dc98b7193a8c946c01d8",
+                    "--label",
+                    "io.podman.compose.project=merged",
+                    "--label",
+                    "io.podman.compose.version=1.5.0",
+                    "--label",
+                    "PODMAN_SYSTEMD_UNIT=podman-compose@merged.service",
+                    "--label",
+                    "com.docker.compose.project=merged",
+                    "--label",
+                    "com.docker.compose.project.working_dir=/mnt/c/Users/Admin/Desktop/Merged",
+                    "--label",
+                    "com.docker.compose.project.config_files=podman-compose.yml",
+                    "--label",
+                    "com.docker.compose.container-number=1",
+                    "--label",
+                    "io.podman.compose.service=postgres",
+                    "--label",
+                    "com.docker.compose.service=postgres",
+                    "-e",
+                    "POSTGRES_DB=odin",
+                    "-e",
+                    "POSTGRES_USER=postgres",
+                    "-e",
+                    "POSTGRES_PASSWORD=odin_test_pw",
+                    "-v",
+                    "merged_postgres_data:/var/lib/postgresql/data",
+                    "--network=merged_shift-net:alias=postgres",
+                    "--restart",
+                    "unless-stopped",
+                    "--healthcheck-command",
+                    "[\"pg_isready -U postgres -d odin\"]",
+                    "--healthcheck-interval",
+                    "10s",
+                    "--healthcheck-timeout",
+                    "5s",
+                    "--healthcheck-start-period",
+                    "10s",
+                    "--healthcheck-retries",
+                    "5",
+                    "postgres:15-alpine"
+               ],
+               "Umask": "0022",
+               "Timeout": 0,
+               "StopTimeout": 10,
+               "Passwd": true,
+               "sdNotifyMode": "container",
+               "ExposedPorts": {
+                    "5432/tcp": {}
+               }
+          },
+          "HostConfig": {
+               "Binds": [
+                    "merged_postgres_data:/var/lib/postgresql/data:rprivate,nosuid,nodev,rbind"
+               ],
+               "CgroupManager": "cgroupfs",
+               "CgroupMode": "private",
+               "ContainerIDFile": "",
+               "LogConfig": {
+                    "Type": "journald",
+                    "Config": null,
+                    "Path": "",
+                    "Tag": "",
+                    "Size": "-1B"
+               },
+               "NetworkMode": "bridge",
+               "PortBindings": {},
+               "RestartPolicy": {
+                    "Name": "unless-stopped",
+                    "MaximumRetryCount": 0
+               },
+               "AutoRemove": false,
+               "AutoRemoveImage": false,
+               "Annotations": {
+                    "io.container.manager": "libpod",
+                    "io.kubernetes.cri-o.SandboxID": "e41697e30e36d6e07de02185dbbf49ad123beeef7146bbc164b46a33c01499a3",
+                    "org.opencontainers.image.stopSignal": "2",
+                    "org.systemd.property.KillSignal": "2",
+                    "org.systemd.property.TimeoutStopUSec": "uint64 10000000"
+               },
+               "VolumeDriver": "",
+               "VolumesFrom": null,
+               "CapAdd": [],
+               "CapDrop": [],
+               "Dns": [],
+               "DnsOptions": [],
+               "DnsSearch": [],
+               "ExtraHosts": [],
+               "HostsFile": "",
+               "GroupAdd": [],
+               "IpcMode": "shareable",
+               "Cgroup": "",
+               "Cgroups": "default",
+               "Links": null,
+               "OomScoreAdj": 0,
+               "PidMode": "private",
+               "Privileged": false,
+               "PublishAllPorts": false,
+               "ReadonlyRootfs": false,
+               "SecurityOpt": [],
+               "Tmpfs": {},
+               "UTSMode": "private",
+               "UsernsMode": "",
+               "ShmSize": 65536000,
+               "Runtime": "oci",
+               "ConsoleSize": [
+                    0,
+                    0
+               ],
+               "Isolation": "",
+               "CpuShares": 0,
+               "Memory": 0,
+               "NanoCpus": 0,
+               "CgroupParent": "/libpod_parent/e41697e30e36d6e07de02185dbbf49ad123beeef7146bbc164b46a33c01499a3",
+               "BlkioWeight": 0,
+               "BlkioWeightDevice": null,
+               "BlkioDeviceReadBps": null,
+               "BlkioDeviceWriteBps": null,
+               "BlkioDeviceReadIOps": null,
+               "BlkioDeviceWriteIOps": null,
+               "CpuPeriod": 0,
+               "CpuQuota": 0,
+               "CpuRealtimePeriod": 0,
+               "CpuRealtimeRuntime": 0,
+               "CpusetCpus": "",
+               "CpusetMems": "",
+               "Devices": [],
+               "DiskQuota": 0,
+               "KernelMemory": 0,
+               "MemoryReservation": 0,
+               "MemorySwap": 0,
+               "MemorySwappiness": 0,
+               "OomKillDisable": false,
+               "PidsLimit": 2048,
+               "Ulimits": [
+                    {
+                         "Name": "RLIMIT_NOFILE",
+                         "Soft": 1048576,
+                         "Hard": 1048576
+                    },
+                    {
+                         "Name": "RLIMIT_NPROC",
+                         "Soft": 1048576,
+                         "Hard": 1048576
+                    }
+               ],
+               "CpuCount": 0,
+               "CpuPercent": 0,
+               "IOMaximumIOps": 0,
+               "IOMaximumBandwidth": 0,
+               "CgroupConf": null
+          },
+          "UseImageHosts": false,
+          "UseImageHostname": false
+     }
+]

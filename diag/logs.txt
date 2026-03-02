@@ -1,0 +1,7 @@
+odin-postgres
+time="2026-02-28T15:53:43+01:00" level=error msg="Removing timer for container eb8b907ed688387084b25bb32ad89b752b5b9cbe2b7d0a98307cd996e3b0cce1 healthcheck: unable to get systemd connection to remove healthchecks: lstat /mnt/wslg/runtime-dir/systemd: no such file or directory"
+odin-postgres
+b59a5d1f3b00e6fbff20614239074c71e667b53d45ef3adcafe5586950044170
+[1;32m[postgres] |[0m time="2026-02-28T15:53:44+01:00" level=error msg="failed to move the rootless netns pasta process to the systemd user.slice: dial unix /run/user/0/bus: connect: permission denied"
+[1;32m[postgres] |[0m time="2026-02-28T15:53:44+01:00" level=error msg="Removing timer for container b59a5d1f3b00e6fbff20614239074c71e667b53d45ef3adcafe5586950044170 healthcheck: unable to get systemd connection to remove healthchecks: lstat /mnt/wslg/runtime-dir/systemd: no such file or directory"
+[1;32m[postgres] |[0m Error: unable to start container b59a5d1f3b00e6fbff20614239074c71e667b53d45ef3adcafe5586950044170: netavark: failed to create aardvark-dns directory /run/user/1000/containers/networks/aardvark-dns: IO error: No such file or directory (os error 2)

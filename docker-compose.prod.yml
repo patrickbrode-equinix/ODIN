@@ -13,7 +13,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile   # static build + serve
-    image: dispatcher-frontend:prod
+    image: odin-frontend:prod
     command: serve -s dist -l 5173
     environment:
       NODE_ENV: production

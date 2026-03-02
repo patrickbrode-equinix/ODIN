@@ -1,5 +1,5 @@
 /* ------------------------------------------------ */
-/* LOGIN PAGE – DISPATCHER CONSOLE                  */
+/* LOGIN PAGE – ODIN                  */
 /* ------------------------------------------------ */
 
 import { useState, useEffect } from "react";
@@ -79,12 +79,12 @@ export default function Login() {
           <CardHeader className="text-center space-y-4">
             <img
               src="/app/Dispatcher-transparent.png"
-              alt="Dispatcher Console"
+              alt="ODIN"
               className="mx-auto h-16 w-auto"
             />
 
             <CardTitle className="text-3xl font-bold tracking-tight">
-              Dispatcher <span className="text-primary">Console</span>
+              ODIN \n
             </CardTitle>
 
             <p className="text-sm text-muted-foreground">

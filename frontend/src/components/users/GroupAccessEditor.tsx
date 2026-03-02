@@ -94,7 +94,7 @@ export function GroupAccessEditor({
     setError("");
     try {
       const res = await api.get<GroupRow[]>("/groups");
-      const data = res.data || [];
+      const data = Array.isArray(res.data) ? res.data : [];
       setGroups(data);
 
       const fallback = data?.[0]?.key || "c-ops";
@@ -169,7 +169,7 @@ export function GroupAccessEditor({
     } catch (e: any) {
       setError(
         e?.response?.data?.message ||
-          "Abteilung konnte nicht erstellt werden"
+        "Abteilung konnte nicht erstellt werden"
       );
     } finally {
       setSaving(false);

@@ -23,7 +23,8 @@ function TVDashboard() {
   const fetchTickets = async () => {
     try {
       const res = await api.get("/queue/tickets", { params: { limit: 50 } });
-      setTickets(res.data || []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setTickets(list);
     } catch (e) {
       console.error("Failed to fetch tickets for TV", e);
     }

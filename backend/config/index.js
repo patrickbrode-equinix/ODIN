@@ -45,7 +45,7 @@ if (!DATABASE_URL && !process.env.DB_HOST && isProd) {
 const db = {
     host: process.env.DB_HOST || "localhost",
     port: parseInt(process.env.DB_PORT || "5432", 10),
-    database: process.env.DB_NAME || "oes_merged",
+    database: process.env.DB_NAME || "odin",
     user: process.env.DB_USER || "postgres",
     password: process.env.DB_PASSWORD || undefined, // No default — must be in .env
 };

@@ -2,12 +2,14 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Install dependencies first (cached layer)
+# Install dependencies (cached layer)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund --loglevel error
 
 # Copy source
 COPY . .
 
-EXPOSE 5055
+# Expose backend port
+EXPOSE 8001
+
 CMD ["node", "server.js"]

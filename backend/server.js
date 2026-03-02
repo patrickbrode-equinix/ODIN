@@ -182,19 +182,19 @@ async function start() {
   // 4. Error Handling (EADDRINUSE)
   serverInstance.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.error(`\n❌ [OES][SERVER] Port ${PORT} already in use (EADDRINUSE). Exiting.`);
+      console.error(`\n❌ [ODIN][SERVER] Port ${PORT} already in use (EADDRINUSE). Exiting.`);
       process.exit(1);
     } else {
-      console.error("\n❌ [OES][SERVER] Server Error:", err);
+      console.error("\n❌ [ODIN][SERVER] Server Error:", err);
       process.exit(1);
     }
   });
 
   // 5. Graceful Shutdown
   const shutdown = () => {
-    console.log("\n[OES][SERVER] Shutting down...");
+    console.log("\n[ODIN][SERVER] Shutting down...");
     serverInstance.close(() => {
-      console.log("[OES][SERVER] Server closed.");
+      console.log("[ODIN][SERVER] Server closed.");
       process.exit(0);
     });
   };

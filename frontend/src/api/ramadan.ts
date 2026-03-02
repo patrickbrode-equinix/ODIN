@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, asArray, asObject } from "./api";
 
 export interface RamadanMeta {
     year: number;
@@ -21,7 +21,8 @@ export interface SunTime {
 export async function fetchRamadanMeta(year: number): Promise<RamadanMeta | null> {
     try {
         const res = await api.get(`/shiftplan/ramadan/meta?year=${year}`);
-        return res.data;
+        const data = asObject(res.data, "fetchRamadanMeta");
+        return Object.keys(data).length > 0 ? (data as RamadanMeta) : null;
     } catch (e) {
         console.error("Fetch Ramadan Meta Failed", e);
         return null;
@@ -31,7 +32,7 @@ export async function fetchRamadanMeta(year: number): Promise<RamadanMeta | null
 export async function fetchSunTimes(start: string, end: string): Promise<SunTime[]> {
     try {
         const res = await api.get(`/shiftplan/ramadan/suntimes?start=${start}&end=${end}`);
-        return res.data;
+        return asArray(res.data, "fetchSunTimes");
     } catch (e) {
         console.error("Fetch Sun Times Failed", e);
         return [];
@@ -41,7 +42,7 @@ export async function fetchSunTimes(start: string, end: string): Promise<SunTime
 export async function fetchSiteConfig() {
     try {
         const res = await api.get("/shiftplan/site-config");
-        return res.data;
+        return asObject(res.data, "fetchSiteConfig");
     } catch (e) {
         return null;
     }

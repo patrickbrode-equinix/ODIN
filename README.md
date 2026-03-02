@@ -1,4 +1,4 @@
-# Dispatcher Console – Full-Stack Setup Guide
+# ODIN – Full-Stack Setup Guide
 
 **Stack:** React + Vite + Tailwind · Node.js + Express · PostgreSQL 15  
 **Environments:** Local dev (no Docker) · Local Docker / Podman · VM / Production Docker
@@ -77,7 +77,7 @@ Requires: Node.js 20, PostgreSQL 15 running locally.
 ```bash
 # 1. IClone the repo and configure your environment variables:
 git clone https://github.com/patrickbrode-equinix/ODIN.git
-cd dispatcher-system
+cd odin-system
 
 # Create the main environment file
 cp .env.example .env
@@ -141,10 +141,10 @@ docker compose logs -f postgres
 
 | Service | Container | Port |
 |---------|-----------|------|
-| postgres | `dispatcher-postgres` | `localhost:8002` |
-| pgadmin | `dispatcher-pgadmin` | `localhost:8003` (Login: `admin@admin.com` / `admin`) |
-| backend | `dispatcher-backend` | `localhost:8001` |
-| frontend | `dispatcher-frontend` | `localhost:8000` |
+| postgres | `odin-postgres` | `localhost:8002` |
+| pgadmin | `odin-pgadmin` | `localhost:8003` (Login: `admin@admin.com` / `admin`) |
+| backend | `odin-backend` | `localhost:8001` |
+| frontend | `odin-frontend` | `localhost:8000` |
 
 **Verify:**
 ```bash
@@ -155,7 +155,7 @@ curl http://localhost:8001/api/health
 curl -s http://localhost:8000 | head -5
 
 # Postgres reachable from backend container
-docker exec -it dispatcher-backend node -e \
+docker exec -it odin-backend node -e \
   "import('./config/index.js').then(m => console.log('DB:', m.config.db))"
 ```
 

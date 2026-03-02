@@ -16,7 +16,7 @@ export async function requireAuth(req, res, next) {
     email: "admin@local",
     group: "root",
     approved: true,
-    isRoot: true,
+    is_root: true,
   };
   req.isRoot = true;
   return next();

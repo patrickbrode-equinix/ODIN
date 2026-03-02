@@ -389,17 +389,19 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               <>
                 <div className="h-4 w-px bg-white/10" />
                 <div className="flex items-center gap-4 text-xs font-semibold">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                    <span className="text-blue-200">SH: {crawlerMeta.breakdown?.sh ?? 0}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                    <span className="text-rose-200">TT: {crawlerMeta.breakdown?.tt ?? 0}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                    <span className="text-amber-200">CC: {crawlerMeta.breakdown?.cc ?? 0}</span>
+                  <div className="flex items-center gap-4 text-xs font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+                      <span className="text-blue-200">SH: {crawlerMeta?.breakdown?.sh ?? 0}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+                      <span className="text-rose-200">TT: {crawlerMeta?.breakdown?.tt ?? 0}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                      <span className="text-amber-200">CC: {crawlerMeta?.breakdown?.cc ?? 0}</span>
+                    </div>
                   </div>
                 </div>
               </>

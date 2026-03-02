@@ -2,7 +2,7 @@
 /* SHIFTPLAN – API FUNCTIONS (AUTH)                 */
 /* ------------------------------------------------ */
 
-import { api } from "../../api/api";
+import { api, asArray, asObject } from "../../api/api";
 
 /* ------------------------------------------------ */
 /* GET MONTHS                                       */
@@ -10,7 +10,8 @@ import { api } from "../../api/api";
 
 export async function fetchMonths(): Promise<string[]> {
   const res = await api.get("/schedules");
-  return res.data?.months ?? [];
+  const data = asObject(res.data, "fetchMonths");
+  return asArray(data?.months, "fetchMonths:months");
 }
 
 /* ------------------------------------------------ */
@@ -19,7 +20,7 @@ export async function fetchMonths(): Promise<string[]> {
 
 export async function fetchSchedule(month: string) {
   const res = await api.get(`/schedules/${encodeURIComponent(month)}`);
-  return res.data;
+  return asObject(res.data, "fetchSchedule");
 }
 
 /* ------------------------------------------------ */

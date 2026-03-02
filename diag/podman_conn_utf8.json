@@ -1,0 +1,24 @@
+﻿[
+    {
+        "Name": "podman-desktop",
+        "URI": "npipe:////./pipe/podman-machine-default",
+        "Default": true,
+        "ReadWrite": true
+    },
+    {
+        "Name": "podman-machine-default",
+        "URI": "ssh://user@127.0.0.1:55819/run/user/1000/podman/podman.sock",
+        "Identity": "C:\\Users\\Admin\\.local\\share\\containers\\podman\\machine\\machine",
+        "IsMachine": true,
+        "Default": false,
+        "ReadWrite": true
+    },
+    {
+        "Name": "podman-machine-default-root",
+        "URI": "ssh://root@127.0.0.1:55819/run/podman/podman.sock",
+        "Identity": "C:\\Users\\Admin\\.local\\share\\containers\\podman\\machine\\machine",
+        "IsMachine": true,
+        "Default": false,
+        "ReadWrite": true
+    }
+]

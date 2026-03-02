@@ -1,5 +1,5 @@
 /* ------------------------------------------------ */
-/* REGISTER – DISPATCHER CONSOLE                    */
+/* REGISTER – ODIN                    */
 /* ------------------------------------------------ */
 
 import { useState } from "react";
@@ -72,7 +72,7 @@ export default function Register() {
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
-          "Registrierung fehlgeschlagen"
+        "Registrierung fehlgeschlagen"
       );
     } finally {
       setLoading(false);
@@ -97,7 +97,7 @@ export default function Register() {
           <CardHeader className="text-center space-y-4">
             <img
               src="/app/Dispatcher-transparent.png"
-              alt="Dispatcher Console"
+              alt="ODIN"
               className="mx-auto h-14 w-auto"
             />
 

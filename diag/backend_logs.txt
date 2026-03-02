@@ -1,0 +1,18 @@
+
+[CONFIG] ── Startup Configuration ──────────────────────
+  NODE_ENV   : production
+  PORT       : 8001
+  DATABASE   : DATABASE_URL (set)
+  DB_PASS    : ****
+  JWT_SECRET : ****
+  INGEST_KEY : ****
+  CORS       : http://localhost:8000
+─────────────────────────────────────────────────────────
+
+[DB] Connecting via DATABASE_URL
+>> [DB] Testing connection...
+>> [DB] CONNECTION SUCCESS ✅
+
+✅ [SERVER] PID: 1
+✅ [SERVER] Listening on http://0.0.0.0:8001
+   Health: http://localhost:8001/api/health

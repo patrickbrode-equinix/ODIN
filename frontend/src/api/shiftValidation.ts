@@ -2,7 +2,7 @@
 /* SHIFT VALIDATION API                             */
 /* ------------------------------------------------ */
 
-import { api } from "./api";
+import { api, asArray } from "./api";
 
 export type ViolationType = "REST_TIME" | "HARD_CHANGE";
 
@@ -22,7 +22,7 @@ export interface ShiftViolation {
 
 export const fetchViolations = async (year: number, month: number) => {
     const res = await api.get<ShiftViolation[]>(`/shiftValidation/violations?year=${year}&month=${month}`);
-    return res.data;
+    return asArray(res.data, "fetchViolations");
 };
 
 export const validateShiftplan = async (year: number, month: number) => {

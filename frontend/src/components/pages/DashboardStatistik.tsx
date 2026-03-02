@@ -480,9 +480,9 @@ export default function DashboardStatistik() {
             api.get(`/stats/expired?from=${from}&to=${to}`),
         ]).then(([pieRes, dispRes, clRes, expRes]) => {
             if (pieRes.status === "fulfilled") setPieData(pieRes.value.data);
-            if (dispRes.status === "fulfilled") setDispatchData(dispRes.value.data || []);
-            if (clRes.status === "fulfilled") setClosedData(clRes.value.data || []);
-            if (expRes.status === "fulfilled") setExpiredData(expRes.value.data || []);
+            if (dispRes.status === "fulfilled") setDispatchData(Array.isArray(dispRes.value.data) ? dispRes.value.data : []);
+            if (clRes.status === "fulfilled") setClosedData(Array.isArray(clRes.value.data) ? clRes.value.data : []);
+            if (expRes.status === "fulfilled") setExpiredData(Array.isArray(expRes.value.data) ? expRes.value.data : []);
             setLoading(false);
             setLastRefresh(new Date());
         });
