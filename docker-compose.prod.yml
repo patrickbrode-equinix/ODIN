@@ -5,16 +5,16 @@
 services:
 
   backend:
-    command: node server.js    # production: no nodemon, no hot-reload
+    command: node server.js # production: no nodemon, no hot-reload
     environment:
       NODE_ENV: production
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile   # static build + serve
+      context: ./Frontend
+      dockerfile: Dockerfile # static build + serve
     image: odin-frontend:prod
     command: serve -s dist -l 5173
     environment:
       NODE_ENV: production
-    volumes: []                # no source mount in prod
+    volumes: [] # no source mount in prod

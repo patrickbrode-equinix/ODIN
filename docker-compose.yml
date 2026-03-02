@@ -48,14 +48,14 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
+      - ./Backend/pgadmin-servers.json:/pgadmin4/servers.json
     depends_on:
       - postgres
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
     build:
-      context: ./backend
+      context: ./Backend
       dockerfile: Dockerfile
     image: odin-backend:prod
     container_name: odin-backend
@@ -81,7 +81,7 @@ services:
   # ── Frontend (Vite Static Build) ───────────────────────────────────────────
   frontend:
     build:
-      context: ./frontend
+      context: ./Frontend
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: "/api"
