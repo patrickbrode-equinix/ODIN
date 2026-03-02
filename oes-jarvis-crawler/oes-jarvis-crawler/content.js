@@ -12,16 +12,16 @@ let OES_IS_RUNNING = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function log(...args) {
-  if (OES_DEBUG) console.log("[OES Crawler]", ...args);
+  if (OES_DEBUG) console.log("[ODIN Crawler]", ...args);
 }
 function warn(...args) {
-  console.warn("[OES Crawler]", ...args);
+  console.warn("[ODIN Crawler]", ...args);
 }
 function err(...args) {
-  console.error("[OES Crawler]", ...args);
+  console.error("[ODIN Crawler]", ...args);
 }
 
-console.log("[OES Crawler] content.js LOADED on", location.href);
+console.log("[ODIN Crawler] content.js LOADED on", location.href);
 try {
   chrome.runtime.sendMessage({ type: "OES_CONTENT_READY", url: location.href });
 } catch (_) { }

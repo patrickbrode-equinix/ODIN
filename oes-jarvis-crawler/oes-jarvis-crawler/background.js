@@ -8,13 +8,13 @@ const PERIOD_MINUTES = 1; // ✅ für Tests (später 3)
 const STORAGE_KEY_LAST_URL = "oes_last_jarvis_url";
 
 function log(...args) {
-  console.log("[OES Crawler]", ...args);
+  console.log("[ODIN Crawler]", ...args);
 }
 function warn(...args) {
-  console.warn("[OES Crawler]", ...args);
+  console.warn("[ODIN Crawler]", ...args);
 }
 function err(...args) {
-  console.error("[OES Crawler]", ...args);
+  console.error("[ODIN Crawler]", ...args);
 }
 
 function createAlarm() {

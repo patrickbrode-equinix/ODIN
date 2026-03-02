@@ -34,6 +34,12 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-odin}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── pgAdmin ────────────────────────────────────────────────────────────────
   pgadmin:
@@ -63,18 +69,15 @@ services:
     ports:
       - "8001:8001"
     environment:
-      PORT: 8001
-      NODE_ENV: production
-      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
-      JWT_EXPIRES_IN: 8h
-      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-dev-key-123}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-odin}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
+      PORT: ${PORT:-8001}
+      NODE_ENV: ${NODE_ENV:-production}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
+      DB_HOST: ${DB_HOST:-postgres}
+      # Override DB connection to use the compose service name + DATABASE_URL
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME:-odin}"
     depends_on:
       - postgres
 
@@ -83,8 +86,6 @@ services:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: "/api"
     image: odin-frontend:prod
     container_name: odin-frontend
     restart: unless-stopped
@@ -92,8 +93,8 @@ services:
       - "8000:8000"
     environment:
       NODE_ENV: production
-      VITE_API_BASE_URL: "/api"
-      BACKEND_URL: "http://backend:8001"
+      # Tells vite.config.ts where to proxy /api requests normally, but statically built
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     depends_on:
       - backend
 
