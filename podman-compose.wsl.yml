@@ -38,14 +38,14 @@ services:
       PGADMIN_LISTEN_PORT: 8003
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-      - ./Backend/pgadmin-servers.json:/pgadmin4/servers.json
+      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
     depends_on:
       - postgres
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
     build:
-      context: ./Backend
+      context: ./backend
       dockerfile: Dockerfile
     image: odin-backend:prod
     container_name: odin-backend
@@ -66,7 +66,7 @@ services:
   # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
   frontend:
     build:
-      context: ./Frontend
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: "/api"

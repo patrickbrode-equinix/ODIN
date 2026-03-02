@@ -46,16 +46,17 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-      - ./Backend/pgadmin-servers.json:/pgadmin4/servers.json
+      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
     networks:
       - shift-net
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
     build:
-      context: ./Backend
+      context: ./backend
       dockerfile: Dockerfile
     image: odin-backend:prod
     container_name: odin-backend
@@ -63,15 +64,18 @@ services:
     ports:
       - "8001:8001"
     environment:
-      PORT: ${PORT:-8001}
-      NODE_ENV: ${NODE_ENV:-production}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
+      PORT: 8001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
-      DB_HOST: ${DB_HOST:-postgres}
-      # Override DB connection to use the compose service name + DATABASE_URL
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME:-odin}"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-odin}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,19 +85,23 @@ services:
   # ── Frontend (Vite Static Build) ───────────────────────────────────────────
   frontend:
     build:
-      context: ./Frontend
+      context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: "/api"
     image: odin-frontend:prod
     container_name: odin-frontend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8080:8000"   # host 8080 — port 8000 is occupied by Portainer/Chisel
     environment:
       NODE_ENV: production
-      # Tells vite.config.ts where to proxy /api requests normally, but statically built
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      PORT: 8000
+      BACKEND_URL: "http://backend:8001"
+      VITE_API_BASE_URL: "/api"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - shift-net
 

@@ -1,4 +1,5 @@
-const express = require("express");
+import express from "express";
+
 const router = express.Router();
 
 /**
@@ -12,4 +13,4 @@ router.post("/callback", (req, res) => {
   return res.json({ error: 0 });
 });
 
-module.exports = router;
+export default router;

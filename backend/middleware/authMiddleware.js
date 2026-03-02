@@ -10,17 +10,6 @@ import db from "../db.js";
 /* ———————————————————————————————— */
 
 export async function requireAuth(req, res, next) {
-  // TEMP BYPASS: Grant Root access automatically for VM testing
-  req.user = {
-    id: 1,
-    email: "admin@local",
-    group: "root",
-    approved: true,
-    is_root: true,
-  };
-  req.isRoot = true;
-  return next();
-
   const authHeader = req.headers.authorization;
 
   try {

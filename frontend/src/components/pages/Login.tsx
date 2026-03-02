@@ -18,11 +18,11 @@ import { Label } from "../ui/label";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuth(); // TEMP BYPASS: get isAuthenticated
+  const { login, isAuthenticated } = useAuth();
 
   const from = location.state?.from?.pathname || "/dashboard";
 
-  // TEMP BYPASS: Auto-redirect if already authenticated (e.g. via our fake root user)
+  // Redirect to original destination if already authenticated (e.g. restored from localStorage)
   useEffect(() => {
     if (isAuthenticated) {
       navigate(from, { replace: true });

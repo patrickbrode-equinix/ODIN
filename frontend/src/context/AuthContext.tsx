@@ -138,21 +138,8 @@ function normalizeUser(raw: any): User {
 /* ———————————————————————————————— */
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // TEMP BYPASS: Initialize with a dummy root user so login is bypassed
-  const [user, setUser] = useState<User | null>({
-    id: 999,
-    email: "admin@local",
-    firstName: "Local",
-    lastName: "Admin",
-    displayName: "Local Admin",
-    group: "root",
-    location: null,
-    team: null,
-    approved: true,
-    isRoot: true,
-    accessPolicy: {},
-  });
-  const [loading, setLoading] = useState(false); // Set to false so it renders instantly
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   /* IDLE STATE (unchanged) */
   const [idleWarningOpen] = useState(false);
@@ -204,8 +191,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* ------------------------------------------------ */
 
   useEffect(() => {
-    // TEMP BYPASS: Automatically load commit data without checking local storage
-    loadCommitBootstrap();
+    const stored = localStorage.getItem("auth_user");
+    if (stored) {
+      try {
+        setUser(normalizeUser(JSON.parse(stored)));
+        loadCommitBootstrap();
+      } catch {
+        localStorage.removeItem("auth_user");
+        localStorage.removeItem("auth_token");
+      }
+    }
+    setLoading(false);
   }, []);
 
   /* ------------------------------------------------ */
