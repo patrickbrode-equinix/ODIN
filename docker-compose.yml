@@ -34,7 +34,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - odin-net
+      odin-net:
+        aliases:
+          - postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-odin}"]
       interval: 10s
@@ -57,7 +59,9 @@ services:
       - pgadmin_data:/var/lib/pgadmin
       - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
     networks:
-      - odin-net
+      odin-net:
+        aliases:
+          - pgadmin
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +90,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
     networks:
-      - odin-net
+      odin-net:
+        aliases:
+          - backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,7 +121,9 @@ services:
       BACKEND_URL: "http://backend:8001"
       VITE_API_BASE_URL: "/api"
     networks:
-      - odin-net
+      odin-net:
+        aliases:
+          - frontend
     depends_on:
       backend:
         condition: service_healthy
