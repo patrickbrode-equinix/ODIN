@@ -24,9 +24,6 @@ export function normalizeApiBaseUrl(raw?: string): string {
 
 const dynamicBaseURL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
-const envBase = import.meta.env.VITE_API_BASE_URL;
-const dynamicBaseURL = envBase && envBase.trim() ? envBase : "/api";
-
 export const api = axios.create({
   baseURL: dynamicBaseURL,
   headers: {
