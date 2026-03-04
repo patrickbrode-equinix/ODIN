@@ -39,7 +39,7 @@ import { useShiftStore, shiftTypes, type Employee } from "../../store/shiftStore
 import { useCommitStore } from "../../store/commitStore";
 import { useEmployeeMetaStore } from "../../store/employeeMetaStore";
 import { calcCommitHours } from "../commit/commit.logic";
-import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "../../utils/ticketColors";
+import { getRemainingMs, getColorTier, tierClasses, tierGlow, getTicketSortKey, formatRemainingTime } from "../../utils/ticketColors";
 import { computeUnderstaffWarnings } from "../shiftplan/shiftplan.warnings";
 
 /* HELPERS */
@@ -50,7 +50,8 @@ import { api } from "../../api/api"; // Added missing import
 /* UI */
 import { DateTimeBadge } from "../ui/DateTimeBadge";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { fetchActiveKioskMessages, acknowledgeMessage, KioskMessage } from "../../api/kiosk";
+import { useDashboardData } from "../../hooks/useDashboardData";
+import { useRealtimeUpdates } from "../../hooks/useRealtimeUpdates";
 // DashboardInfoBar and DashboardToggles are now rendered in Header modals
 
 /* ------------------------------------------------ */
@@ -707,75 +708,21 @@ export default function Dashboard() {
     });
   };
 
-  /* HANDOVER & CRAWLER STATUS */
-  const [handoverMap, setHandoverMap] = useState<Map<string, boolean>>(new Map());
-  const [crawlerStatus, setCrawlerStatus] = useState<{ lastUpdate: string, count: number | null }>({ lastUpdate: "", count: null });
+  /* ---- Remote data: handover, commit polling, kiosk messages ---- */
+  const {
+    handoverMap,
+    crawlerStatus,
+    kioskMessages,
+    refreshCommit,
+    dismissKioskMessage: dismissMsg,
+  } = useDashboardData();
 
-  const loadCommitData = async () => {
-    try {
-      const { api } = await import("../../api/api");
-      const res = await api.get("/commit/latest");
-      if (res.data) {
-        const rows = res.data.data || [];
-        useCommitStore.getState().setTickets(rows);
-
-        setCrawlerStatus({
-          lastUpdate: res.data.created_at,
-          count: res.data.row_count
-        });
-      }
-    } catch (e) { console.error("Commit refresh failed", e); }
-  };
-
-  useEffect(() => {
-    // Handover load
-    import("../../api/api").then(({ api }) => api.get("/handover")).then(res => {
-      const map = new Map<string, boolean>();
-      if (Array.isArray(res.data)) {
-        res.data.forEach((h: any) => {
-          if (h.ticketNumber) map.set(h.ticketNumber, true);
-        });
-      }
-      setHandoverMap(map);
-    }).catch(e => console.error("Handover load failed", e));
-
-    // Initial Commit Load
-    loadCommitData();
-
-    // Crawler Polling (30s) - Check META first
-    const interval = setInterval(async () => {
-      try {
-        const { api } = await import("../../api/api");
-        const res = await api.get("/commit/meta");
-        const meta = res.data;
-
-        if (meta?.lastUpdate) {
-          setCrawlerStatus(prev => {
-            // Only reload if we have a previous timestamp and it differs
-            if (prev.lastUpdate && prev.lastUpdate !== meta.lastUpdate) {
-              console.log("[Dashboard] Crawler update detected, reloading tickets...");
-              loadCommitData();
-            }
-            return prev;
-          });
-        }
-      } catch (e) { /* ignore */ }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  /* KIOSK MESSAGES */
-  const [kioskMessages, setKioskMessages] = useState<KioskMessage[]>([]);
-  useEffect(() => {
-    fetchActiveKioskMessages("ALL").then(setKioskMessages);
-    const interval = setInterval(() => fetchActiveKioskMessages("ALL").then(setKioskMessages), 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const dismissMsg = async (id: number) => {
-    setKioskMessages(prev => prev.filter(m => m.id !== id));
-    await acknowledgeMessage(id, "ALL");
-  };
+  /* ---- Realtime SSE: refresh when data changes server-side ---- */
+  useRealtimeUpdates({
+    ingest_complete: () => { void refreshCommit(); },
+    project_created: () => { void refreshCommit(); },
+    project_updated: () => { void refreshCommit(); },
+  });
 
   useEffect(() => {
     const persistApi = (useShiftStore as any).persist;
@@ -1120,14 +1067,26 @@ export default function Dashboard() {
       }
     }
 
-    // Sort: TT first, then by Time
+    // Sort: expired at bottom, then by remaining time ascending (soonest deadline first)
     list.sort((a, b) => {
+      const msA = a._remainingMs;
+      const msB = b._remainingMs;
+
+      const expiredA = msA !== null && msA < 0;
+      const expiredB = msB !== null && msB < 0;
+
+      // Expired entries go to the bottom
+      if (expiredA && !expiredB) return 1;
+      if (!expiredA && expiredB) return -1;
+
+      // TT always before non-TT (within same expired/non-expired group)
       if (a._isTT && !b._isTT) return -1;
       if (!a._isTT && b._isTT) return 1;
 
-      const msA = a._remainingMs ?? 999999999;
-      const msB = b._remainingMs ?? 999999999;
-      return msA - msB;
+      // Sort by remaining time (lowest/soonest first)
+      const sortA = getTicketSortKey(msA);
+      const sortB = getTicketSortKey(msB);
+      return sortA - sortB;
     });
 
     return list;
@@ -1347,6 +1306,7 @@ export default function Dashboard() {
                     const rem = ms !== null ? formatRemainingTime(ms) : "—";
                     const tTier = getColorTier(ms);
                     const tierColor = tierClasses[tTier];
+                    const rowGlow = tierGlow[tTier];
 
                     const hasHandover = handoverMap.get(id);
                     const isScheduled = !!(t.sched_start || t.schedStart);
@@ -1364,7 +1324,7 @@ export default function Dashboard() {
                     return (
                       <div
                         key={`${id}-${i}`}
-                        className={`grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-3 items-center hover:bg-white/[0.04] transition-colors group ${isTTStyling}`}
+                        className={`grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-3 items-center hover:bg-white/[0.04] transition-all group rounded-lg mb-0.5 ${isTTStyling} ${rowGlow}`}
                       >
                         {/* 1) Activity */}
                         <div className="flex flex-col min-w-0 pr-2">

@@ -40,11 +40,11 @@ router.get("/ramadan/meta", requireAuth, async (req, res) => {
     const { year } = req.query;
     if (!year) return res.status(400).json({ error: "Year required" });
 
-    const config = await getSiteConfig();
-    const site_name = config.site_name;
-    const tz = config.tz;
-
     try {
+        const config = await getSiteConfig();
+        const site_name = config.site_name;
+        const tz = config.tz;
+
         // 1. Check Cache
         const { rows: cacheHits } = await db.query(
             `SELECT 
@@ -129,10 +129,10 @@ router.get("/ramadan/suntimes", requireAuth, async (req, res) => {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: "Start/End required" });
 
-    const config = await getSiteConfig();
-    const { site_name, lat, lon, tz } = config;
-
     try {
+        const config = await getSiteConfig();
+        const { site_name, lat, lon, tz } = config;
+
         // 1. Check which dates exist in cache
         const { rows: cacheHits } = await db.query(
             `SELECT 

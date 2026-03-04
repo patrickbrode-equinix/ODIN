@@ -229,7 +229,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         e.stopPropagation();
                         setDbsOpen((v) => !v);
                       }}
-                      aria-label={dbsOpen ? "DBS einklappen" : "DBS ausklappen"}
+                      aria-label={dbsOpen ? "Colo 2.0 einklappen" : "Colo 2.0 ausklappen"}
                     >
                       {dbsOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                     </button>
@@ -239,7 +239,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                 {!isCollapsed && dbsOpen ? (
                   <div className="ml-10 space-y-1">
                     <NavLink
-                      to="/dbs/bestand"
+                      to="/dbs"
+                      end
                       className={({ isActive }) =>
                         `block px-4 py-2 rounded-lg text-sm transition ${isActive
                           ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
@@ -247,11 +248,11 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Bestand
+                      Dashboard
                     </NavLink>
 
                     <NavLink
-                      to="/dbs/onboarding"
+                      to="/dbs/fulllist"
                       className={({ isActive }) =>
                         `block px-4 py-2 rounded-lg text-sm transition ${isActive
                           ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
@@ -259,7 +260,19 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Onboarding
+                      Vollständige Liste
+                    </NavLink>
+
+                    <NavLink
+                      to="/dbs/network"
+                      className={({ isActive }) =>
+                        `block px-4 py-2 rounded-lg text-sm transition ${isActive
+                          ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
+                          : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/65 hover:bg-blue-500/20 hover:border-blue-400/20 hover:text-blue-100 transition-all duration-200 ease-out"
+                        }`
+                      }
+                    >
+                      Network View
                     </NavLink>
                   </div>
                 ) : null}

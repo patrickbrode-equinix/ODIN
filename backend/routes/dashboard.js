@@ -3,6 +3,7 @@ const router = express.Router();
 import { query } from "../db/index.js";
 import { logActivity } from "./activity.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { broadcast } from "./sse.js";
 
 router.use(requireAuth); // All /api/dashboard/* routes require a valid JWT
 
@@ -99,7 +100,10 @@ router.post("/info-entries", async (req, res) => {
             "INSERT INTO dashboard_info_entries (content, type) VALUES ($1, $2) RETURNING *",
             [content.trim(), type]
         );
-        res.status(201).json({ data: result.rows[0] });
+        const entry = result.rows[0];
+        // Broadcast realtime update to all SSE clients
+        broadcast("info_created", { id: entry.id, type: entry.type, content: entry.content });
+        res.status(201).json({ data: entry });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Failed to create info entry" });

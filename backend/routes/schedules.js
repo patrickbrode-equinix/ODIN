@@ -8,47 +8,9 @@ import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { recomputeConstraintsInternal } from "./constraints.js"; // [NEW]
+import { parseMonthLabel } from "../lib/monthParser.js";
 
 const router = express.Router();
-
-/* ------------------------------------------------ */
-/* PARSE MONTH LABEL                                */
-/* ------------------------------------------------ */
-
-function parseMonthLabel(label) {
-  if (!label || typeof label !== "string") return null;
-
-  const parts = label.trim().split(/\s+/);
-  if (parts.length < 2) return null;
-
-  const monthName = parts[0].toLowerCase();
-  const yearPart = parts[1];
-
-  const monthMap = {
-    januar: 1, january: 1, jan: 1,
-    februar: 2, february: 2, feb: 2,
-    märz: 3, maerz: 3, mrz: 3, march: 3, mar: 3,
-    april: 4, apr: 4,
-    mai: 5, may: 5,
-    juni: 6, june: 6, jun: 6,
-    juli: 7, july: 7, jul: 7,
-    august: 8, aug: 8,
-    september: 9, sept: 9, sep: 9,
-    oktober: 10, october: 10, okt: 10, oct: 10,
-    november: 11, nov: 11,
-    dezember: 12, december: 12, dez: 12, dec: 12,
-  };
-
-  const month = monthMap[monthName];
-  if (!month) return null;
-
-  let year = Number(yearPart);
-  if (Number.isNaN(year)) return null;
-  if (year < 100) year = 2000 + year;
-  if (year < 2000 || year > 2100) return null;
-
-  return { year, month };
-}
 
 /* ------------------------------------------------ */
 /* GET /api/schedules – MONATSLISTE                 */
@@ -87,6 +49,23 @@ router.get(
     }
   }
 );
+
+/* ------------------------------------------------ */
+/* GET /api/schedules/last-upload                   */
+/* Returns the most recent shiftplan upload info.   */
+/* ------------------------------------------------ */
+
+router.get("/last-upload", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM shiftplan_upload_log ORDER BY uploaded_at DESC LIMIT 1`
+    );
+    res.json(rows[0] || null);
+  } catch (err) {
+    // Table might not exist yet — return null gracefully
+    res.json(null);
+  }
+});
 
 /* ------------------------------------------------ */
 /* GET /api/schedules/:month – MONAT LADEN          */
@@ -420,6 +399,22 @@ router.post(
       }
 
       await client.query("COMMIT");
+
+      // Log the upload
+      try {
+        const uploaderName = req.user?.displayName || req.user?.email || "unknown";
+        const totalEmployees = Object.values(schedules).reduce(
+          (acc, monthData) => acc + Object.keys(monthData || {}).length, 0
+        );
+        await db.query(
+          `INSERT INTO shiftplan_upload_log (uploaded_by, months_affected, employees_count, changes_count)
+           VALUES ($1, $2, $3, $4)`,
+          [uploaderName, monthsToUpdate, totalEmployees, totalEmployees]
+        );
+      } catch (logErr) {
+        console.warn("shiftplan_upload_log insert failed (non-fatal):", logErr.message);
+      }
+
       res.json({ success: true, updatedMonths: monthsToUpdate });
     } catch (err) {
       await client.query("ROLLBACK");

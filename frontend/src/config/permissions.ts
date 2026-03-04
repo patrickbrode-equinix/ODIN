@@ -45,5 +45,6 @@ export const PERMISSIONS = {
 } as const;
 
 /* Helper für Typen & Autocomplete */
-export type PermissionKey =
-  | typeof PERMISSIONS[keyof typeof PERMISSIONS][keyof typeof PERMISSIONS.DASHBOARD];
+export type PermissionKey = {
+  [K in keyof typeof PERMISSIONS]: (typeof PERMISSIONS)[K][keyof (typeof PERMISSIONS)[K]];
+}[keyof typeof PERMISSIONS];

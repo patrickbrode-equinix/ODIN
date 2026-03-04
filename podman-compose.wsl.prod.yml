@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  podman-compose.wsl.prod.yml
+#
+#  PRE-FLIGHT VALIDATION ONLY — WSL2 host-network variant of the production stack.
+#
+#  Uses the same production images and configuration as docker-compose.yml
+#  (the Portainer/Oracle Linux target), but uses network_mode: host to work
+#  around the aardvark-dns / pasta issue in WSL2 without systemd.
+#
+#  This file is NOT used on the Oracle Linux VM. Use docker-compose.yml there.
+#
+#  Usage:
+#    podman-compose -f podman-compose.wsl.prod.yml up -d
+#    podman-compose -f podman-compose.wsl.prod.yml down
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: odin-postgres
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      POSTGRES_DB: ${DB_NAME:-odin}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # ── pgAdmin ────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: odin-pgadmin
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_LISTEN_PORT: 8003
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
+    depends_on:
+      - postgres
+
+  # ── Backend — PRODUCTION IMAGE ────────────────────────────────────────────
+  backend:
+    image: localhost/odin-backend:prod
+    container_name: odin-backend
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PORT: 8001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DB_HOST: localhost
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-odin}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@localhost:${DB_PORT:-5432}/${DB_NAME:-odin}"
+      TEAMS_CHANNEL_WEBHOOK: ${TEAMS_CHANNEL_WEBHOOK:-}
+      TEAMS_PERSONAL_WEBHOOK: ${TEAMS_PERSONAL_WEBHOOK:-}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      - postgres
+
+  # ── Frontend — PRODUCTION IMAGE ───────────────────────────────────────────
+  frontend:
+    image: localhost/odin-frontend:prod
+    container_name: odin-frontend
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      BACKEND_URL: "http://localhost:8001"
+      VITE_API_BASE_URL: "/api"
+    depends_on:
+      - backend
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  pgadmin_data:
+  uploads_data:

@@ -16,9 +16,9 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install production server dependencies once
-RUN npm init -y && \
-    npm install --no-audit --no-fund --loglevel error express@4 http-proxy-middleware@2
+# Copy pinned server-package.json for reproducible installs (no npm init -y)
+COPY server-package.json package.json
+RUN npm install --omit=dev --no-audit --no-fund --loglevel error
 
 COPY --from=builder /app/dist ./dist
 COPY server.js ./server.js

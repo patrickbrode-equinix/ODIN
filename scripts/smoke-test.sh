@@ -31,10 +31,14 @@ section() { echo -e "\n${CYAN}── $* ──${RESET}"; }
 
 check_json() {
   local label="$1" url="$2" expected="${3:-200}"
-  local http_code ct body
-  http_code=$(curl -s -o /tmp/_smoke_body -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
-  ct=$(curl -sI --max-time 5 "$url" 2>/dev/null | grep -i "^content-type" | head -1 || echo "")
-  body=$(cat /tmp/_smoke_body 2>/dev/null | head -c 300 || echo "")
+  local http_code ct body tmpfile
+  tmpfile=$(mktemp 2>/dev/null || echo "/tmp/smoke_$$")
+  # Separate status-code call (body → tmpfile) from -o /dev/null path
+  http_code=$(curl -s -o "$tmpfile" -w "%{http_code}" --max-time 10 "$url" 2>/dev/null)
+  http_code="${http_code:-000}"
+  ct=$(curl -sI --max-time 5 "$url" 2>/dev/null | grep -i "^content-type" | head -1 || true)
+  body=$(cat "$tmpfile" 2>/dev/null | head -c 300 || true)
+  rm -f "$tmpfile"
   [ "$http_code" = "000" ] && { fail "$label -> connection refused ($url)"; return; }
   [ "$http_code" != "$expected" ] && { fail "$label -> HTTP $http_code (expected $expected)"; return; }
   if echo "$ct" | grep -qi "application/json"; then

@@ -7,6 +7,7 @@ import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
+import { broadcast } from "./sse.js";
 
 const router = express.Router();
 
@@ -221,6 +222,9 @@ router.post(
       );
 
       res.status(201).json({ id: result.rows[0].id });
+
+      // Notify SSE clients
+      try { broadcast("handover_created", { id: result.rows[0].id, ticketNumber, createdBy }); } catch {}
     } catch (err) {
       console.error("HANDOVER INSERT ERROR:", err);
       res.status(500).json({ message: "Server error" });

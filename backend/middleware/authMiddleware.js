@@ -12,8 +12,20 @@ import db from "../db.js";
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
 
+  // Also support ?token= for EventSource (SSE) which can't set headers
+  let rawToken = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    rawToken = authHeader.split(" ")[1];
+  } else if (req.query?.token) {
+    rawToken = String(req.query.token);
+  }
+
+  if (!rawToken) {
+    return res.status(401).json({ message: "Missing or malformed Authorization header" });
+  }
+
   try {
-    const token = authHeader.split(" ")[1];
+    const token = rawToken;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const result = await db.query(

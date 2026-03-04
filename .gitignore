@@ -125,3 +125,8 @@ backend/uploads/*
 docker-data/
 postgres_data/
 pgadmin_data/
+
+# --------------------------------------------------
+# DIAGNOSTIC / AUDIT ARTIFACTS (dev-only, not for prod)
+# --------------------------------------------------
+diag/

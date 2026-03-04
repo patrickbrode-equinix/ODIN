@@ -1,0 +1,129 @@
+================================================================================
+  ODIN – HARDENING SESSION 4 CHANGES
+================================================================================
+Date:         Session 4
+Prior session: Session 3 fixed HTTP 500 errors (missing DB tables, unhandled
+               promise rejections in shiftplanData.js)
+
+────────────────────────────────────────────────────────────────────────────────
+1. BUG FIX — März not imported from FebMarApr26.xlsm
+────────────────────────────────────────────────────────────────────────────────
+Root cause:
+  frontend/src/utils/shiftplanExcelImporter.ts — `MONTHS_DE_EN` map was missing
+  entries for "mar" and "mär".  parseMonthYearFromSheetName() uses
+  lower.includes(key) so sheet "Mar" → lower="mar" → no key matched → month=null
+  → sheet silently skipped.
+
+Files changed:
+  frontend/src/utils/shiftplanExcelImporter.ts
+    - Added `"mär": 3, mar: 3` to MONTHS_DE_EN (Deutsch section)
+    - march / Mar were already present in the English section
+
+  frontend/src/components/shiftplan/ShiftImportDialog.tsx
+    - handleDrop: added || f.name.endsWith(".xlsm") to extension check
+    - accept attribute: ".xls,.xlsx" → ".xls,.xlsx,.xlsm"
+    - UI hint text updated to mention .xlsm
+
+  backend/tests/parseMonthLabel.test.js
+    - Added test case: parseMonthLabel("Mär 2026") → { year: 2026, month: 3 }
+    (Backend monthParser.js already had "mär": 3 — backend was not the bug)
+
+────────────────────────────────────────────────────────────────────────────────
+2. UX FIX — ODIN Logo on Login Screen
+────────────────────────────────────────────────────────────────────────────────
+Root cause:
+  Login.tsx <img src="/app/Dispatcher-transparent.png"> — file does not exist.
+  File is actually /app/ODIN_Logo.png in frontend/public/app/.
+
+Files changed:
+  frontend/src/components/pages/Login.tsx
+    - src: "/app/Dispatcher-transparent.png" → "/app/ODIN_Logo.png"
+    - Added drop-shadow-[0_0_12px_rgba(0,216,255,0.5)] for cyan glow effect
+    - alt="ODIN Logo", h-16, mb-2 sizing retained
+
+────────────────────────────────────────────────────────────────────────────────
+3. FEATURE — TV Dashboard "Projekte" slide
+────────────────────────────────────────────────────────────────────────────────
+Files changed:
+  frontend/src/components/tv/tv.layout.tsx
+    SLIDE_COUNT: 4 → 5
+    Added lucide-react imports: FolderKanban, CheckCircle2, Calendar, User
+    Added TvProject interface (id, name, responsible, expected_done, progress,
+      description, status, creator, created_at)
+    Added ProgressBarTv component (colour-coded: red/yellow/blue/green by %)
+    Added ProjekteSlide component:
+      - Read-only, TV-optimised grid layout (1/2/3 cols responsive)
+      - Active projects: card with progress bar, responsible, due date,
+        days-remaining countdown, description (line-clamp-2)
+      - Completed projects: compact green row with checkmark
+      - Empty state: FolderKanban icon + "Keine Projekte angelegt"
+    Added projects state: useState<TvProject[]>([])
+    Added useEffect: api.get("/projects") polled every 60 s
+    Added slide 5 to slides array: { title: "Projekte", icon: FolderKanban }
+    Added rendering block: {currentSlide === 4 && <ProjekteSlide projects={projects} />}
+    Navigation dots auto-expand to 5 (driven by SLIDE_COUNT)
+
+Data source:
+  GET /api/projects (existing route, requireAuth, same data as Header panel)
+
+────────────────────────────────────────────────────────────────────────────────
+4. VM/PORTAINER HARDENING — podman-compose.wsl.yml
+────────────────────────────────────────────────────────────────────────────────
+Files changed:
+  podman-compose.wsl.yml
+    postgres:
+      + healthcheck: pg_isready -U postgres -d odin
+        interval 10s / timeout 5s / retries 5 / start_period 20s
+      + logging: json-file, max-size 10m, max-file 5
+
+    pgadmin:
+      depends_on: postgres → condition: service_healthy  (was plain list)
+      + logging: json-file, max-size 5m, max-file 3
+
+    backend:
+      depends_on: postgres → condition: service_healthy
+      + healthcheck: wget -qO- http://localhost:8001/api/health
+        interval 15s / timeout 5s / retries 4 / start_period 30s
+      + logging: json-file, max-size 20m, max-file 10
+
+    frontend:
+      depends_on: backend → condition: service_healthy
+      + logging: json-file, max-size 10m, max-file 5
+
+Benefits:
+  - Portainer shows green/yellow/red health badges per container
+  - Backend and frontend wait for upstream services to be healthy before
+    starting, eliminating race-condition boot failures
+  - Log rotation prevents disk exhaustion on long-running VMs
+  - Logs readable via: podman logs odin-backend (json-file, not journald)
+
+================================================================================
+VERIFICATION STEPS
+================================================================================
+1. Rebuild:
+   wsl -u root podman-compose -f podman-compose.wsl.yml down
+   wsl -u root podman-compose -f podman-compose.wsl.yml up -d --build
+
+2. Backend unit tests (must be ≥80 PASS, 0 FAIL):
+   wsl -u root bash -c "cd /opt/odin/backend && node --test tests/*.test.js"
+   → parseMonthLabel.test.js must include "Mär 2026" pass
+
+3. Smoke test:
+   bash scripts/smoke-test.sh
+   → 22/22 PASS + /api/projects not 500
+
+4. März import proof:
+   Upload FebMarApr26.xlsm via Shiftplan → Import
+   Verify Feb, März AND Apr all appear in DB / UI (previously März was missing)
+
+5. Login logo:
+   Navigate to login screen → ODIN_Logo.png should appear with cyan glow
+
+6. TV Dashboard:
+   Open TV Dashboard → navigate to dot 5 → Projekte slide loads
+   With no projects: "Keine Projekte angelegt"
+   With projects: cards with progress bars and due dates
+
+7. Portainer health:
+   Portainer → Containers → all four containers show green "healthy" badge
+================================================================================

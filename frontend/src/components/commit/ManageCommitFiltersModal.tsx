@@ -130,8 +130,7 @@ export function ManageCommitFiltersModal({
   /* ------------------------------------------------ */
 
   const registryValues =
-    // @ts-expect-error – registry keys are dynamic
-    registry[draft.field] ?? [];
+    (registry as Record<string, { value: string }[]>)[draft.field] ?? [];
 
   /* ------------------------------------------------ */
   /* RENDER                                          */

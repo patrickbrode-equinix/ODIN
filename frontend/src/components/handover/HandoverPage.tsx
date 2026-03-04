@@ -6,6 +6,7 @@ import { useEffect, useMemo, useCallback, useState } from "react";
 import { Button } from "../ui/button";
 import { HandoverList } from "./HandoverList";
 import { useAuth } from "../../context/AuthContext";
+import { useRealtimeUpdates } from "../../hooks/useRealtimeUpdates";
 import {
   deleteHandover,
   takeOverHandover,
@@ -67,12 +68,17 @@ export function HandoverPage() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
   /* ------------------------------------------------ */
-  /* LOAD ONCE                                       */
+  /* LOAD ONCE + REALTIME REFRESH                    */
   /* ------------------------------------------------ */
 
   useEffect(() => {
     load();
   }, []);
+
+  /* Re-load when another user creates a handover in real-time */
+  useRealtimeUpdates({
+    handover_created: () => { void load(); },
+  });
 
   /* ------------------------------------------------ */
   /* DERIVED DATA                                    */

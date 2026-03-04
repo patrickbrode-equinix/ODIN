@@ -6,6 +6,7 @@ import { createHandover } from "./handover.api";
 import { useAuth } from "../../context/AuthContext";
 import { HandoverItem } from "./handover.types";
 import { api } from "../../api/api";
+import { useShiftStore } from "../../store/shiftStore";
 
 interface CreateTaskModalProps {
     isOpen: boolean;
@@ -15,21 +16,35 @@ interface CreateTaskModalProps {
 
 export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: CreateTaskModalProps) {
     const { user } = useAuth();
+    const schedulesByMonth = useShiftStore(s => s.schedulesByMonth);
     const [employees, setEmployees] = useState<string[]>(propEmployees || []);
     const [assignee, setAssignee] = useState("");
 
-    // Fetch all employees from DB on open
+    // Fetch all employees from DB + include shiftplan employees
     useEffect(() => {
         if (!isOpen) return;
-        if (propEmployees && propEmployees.length > 0) return; // use prop if provided
+        if (propEmployees && propEmployees.length > 0) return;
+
+        // Get all unique employee names from every loaded month in the shiftplan
+        const shiftplanNames = new Set<string>();
+        for (const schedule of Object.values(schedulesByMonth)) {
+            for (const name of Object.keys(schedule)) {
+                if (name) shiftplanNames.add(name);
+            }
+        }
+
         api.get("/admin/users").then(res => {
             const empList = Array.isArray(res.data) ? res.data : [];
-            const names: string[] = empList.map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
-            setEmployees(names);
+            const userNames: string[] = empList.map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
+            // Merge both lists, deduplicate, sort alphabetically
+            const merged = [...new Set([...userNames, ...Array.from(shiftplanNames)])].sort();
+            setEmployees(merged);
         }).catch(() => {
-            setEmployees([]);
+            // Fallback to shiftplan names only
+            const names = [...shiftplanNames].sort();
+            setEmployees(names.length > 0 ? names : []);
         });
-    }, [isOpen]);
+    }, [isOpen, schedulesByMonth]);
     const [dueDatetime, setDueDatetime] = useState("");
     const [description, setDescription] = useState("");
     const [recurrence, setRecurrence] = useState("none");

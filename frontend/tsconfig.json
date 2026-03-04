@@ -23,5 +23,15 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/components/ui/carousel.tsx",
+    "src/components/ui/command.tsx",
+    "src/components/ui/drawer.tsx",
+    "src/components/ui/form.tsx",
+    "src/components/ui/input-otp.tsx",
+    "src/components/ui/resizable.tsx",
+    "src/components/ui/toggle-group.tsx",
+    "src/components/ui/toggle.tsx"
+  ]
 }

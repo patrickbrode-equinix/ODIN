@@ -5,6 +5,7 @@
 import express from "express";
 import db from "../db.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
+import { broadcast } from "./sse.js";
 
 const router = express.Router();
 
@@ -129,6 +130,8 @@ router.post("/excel", async (req, res) => {
     }
 
     await client.query("COMMIT");
+    // Broadcast realtime update so dashboards can refresh
+    broadcast("ingest_complete", { inserted, updated, ts: new Date().toISOString() });
     res.json({ success: true, inserted, updated });
   } catch (e) {
     await client.query("ROLLBACK");

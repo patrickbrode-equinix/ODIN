@@ -1,10 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  podman-compose.wsl.yml
+#  podman-compose.wsl.yml  — WSL2 dev compose (no systemd)
 #
-#  WSL2-specific compose file — uses host networking to avoid aardvark-dns
-#  issues on WSL2 without systemd.
-#
+#  Uses host networking to avoid aardvark-dns issues on WSL2 without systemd.
 #  Services:  postgres | pgadmin | backend | frontend
+#
+#  NOTE: healthcheck: sections are intentionally omitted.
+#  Podman 5.x registers healthcheck timers via systemd, but WSL2 without
+#  [boot] systemd=true has no systemd socket → "create healthcheck" fails.
+#  • To enable healthchecks on this machine: add [boot]\nsystemd=true to
+#    /etc/wsl.conf then run `wsl --shutdown` from Windows PowerShell.
+#  • Portainer / Oracle Linux VM: use podman-compose.wsl.prod.yml which
+#    has full healthchecks + depends_on: condition: service_healthy.
+#
+#  Logging via json-file works on both WSL2 and Oracle Linux VM.
 #
 #  Usage:
 #    podman-compose -f podman-compose.wsl.yml up -d --build
@@ -24,6 +32,11 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # ── pgAdmin ────────────────────────────────────────────────────────────────
   pgadmin:
@@ -41,6 +54,11 @@ services:
       - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
     depends_on:
       - postgres
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
@@ -60,8 +78,18 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
       DB_HOST: localhost
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@localhost:${DB_PORT:-5432}/${DB_NAME:-odin}"
+      # Set to "true" to ensure admin@local is always present, even on reused volumes.
+      # Useful for lockout recovery without wiping data.
+      SEED_ADMIN_IF_MISSING: ${SEED_ADMIN_IF_MISSING:-false}
     depends_on:
       - postgres
+    # healthcheck not enabled: Podman 5.x requires systemd timers; use
+    # podman-compose.wsl.prod.yml on Oracle Linux VM where systemd is active.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "10"
 
   # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
   frontend:
@@ -74,10 +102,18 @@ services:
     network_mode: host
     environment:
       NODE_ENV: development
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001}
+      # VITE_API_BASE_URL must be /api (same-origin) so the browser never
+      # issues cross-origin requests directly to port 8001.
+      # The Vite dev-server proxy (vite.config.ts) forwards /api → BACKEND_URL.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
       BACKEND_URL: ${BACKEND_URL:-http://localhost:8001}
     depends_on:
       - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:

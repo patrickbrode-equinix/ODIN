@@ -11,13 +11,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 // DB
-import { testConnection, checkHealth } from "./db.js";
+import { testConnection, checkHealth, query as dbQuery } from "./db.js";
 
-// Schema
-import { initSchema } from "./db/initSchema.js";
+// DB Migrations
+import { runMigrations } from "./db/migrations/runner.js";
+import { seedDefaultAdmin } from "./db/seed.js";
 
 // Routes
-import queueSnapshotPublic from "./routes/queueSnapshotPublic.js";
+import queueSnapshotRoute from "./routes/queue/snapshot.route.js";
 import queueRoutes from "./routes/queue.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
@@ -36,6 +37,11 @@ import handoverRoutes from "./routes/handover.js";
 import commitComplianceRoutes from "./routes/commitCompliance.js";
 import statsRoutes from "./routes/stats.js";
 import holidaysRoutes from "./routes/holidays.js";
+import competenciesRoutes from "./routes/competencies.js";
+import projectsRoutes from "./routes/projects.js";
+import appSettingsRoutes from "./routes/appSettings.js";
+import sseRoutes from "./routes/sse.js";
+import teamsRoutes from "./routes/teams.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,7 +88,7 @@ app.use("/api/metrics", metricsRoutes);
 app.use("/api/auth", authRoutes);
 
 // 3. Queue Snapshot Ingest (public, via ingest key – crawler target)
-app.use("/api/queue", queueSnapshotPublic);
+app.use("/api/queue", queueSnapshotRoute);
 // 4. Queue GET endpoints (tickets, groups, debug)
 app.use("/api/queue", queueRoutes);
 
@@ -152,17 +158,37 @@ app.use("/api/constraints", constraintsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/shiftplan", shiftplanDataRoutes); // [NEW]
 
+// New modules
+app.use("/api/competencies", competenciesRoutes);
+app.use("/api/projects", projectsRoutes);
+app.use("/api/app-settings", appSettingsRoutes);
+app.use("/api/sse", sseRoutes);
+app.use("/api/teams", teamsRoutes);
+
 let serverInstance = null;
 
 async function start() {
-  // 1. Test DB Connection
-  const dbOk = await testConnection();
+  // 1. DB Connection with retry/backoff (max 10 attempts, 5s apart ~50s total)
+  let dbOk = false;
+  const DB_MAX_RETRIES = 10;
+  const DB_RETRY_DELAY_MS = 5_000;
+
+  for (let attempt = 1; attempt <= DB_MAX_RETRIES; attempt++) {
+    dbOk = await testConnection();
+    if (dbOk) break;
+    if (attempt < DB_MAX_RETRIES) {
+      console.warn(`[STARTUP] DB not ready (attempt ${attempt}/${DB_MAX_RETRIES}). Retrying in ${DB_RETRY_DELAY_MS / 1000}s...`);
+      await new Promise((r) => setTimeout(r, DB_RETRY_DELAY_MS));
+    }
+  }
 
   if (!dbOk) {
-    console.error("!! [STARTUP] DB Connection Failed. Server starting in DEGRADED mode.");
+    console.error("!! [STARTUP] DB Connection Failed after all retries. Server starting in DEGRADED mode.");
   } else {
-    // 2. Init Schema only if DB ok
-    await initSchema();
+    // 2. Run migrations only if DB ok
+    await runMigrations();
+    // 3. Seed default admin on empty installs (idempotent)
+    await seedDefaultAdmin();
   }
 
   // 3. Listen
@@ -171,6 +197,26 @@ async function start() {
     console.warn("!! [SERVER] Server already running. Ignoring duplicate start call.");
     return;
   }
+
+  // Log cleanup job: delete activity_log entries older than configured retention days (runs every 6 hours)
+  const LOG_CLEANUP_MS = 6 * 60 * 60 * 1000;
+  async function cleanupOldLogs() {
+    try {
+      const { rows } = await dbQuery(
+        `SELECT value FROM app_settings WHERE key = 'log_retention_days'`
+      ).catch(() => ({ rows: [] }));
+      const days = parseInt(rows[0]?.value || "90");
+      const result = await dbQuery(
+        `DELETE FROM activity_log WHERE ts < NOW() - INTERVAL '1 day' * $1`,
+        [days]
+      );
+      if (result.rowCount > 0) {
+        console.log(`[LOG CLEANUP] Deleted ${result.rowCount} old log entries (>${days} days).`);
+      }
+    } catch (e) { /* ignore – DB may be transiently unavailable */ }
+  }
+  setInterval(cleanupOldLogs, LOG_CLEANUP_MS);
+  cleanupOldLogs();
 
   serverInstance = app.listen(PORT, "0.0.0.0", () => {
     console.log(`\n✅ [SERVER] PID: ${process.pid}`);

@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from 'react';
+import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Card } from "../ui/card";
 
 type ShiftType = string;
@@ -15,6 +15,8 @@ interface Props {
 
 export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClose, onSelect }: Props) {
     const ref = useRef<HTMLDivElement>(null);
+    // Start invisible; reveal only after clamped position is computed.
+    const [style, setStyle] = useState<CSSProperties>({ top: y, left: x, opacity: 0 });
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -26,11 +28,21 @@ export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClos
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [onClose]);
 
-    // Prevent menu from going off-screen (basic safety)
-    const style = {
-        top: y,
-        left: x,
-    };
+    // Clamp menu to viewport edges so it never overflows, then reveal.
+    useLayoutEffect(() => {
+        if (!ref.current) return;
+        const rect = ref.current.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const PADDING = 8;
+        const clampedTop = Math.min(y, vh - rect.height - PADDING);
+        const clampedLeft = Math.min(x, vw - rect.width - PADDING);
+        setStyle({
+            top: Math.max(PADDING, clampedTop),
+            left: Math.max(PADDING, clampedLeft),
+            opacity: 1,
+        });
+    }, [x, y]);
 
     return (
         <div
@@ -57,6 +69,7 @@ export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClos
                 <div className="h-px bg-border my-1" />
                 <MenuItem label="Frei / Löschen" onClick={() => onSelect('')} danger />
                 <div className="h-px bg-border my-1" />
+                <MenuItem label="Kompetenzen" onClick={() => onSelect('COMPETENCIES')} />
                 <MenuItem label="Änderungshistorie" onClick={() => onSelect('HISTORY')} />
                 <MenuItem label="Regeln verwalten" onClick={() => onSelect('CONSTRAINTS')} />
             </Card>

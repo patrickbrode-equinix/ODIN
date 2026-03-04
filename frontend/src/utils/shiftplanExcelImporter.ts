@@ -24,7 +24,7 @@ const MONTHS_DE_EN: Record<string, number> = {
   // Deutsch
   januar: 1, jan: 1,
   februar: 2, feb: 2,
-  märz: 3, maerz: 3, mrz: 3,
+  märz: 3, "mär": 3, maerz: 3, mrz: 3, mar: 3,
   april: 4, apr: 4,
   mai: 5,
   juni: 6, jun: 6,
@@ -38,7 +38,7 @@ const MONTHS_DE_EN: Record<string, number> = {
   // Englisch
   january: 1,
   february: 2,
-  march: 3,
+  march: 3, // "mar" already mapped above
   april_en: 4,
   may: 5,
   june: 6,
@@ -138,19 +138,20 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
 
   const workbook = XLSX.read(buffer, { type: "array" });
   const result: any = {};
+  const skippedSheets: { sheet: string; reason: string }[] = [];
 
   let lastYearForReference = null; // Für Jahreswechsel
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
+    if (!sheet) { skippedSheets.push({ sheet: sheetName, reason: "Sheet ist leer" }); continue; }
 
     const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
       defval: null,
     });
 
-    if (rows.length < 3) continue;
+    if (rows.length < 3) { skippedSheets.push({ sheet: sheetName, reason: "Zu wenige Zeilen (< 3)" }); continue; }
 
     /* ------------------------------------------------ */
     /* 1) Monat + Jahr bestimmen                         */
@@ -172,7 +173,7 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
     }
 
     // Wenn Monat fehlt → Skip
-    if (!month) continue;
+    if (!month) { skippedSheets.push({ sheet: sheetName, reason: "Monat konnte nicht erkannt werden" }); continue; }
 
     // Jahreswechsel-Logik (B)
     if (!year) {
@@ -215,7 +216,7 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
       }
     }
 
-    if (dayRowIndex === -1) continue;
+    if (dayRowIndex === -1) { skippedSheets.push({ sheet: sheetName, reason: "Kopfzeile mit Tageszahlen nicht gefunden" }); continue; }
 
     /* ------------------------------------------------ */
     /* 3) Namensspalte                                 */
@@ -235,7 +236,7 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
       }
     }
 
-    if (nameCol === -1) continue;
+    if (nameCol === -1) { skippedSheets.push({ sheet: sheetName, reason: "Namensspalte nicht gefunden" }); continue; }
 
     /* ------------------------------------------------ */
     /* 4) Daten auslesen                                */
@@ -267,7 +268,7 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
       }
     }
 
-    if (employees.length === 0) continue;
+    if (employees.length === 0) { skippedSheets.push({ sheet: sheetName, reason: "Keine Mitarbeiterdaten gefunden" }); continue; }
 
     /* ------------------------------------------------ */
     /* 5) Max benutzten Tag bestimmen                   */
@@ -286,5 +287,5 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer) {
     };
   }
 
-  return result;
+  return { data: result, skippedSheets };
 }

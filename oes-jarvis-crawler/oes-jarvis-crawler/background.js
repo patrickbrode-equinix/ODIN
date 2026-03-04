@@ -105,14 +105,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ✅ Upload snapshot (from content.js) -> Local ingest server
   if (msg?.type === "OES_UPLOAD_SNAPSHOT" && msg.payload) {
     (async () => {
-      const url = "http://127.0.0.1:5055/api/queue/snapshot";
+      // Read config from chrome.storage.local.
+      // Defaults: baseUrl = "http://localhost:5055" (dev), ingestKey = "CHANGE_ME"
+      // To point at VM: chrome.storage.local.set({ odin_base_url: "http://<VM_IP>:8001", odin_ingest_key: "<KEY>" })
+      const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
+      const baseUrl = (stored?.odin_base_url || "http://localhost:5055").replace(/\/$/, "");
+      const ingestKey = stored?.odin_ingest_key || "CHANGE_ME";
+
+      const url = `${baseUrl}/api/queue/snapshot`;
       const method = "POST";
       try {
         const res = await fetch(url, {
           method,
           headers: {
             "Content-Type": "application/json",
-            "X-OES-INGEST-KEY": "jarvis-crawler-2026"
+            "X-OES-INGEST-KEY": ingestKey
           },
           body: JSON.stringify(msg.payload)
         });

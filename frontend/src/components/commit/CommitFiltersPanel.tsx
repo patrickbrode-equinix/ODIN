@@ -394,8 +394,7 @@ export function CommitFiltersPanel() {
       <div className="flex-1 overflow-auto px-4 py-6 space-y-5">
         {FILTER_FIELDS.map((field) => {
           const values =
-            // @ts-expect-error dynamic registry
-            registry[field.key] ?? [];
+            (registry as Record<string, { value: string }[]>)[field.key] ?? [];
 
           if (!values.length) return null;
 

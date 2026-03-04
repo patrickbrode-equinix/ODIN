@@ -1,38 +1,50 @@
 /* FORCE REBUILD */
+import { lazy, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./router/ProtectedRoute";
 import { PageGuard } from "./router/PageGuard";
+import { OdinStartupAnimation } from "./components/OdinStartupAnimation";
 
-/* Public */
+/* Public – small, always needed immediately */
 import Login from "./components/pages/Login";
 import ForgotPassword from "./components/pages/ForgotPassword";
 import Register from "./components/pages/Register";
 import TVFullscreen from "./components/pages/TVFullscreen";
-
-/* User State */
 import PendingApproval from "./components/users/PendingApproval";
 
-/* Pages */
-import Dashboard from "./components/pages/Dashboard";
-import DashboardStatistik from "./components/pages/DashboardStatistik";
-import Shiftplan from "./components/pages/Shiftplan";
-import Weekplan from "./components/pages/Weekplan";
-import Handover from "./components/pages/Handover";
-import Tickets from "./components/pages/Tickets";
-import TVDashboard from "./components/pages/TVDashboard";
-import Dispatcher from "./components/pages/Dispatcher";
-import Settings from "./components/pages/Settings";
-import Users from "./components/pages/Users";
-import Protokoll from "./components/pages/Protokoll";
-import TeamsBenachrichtigungen from "./components/pages/TeamsBenachrichtigungen";
-import AutomatedAssignment from "./components/pages/AutomatedAssignment";
-import DBSPage from "./components/pages/DBS";
-import CommitCompliance from "./components/pages/CommitCompliance";
+/* Lazy-loaded pages – code split per route */
+const Dashboard              = lazy(() => import("./components/pages/Dashboard"));
+const DashboardStatistik     = lazy(() => import("./components/pages/DashboardStatistik"));
+const Shiftplan              = lazy(() => import("./components/pages/Shiftplan"));
+const Weekplan               = lazy(() => import("./components/pages/Weekplan"));
+const Handover               = lazy(() => import("./components/pages/Handover"));
+const Tickets                = lazy(() => import("./components/pages/Tickets"));
+const TVDashboard            = lazy(() => import("./components/pages/TVDashboard"));
+const Dispatcher             = lazy(() => import("./components/pages/Dispatcher"));
+const Settings               = lazy(() => import("./components/pages/Settings"));
+const Users                  = lazy(() => import("./components/pages/Users"));
+const Protokoll              = lazy(() => import("./components/pages/Protokoll"));
+const TeamsBenachrichtigungen = lazy(() => import("./components/pages/TeamsBenachrichtigungen"));
+const AutomatedAssignment    = lazy(() => import("./components/pages/AutomatedAssignment"));
+const DBSPage                = lazy(() => import("./components/pages/DBS"));
+const CommitCompliance       = lazy(() => import("./components/pages/CommitCompliance"));
+
+/* Loading fallback */
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full min-h-[200px]">
+      <div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <Router>
+    <>
+      <OdinStartupAnimation />
+      <Router>
+      <Suspense fallback={<PageLoader />}>
       <Routes>
 
         {/* ========================= */}
@@ -151,7 +163,7 @@ export default function App() {
 
             {/* New Pages */}
             <Route
-              path="dbs"
+              path="dbs/*"
               element={
                 <PageGuard pageKey="dbs">
                   <DBSPage />
@@ -209,6 +221,8 @@ export default function App() {
         </Route>
 
       </Routes>
+      </Suspense>
     </Router>
+    </>
   );
 }

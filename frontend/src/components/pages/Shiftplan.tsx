@@ -18,15 +18,16 @@ import { ShiftStatsPanel } from "../shiftplan/ShiftStatsPanel";
 import { ShiftImportDialog } from "../shiftplan/ShiftImportDialog"; // [NEW] Excel Import
 import { ExportMenu } from "../shiftplan/ExportMenu"; // [NEW]
 import { HistoryDialog } from "../shiftplan/HistoryDialog"; // [NEW]
+import { CompetencyModal } from "../shiftplan/CompetencyModal";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useAuth } from "../../context/AuthContext";
 
 import {
-  fetchMonths,
   fetchSchedule,
   importSchedule,
 } from "../shiftplan/shiftplan.api";
+import { useShiftplanActions } from "../../hooks/useShiftplanActions";
 
 import { normalizePlansByMonth } from "../shiftplan/shiftplan.months";
 import { parseShiftplanExcel } from "../../utils/shiftplanExcelImporter";
@@ -74,7 +75,9 @@ export default function Shiftplan() {
   /* STATE                                            */
   /* ------------------------------------------------ */
 
-  const [monthsWithData, setMonthsWithData] = useState<string[]>([]);
+  /* monthsWithData + API mutations provided by hook */
+  const { monthsWithData, refreshMonths } = useShiftplanActions();
+
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(
     new Date().getMonth()
@@ -155,6 +158,10 @@ export default function Shiftplan() {
   // [NEW] Constraints Dialog
   const [constraintsOpen, setConstraintsOpen] = useState(false);
   const [constraintsTarget, setConstraintsTarget] = useState<string | undefined>(undefined);
+
+  // [NEW] Competency Modal
+  const [competencyOpen, setCompetencyOpen] = useState(false);
+  const [competencyTarget, setCompetencyTarget] = useState<string>("");
 
   // [NEW] Constraints Data
   const [constraintsMap, setConstraintsMap] = useState<Record<string, EmployeeConstraints>>({});
@@ -409,16 +416,8 @@ export default function Shiftplan() {
     }
   }, [showSkills]);
 
-  useEffect(() => {
-    fetchMonths()
-      .then((months) => {
-        setMonthsWithData(Array.isArray(months) ? months : []);
-      })
-      .catch((err) => {
-        console.error("LOAD MONTHS ERROR:", err);
-        setMonthsWithData([]);
-      });
-  }, []);
+  // Month list is managed by useShiftplanActions; seed it on mount.
+  useEffect(() => { refreshMonths(); }, []);
 
   useEffect(() => {
     if (viewMode !== "month") return;
@@ -518,8 +517,10 @@ export default function Shiftplan() {
     if (!isSelected(args.employeeName, args.day)) {
       selectCell(args.employeeName, args.day, { shiftKey: false, ctrlKey: false, metaKey: false });
     }
-    // [NEW] Store employeeName in context menu state
-    setContextMenu({ x: e.clientX, y: e.clientY, employeeName: args.employeeName });
+    // Align menu to the row's top edge (not cursor Y) to prevent visual downward shift.
+    // clientX stays as-is (horizontal = cursor position is fine).
+    const rowTop = (e.currentTarget as HTMLElement).getBoundingClientRect().top;
+    setContextMenu({ x: e.clientX, y: rowTop, employeeName: args.employeeName });
   };
 
   const applyShiftChange = async (value: string) => {
@@ -545,6 +546,19 @@ export default function Shiftplan() {
         const [emp] = keysArr[0].split("|||");
         setConstraintsTarget(emp);
         setConstraintsOpen(true);
+      }
+      setContextMenu(null);
+      return;
+    }
+
+    if (value === "COMPETENCIES") {
+      const keysArr = Array.from(keys);
+      const emp = keysArr.length > 0
+        ? keysArr[0].split("|||")[0]
+        : (contextMenu as any)?.employeeName ?? "";
+      if (emp) {
+        setCompetencyTarget(emp);
+        setCompetencyOpen(true);
       }
       setContextMenu(null);
       return;
@@ -727,8 +741,7 @@ export default function Shiftplan() {
         }
         await importSchedule(label, parsed);
       }
-      const months = await fetchMonths();
-      setMonthsWithData(Array.isArray(months) ? months : []);
+      await refreshMonths();
       if (viewMode === "year") await loadYear(selectedYear);
       else await loadSchedule(activeMonthLabel);
     } catch (err) {
@@ -876,7 +889,7 @@ export default function Shiftplan() {
               onImportSuccess={() => {
                 if (viewMode === "year") loadYear(selectedYear);
                 else loadSchedule(activeMonthLabel);
-                fetchMonths().then(setMonthsWithData);
+                refreshMonths();
               }}
             />
           </div>
@@ -1029,7 +1042,7 @@ export default function Shiftplan() {
                 loading={loading}
                 year={selectedYear}
                 monthIndex1={selectedMonthIndex + 1}
-                holidays={holidays as any}
+                holidays={showHolidayOverlay ? holidays as any : {}}
                 warnings={warningsForMonthTable}
                 isEditMode={isEditMode}
                 onCellClick={handleCellClick}
@@ -1134,6 +1147,12 @@ export default function Shiftplan() {
         onOpenChange={setConstraintsOpen}
         employeeName={constraintsTarget}
         onSave={() => loadData(selectedYear, selectedMonthIndex + 1)}
+      />
+
+      <CompetencyModal
+        employeeName={competencyTarget}
+        isOpen={competencyOpen}
+        onClose={() => setCompetencyOpen(false)}
       />
     </EnterprisePageShell>
   );

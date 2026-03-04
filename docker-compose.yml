@@ -32,7 +32,7 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data:z
     networks:
       odin-net:
         aliases:
@@ -43,6 +43,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # ── pgAdmin ────────────────────────────────────────────────────────────────
   pgadmin:
@@ -56,8 +61,8 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
+      - pgadmin_data:/var/lib/pgadmin:z
+      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json:ro,z
     networks:
       odin-net:
         aliases:
@@ -65,6 +70,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
@@ -89,6 +99,10 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-odin}"
+      TEAMS_CHANNEL_WEBHOOK: ${TEAMS_CHANNEL_WEBHOOK:-}
+      TEAMS_PERSONAL_WEBHOOK: ${TEAMS_PERSONAL_WEBHOOK:-}
+    volumes:
+      - uploads_data:/app/uploads:z
     networks:
       odin-net:
         aliases:
@@ -97,11 +111,18 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/api/health || exit 1"]
+      # /api/ready returns 503 if DB is not connected — ensures Portainer sees
+      # backend as "healthy" only once migrations have run and DB is reachable.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/api/health/ready || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "10"
 
   # ── Frontend (Vite Static Build) ───────────────────────────────────────────
   frontend:
@@ -127,12 +148,17 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
   pgadmin_data:
-
+  uploads_data:
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:
   odin-net:

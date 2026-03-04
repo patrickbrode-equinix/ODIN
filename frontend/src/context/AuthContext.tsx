@@ -16,16 +16,8 @@ import { api } from "../api/api";
 /* STORES */
 import { useCommitStore } from "../store/commitStore";
 
-/* UI */
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import { Button } from "../components/ui/button";
+/* SESSION DIALOG */
+import { SessionExpiredDialog } from "./SessionExpiredDialog";
 
 /* ———————————————————————————————— */
 /* TYPES                                            */
@@ -263,22 +255,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={value}>
       {children}
 
-      <Dialog open={idleWarningOpen}>
-        <DialogContent onInteractOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle>Automatischer Logout</DialogTitle>
-            <DialogDescription>
-              Du wirst in {idleSecondsLeft}s automatisch abgemeldet.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={logout}>
-              Abmelden
-            </Button>
-            <Button>Eingeloggt bleiben</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SessionExpiredDialog
+        open={idleWarningOpen}
+        secondsLeft={idleSecondsLeft}
+        onLogout={logout}
+        onStay={() => { /* reset idle timer */ }}
+      />
     </AuthContext.Provider>
   );
 }

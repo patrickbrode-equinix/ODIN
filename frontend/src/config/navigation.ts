@@ -62,7 +62,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   { to: "/tv-dashboard", icon: Tv, label: "TV Dashboard", section: "top", pageKey: "tv_dashboard" },
 
-  { to: "/dbs", icon: Database, label: "DBS", section: "top", pageKey: "dbs" },
+  { to: "/dbs", icon: Database, label: "Colo 2.0", section: "top", pageKey: "dbs" },
 
   { to: "/protokoll", icon: ScrollText, label: "Protokoll", section: "top", pageKey: "protokoll" },
   { to: "/commit-compliance", icon: FileCheck, label: "Commit Compliance", section: "top", pageKey: "commit_compliance" },
@@ -84,7 +84,7 @@ export const PAGE_DEFS = [
   { key: "tickets", label: "Tickets" },
 
   { key: "tv_dashboard", label: "TV Dashboard" },
-  { key: "dbs", label: "DBS" },
+  { key: "dbs", label: "Colo 2.0" },
   { key: "protokoll", label: "Protokoll" },
   { key: "commit_compliance", label: "Commit Compliance" },
   { key: "settings", label: "Settings" },

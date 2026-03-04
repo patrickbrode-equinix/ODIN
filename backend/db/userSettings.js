@@ -133,8 +133,8 @@ export async function getUserMeta(userId) {
     SELECT
       created_at,
       last_login,
-      location,
-      team
+      ibx       AS location,
+      department AS team
     FROM users
     WHERE id = $1
     `,

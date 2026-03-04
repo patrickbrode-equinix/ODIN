@@ -1,0 +1,273 @@
+ODIN – HARDENING SESSION 3 CHANGES LOG
+Datum: 2026-03-04
+============================================================
+Ziel: HTTP 500 Fehler auf allen Endpoints fixen + Shiftplan Import stabilisieren
+============================================================
+
+
+SYMPTOME (aus Browser Console / User Report)
+------------------------------------------------------------
+500 auf:
+  GET  /api/health
+  GET  /api/metrics
+  GET  /api/queue/groups
+  GET  /api/dashboard/toggles
+  GET  /api/commit/meta
+  GET  /api/schedules/last-upload
+  POST /api/schedules/import  → "Import fehlgeschlagen: Request failed with status code 500"
+
+
+PHASE 1 — REPRO & CONTAINER-IDENTIFIKATION
+------------------------------------------------------------
+Problem: Bekannte Container-Namen (odin-backend, odin-postgres) wurden nicht erkannt.
+Ursache: Stack läuft unter ROOT-Podman (nicht rootless).
+
+Befehl zur Identifikation:
+  sudo podman ps -a
+
+Echte Container-Namen bestätigt:
+  odin-backend     (localhost/odin-backend:dev)   → RESTARTED 24 min ago ⚠
+  odin-postgres    (postgres:15-alpine)
+  odin-pgadmin     (dpage/pgadmin4)
+  odin-frontend    (localhost/odin-frontend:dev)
+
+Log-Driver: journald (nicht "podman logs" kompatibel)
+Logabruf korrekt via:
+  journalctl CONTAINER_NAME=odin-backend --no-pager --since "2 hours ago"
+
+
+PHASE 2 — ROOT CAUSE (aus Logs bewiesen)
+------------------------------------------------------------
+
+CRASH 1 (15:22:12) — Beim allerersten Start nach Rebuild:
+  [MIGRATIONS] FAILED: 001_core_tables.sql —
+  could not access file "$libdir/plpgsql": No such file or directory
+  → ignorierbar, DB-Volume hatte Altdaten, Migrations wurden bereits registriert
+
+CRASH 2 (16:18:53) — HAUPTURSACHE DER 500 FEHLER:
+  error: relation "calendar_site_config" does not exist
+      at async getSiteConfig (file:///app/routes/shiftplanData.js:15:20)
+      at async file:///app/routes/shiftplanData.js:43:20
+  [nodemon] app crashed - waiting for file changes before starting...
+
+ERKLÄRUNG DES CRASH-MUSTERS:
+  1. shiftplanData.js ruft getSiteConfig() auf:
+       SELECT * FROM calendar_site_config WHERE site_name = 'FR2'
+  2. Tabelle calendar_site_config existiert NICHT in der DB
+  3. Der await-Call auf Zeile 43 lag AUSSERHALB des try-catch
+  4. → Unbehandelter Promise Rejection → Node.js Crash
+  5. → nodemon stuck im "waiting for file changes" Zustand
+  6. → Port 8001 nicht gebunden
+  7. → ALLE Endpoints liefern 500 über den Frontend-Proxy (Connection Refused)
+
+WARUM HEALTH AUCH 500 GAB:
+  /api/health ist eigentlich immer 200 — aber nur wenn der Node-Prozess
+  überhaupt läuft. Da nodemon gecrasht war und auf Dateiänderungen wartete,
+  gab der Frontend-Proxy auf Port 8000 ein "502/500 Bad Gateway" zurück.
+
+VOLLSTÄNDIGE LISTE FEHLENDER TABELLEN (via grep aller Route-Dateien):
+  calendar_site_config    → shiftplanData.js   (CRASH-URSACHE)
+  islamic_calendar_cache  → shiftplanData.js, ramadan.js
+  sun_times_cache         → shiftplanData.js, ramadan.js
+  shift_change_log        → schedules.js (POST /import Audit-Log), reports.js
+  absences                → absences.js
+  absence_conflicts       → absences.js
+  employee_constraints    → constraints.js
+  constraint_violations   → constraints.js, reports.js
+  snapshots               → queue.js
+
+
+PHASE 3 — KONKRETE FIXES
+------------------------------------------------------------
+
+FIX 1 — Neue Migration: backend/db/migrations/011_calendar_and_cache.sql (NEU)
+  CREATE TABLE IF NOT EXISTS calendar_site_config (...)
+  CREATE TABLE IF NOT EXISTS islamic_calendar_cache (...)
+  CREATE TABLE IF NOT EXISTS sun_times_cache (...)
+
+  Genutzt von: routes/shiftplanData.js, routes/ramadan.js
+  Alle drei Tabellen mit IF NOT EXISTS → idempotent
+
+FIX 2 — Neue Migration: backend/db/migrations/012_missing_tables.sql (NEU)
+  CREATE TABLE IF NOT EXISTS absences (...)
+  CREATE TABLE IF NOT EXISTS absence_conflicts (...)
+  CREATE TABLE IF NOT EXISTS employee_constraints (...)
+  CREATE TABLE IF NOT EXISTS constraint_violations (...)
+  CREATE TABLE IF NOT EXISTS shift_change_log (...)
+  CREATE TABLE IF NOT EXISTS snapshots (...)
+
+  Mit korrekten Indizes für Performance:
+    idx_absences_employee, idx_absences_dates
+    idx_constraint_violations_month
+    idx_shift_change_log_date, idx_shift_change_log_employee
+
+FIX 3 — Defensive Fix: backend/routes/shiftplanData.js (GEÄNDERT)
+  Problem: await getSiteConfig() lag außerhalb des try-catch in zwei Routen
+  
+  Route /api/shiftplan/ramadan/meta (Zeile ~43):
+  VORHER:
+    const config = await getSiteConfig();   ← außerhalb try-catch
+    const site_name = config.site_name;
+    const tz = config.tz;
+    try {
+      ...DB-Queries...
+    } catch (err) { ... }
+  
+  NACHHER:
+    try {
+      const config = await getSiteConfig(); ← innerhalb try-catch
+      const site_name = config.site_name;
+      const tz = config.tz;
+      ...DB-Queries...
+    } catch (err) { ... }
+
+  Route /api/shiftplan/ramadan/suntimes (Zeile ~140): gleicher Fix
+
+
+PHASE 4 — LIVE-APPLY OHNE DOWNTIME
+------------------------------------------------------------
+Da Source nicht bind-gemountet:
+
+1. Migration 011 live applizieren:
+   cat /mnt/c/.../011_calendar_and_cache.sql | podman exec -i odin-postgres psql -U postgres -d odin
+   → CREATE TABLE (3x)
+
+2. Migration 012 live applizieren:
+   cat /mnt/c/.../012_missing_tables.sql | podman exec -i odin-postgres psql -U postgres -d odin
+   → CREATE TABLE (6x) + Indizes
+
+3. Beide in schema_migrations registrieren (ON CONFLICT DO NOTHING)
+   → verhindert Re-Apply beim nächsten Startup
+
+4. podman restart odin-backend
+   → Backend startet clean, alle 12 Migrations "already applied"
+
+5. Endpunkt-Verifikation (noch vor Rebuild):
+   /api/health                 → 200 {"backend":"ok","database":"ok"}
+   /api/queue/groups           → 200 (mit JWT Token)
+   /api/commit/meta            → 200 (mit JWT Token)
+   /api/schedules/last-upload  → 200 (mit JWT Token)
+   /api/dashboard/toggles      → 200 (mit JWT Token)
+
+
+PHASE 5 — CLEAN REBUILD & REDEPLOY
+------------------------------------------------------------
+Schritte:
+  podman-compose -f podman-compose.wsl.yml down
+  podman-compose -f podman-compose.wsl.yml build --no-cache
+    → odin-backend:dev   ✅
+    → odin-frontend:dev  ✅
+  podman-compose -f podman-compose.wsl.yml up -d
+
+Backend Startup Log nach Rebuild:
+  [MIGRATIONS] All migrations already applied. Nothing to do.
+  [SEED] Users already exist – skipping default admin creation.
+  ✅ [SERVER] PID: 25
+  ✅ [SERVER] Listening on http://0.0.0.0:8001
+
+
+============================================================
+TESTERGEBNISSE
+============================================================
+
+Backend-Tests:   80/80 PASS, 0 FAIL  (node:test)
+TypeScript:      0 Fehler (npx tsc --noEmit)
+Vite-Build:      Erfolgreich ~13s (Exit 0)
+Smoke-Test:      22/22 PASS, 0 FAIL, 0 WARN
+
+Smoke-Test Details (auszug):
+  PASS  Health endpoint -> HTTP 200 JSON
+  PASS  Ready.ready=true -> ready=true
+  PASS  DB status via ready -> database=ok
+  PASS  schedules/last-upload -> HTTP 401 (nicht 500!)
+  PASS  Frontend /api/health -> HTTP 200 JSON
+  PASS  Frontend proxy working -> backend=ok
+  PASS  SSE no-auth -> 401 (correct)
+
+Shiftplan Import – 3 Durchläufe:
+  Import Run 1 (Fresh Data):     {"success":true}  ✅
+  Import Run 2 (Gleiche Daten):  {"success":true}  ✅  (idempotent)
+  Import Run 3 (Geänderte Daten + neuer Mitarbeiter): {"success":true}  ✅
+  Backend-Logs: Keine Crashes, keine unhandled rejections
+
+Login:
+  POST http://localhost:8000/api/auth/login → JWT ✅
+  Zugangsdaten: admin@local / admin
+
+
+============================================================
+ZUSAMMENFASSUNG DER BEHOBENEN PROBLEME
+============================================================
+
+1. Server-Crash durch fehlende Tabelle calendar_site_config
+   → Migration 011 erstellt alle 3 Calendar/Cache-Tabellen
+
+2. Unhandled Promise Rejection in shiftplanData.js
+   → await getSiteConfig() in try-catch verschoben (defensive fix)
+
+3. Shiftplan Import 500 durch fehlende shift_change_log
+   → Migration 012 erstellt 6 fehlende Tabellen
+
+4. Absences/Constraints 500 durch fehlende Tabellen
+   → Migration 012 erstellt alle relevanten Tabellen
+
+5. Queue Snapshots 500 durch fehlende snapshots-Tabelle
+   → Migration 012 erstellt snapshots-Tabelle
+
+6. Alle Endpoints gaben 500 wenn Backend gecrasht war
+   → Root-Fix: Backend crasht nicht mehr, da Tabellen vorhanden
+
+
+============================================================
+GEÄNDERTE DATEIEN (vollständige Liste)
+============================================================
+
+NEU:
+  backend/db/migrations/011_calendar_and_cache.sql
+  backend/db/migrations/012_missing_tables.sql
+
+GEÄNDERT:
+  backend/routes/shiftplanData.js
+    - /ramadan/meta route: await getSiteConfig() in try-catch
+    - /ramadan/suntimes route: await getSiteConfig() in try-catch
+
+HILFSSKRIPTE (nur lokal, nicht produktionsrelevant):
+  diag/test_endpoints.sh
+  diag/test_import.sh
+  diag/register_012.sh
+  diag/backend_logs_live.txt
+
+
+============================================================
+HINWEISE FÜR ORACLE LINUX VM + PORTAINER DEPLOYMENT
+============================================================
+
+1. Log-Driver:
+   Container nutzen journald → "podman logs" liefert leere Ausgabe.
+   Für Portainer/Oracle: log-driver auf json-file oder k8s-file setzen:
+   In podman-compose.wsl.yml unter jedem Service ergänzen:
+     logging:
+       driver: json-file
+
+2. DB-Volume:
+   merged_postgres_data muss persistent bleiben.
+   NIEMALS "podman system prune -v" auf Produktion ausführen.
+
+3. Migrations (Frische Installation):
+   Alle 12 Migrations nutzen CREATE TABLE IF NOT EXISTS → vollständig idempotent.
+   Auf frischer DB laufen alle 12 automatisch durch.
+
+4. DB_PASS Warning:
+   Startup zeigt "DB_PASS: ⚠ MISSING" — dies ist normal wenn DATABASE_URL
+   gesetzt ist. In Portainer als Secret/Env-Var setzen:
+     DATABASE_URL=postgresql://postgres:<passwort>@odin-postgres:5432/odin
+
+5. JWT_SECRET:
+   Aktuell "dev" (unsicher). Für Produktion zwingend ändern:
+     JWT_SECRET=<zufälliger 256-bit Wert>
+
+6. Postgres depends_on:
+   Backend hat bereits Retry/Backoff (10 Versuche × 5s = 50s max).
+   Zusätzlich in compose: depends_on: odin-postgres: condition: service_healthy
+
+============================================================

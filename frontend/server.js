@@ -22,6 +22,20 @@ app.use(
     createProxyMiddleware({
         target: BACKEND_URL,
         changeOrigin: true,
+        // SSE / long-lived connections must not time out at the proxy layer.
+        // proxyTimeout: 0  => no timeout waiting for backend to respond.
+        // timeout: 0       => no timeout on inactive socket (SSE keepalive pings every 25s).
+        proxyTimeout: 0,
+        timeout: 0,
+        on: {
+            error: (err, req, res) => {
+                // Swallow connection-reset errors from SSE client disconnects
+                if (res && !res.headersSent) {
+                    res.writeHead(502, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: "Proxy error" }));
+                }
+            },
+        },
     })
 );
 

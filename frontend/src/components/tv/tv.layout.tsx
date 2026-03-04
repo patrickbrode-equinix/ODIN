@@ -11,12 +11,12 @@ import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
 import { getInfoEntries, DashboardInfoEntry } from "../../api/dashboard";
-import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User } from "lucide-react";
 import { api } from "../../api/api";
-import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "../../utils/ticketColors";
+import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
-const SLIDE_COUNT = 4;
+const SLIDE_COUNT = 5;
 const AUTO_ROTATE_MS = 20_000;
 const PAUSE_AFTER_MANUAL_MS = 60_000;
 
@@ -80,29 +80,183 @@ function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; ico
   const shiftInfo = useMemo(() => buildShiftTiming(now), [now]);
 
   return (
-    <div className="flex items-center justify-between px-6 py-3 bg-[#0a1228]/95 border-b border-indigo-500/30 shadow-[0_4px_32px_rgba(0,0,0,0.6)] shrink-0 gap-4">
+    <div className="flex items-center justify-between px-6 py-3 bg-[#050a1c] border-b border-blue-500/30 shadow-[0_4px_32px_rgba(0,0,0,0.6)] shrink-0 gap-4"
+      style={{ background: "linear-gradient(90deg, rgba(5,10,28,1) 0%, rgba(10,18,48,1) 50%, rgba(5,10,28,1) 100%)" }}>
+      {/* ODIN BRANDING – always visible */}
       <div className="flex items-center gap-4 text-slate-100 shrink-0">
         <img
           src="/app/ODIN_Logo.png"
           alt="ODIN"
-          className="w-12 h-12 object-contain drop-shadow-[0_0_16px_rgba(59,130,246,0.8)]"
+          className="w-14 h-14 object-contain drop-shadow-[0_0_20px_rgba(0,216,255,0.9)]"
         />
-        <div className="flex items-center gap-2.5 font-bold tracking-widest uppercase">
-          <Icon className="w-6 h-6 text-indigo-400" />
-          <span className="text-xl drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]">{title}</span>
+        <div>
+          <div
+            className="text-2xl font-black tracking-[0.2em] uppercase"
+            style={{
+              color: "#00d8ff",
+              textShadow: "0 0 16px rgba(0,216,255,0.8), 0 0 40px rgba(59,130,246,0.4)",
+            }}
+          >
+            O.D.I.N
+          </div>
+          <div className="text-[10px] font-semibold tracking-wider text-blue-300/70 uppercase">
+            Operations Dispatching and Intelligence Node
+          </div>
+        </div>
+        <div className="h-8 w-px bg-white/10 mx-2" />
+        <div className="flex items-center gap-2.5 font-bold tracking-widest uppercase text-slate-300">
+          <Icon className="w-5 h-5 text-indigo-400" />
+          <span className="text-lg">{title}</span>
         </div>
       </div>
 
       {/* Shift timers */}
-      <div className="flex items-center gap-4 text-xs overflow-hidden">
+      <div className="flex items-center gap-4 text-sm overflow-hidden">
         {shiftInfo.map((s, i) => (
-          <span key={i} className={`font-medium whitespace-nowrap ${s.color}`}>{s.label}</span>
+          <span key={i} className={`font-semibold whitespace-nowrap ${s.color}`}>{s.label}</span>
         ))}
       </div>
 
-      <div className="flex items-center gap-3 text-sm text-muted-foreground shrink-0">
-        <span>{formatDate(now)}</span>
-        <span className="font-mono text-foreground font-bold">{formatTime(now)}</span>
+      <div className="flex items-center gap-3 text-base text-muted-foreground shrink-0">
+        <span className="text-slate-300">{formatDate(now)}</span>
+        <span
+          className="font-mono font-black text-xl"
+          style={{ color: "#00d8ff", textShadow: "0 0 8px rgba(0,216,255,0.5)" }}
+        >
+          {formatTime(now)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------ */
+/* PROJEKTE SLIDE (read-only, TV-optimiert)          */
+/* ------------------------------------------------ */
+
+interface TvProject {
+  id: number;
+  name: string;
+  responsible?: string | null;
+  expected_done?: string | null;
+  progress: number;
+  description?: string | null;
+  status: string;
+  creator: string;
+  created_at: string;
+}
+
+function ProgressBarTv({ progress }: { progress: number }) {
+  const pct = Math.min(100, Math.max(0, progress));
+  const color =
+    pct >= 100 ? "bg-green-500" :
+    pct >= 60 ? "bg-blue-500" :
+    pct >= 30 ? "bg-yellow-500" : "bg-red-500";
+  return (
+    <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
+      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function ProjekteSlide({ projects }: { projects: TvProject[] }) {
+  if (projects.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
+        <FolderKanban className="w-16 h-16 opacity-20" />
+        <p className="text-2xl font-semibold">Keine Projekte angelegt</p>
+      </div>
+    );
+  }
+
+  const active = projects.filter(p => p.status !== "completed");
+  const done = projects.filter(p => p.status === "completed");
+
+  return (
+    <div className="h-full overflow-auto p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* AKTIVE PROJEKTE */}
+        {active.length > 0 && (
+          <div>
+            <h2 className="text-xl font-black tracking-wide uppercase text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)] mb-4">
+              Aktive Projekte
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {active.map(p => {
+                const daysLeft = p.expected_done
+                  ? Math.ceil((new Date(p.expected_done).getTime() - Date.now()) / 86400000)
+                  : null;
+                const daysColor =
+                  daysLeft === null ? "text-slate-500"
+                  : daysLeft < 0 ? "text-red-400"
+                  : daysLeft < 7 ? "text-orange-400"
+                  : "text-slate-300";
+                return (
+                  <div
+                    key={p.id}
+                    className="flex flex-col gap-3 px-5 py-4 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border border-blue-500/25 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-bold text-lg text-slate-100 leading-snug">{p.name}</h3>
+                      <span className="text-lg font-black text-blue-300 shrink-0">{p.progress}%</span>
+                    </div>
+
+                    <ProgressBarTv progress={p.progress} />
+
+                    <div className="flex flex-wrap gap-3 text-[13px] text-slate-400">
+                      {p.responsible && (
+                        <span className="flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-500" />
+                          {p.responsible}
+                        </span>
+                      )}
+                      {p.expected_done && (
+                        <span className={`flex items-center gap-1.5 ${daysColor}`}>
+                          <Calendar className="w-3.5 h-3.5" />
+                          {new Date(p.expected_done).toLocaleDateString("de-DE")}
+                          {daysLeft !== null && (
+                            <span className="text-[12px]">
+                              ({daysLeft < 0 ? `${Math.abs(daysLeft)}d überfällig` : daysLeft === 0 ? "heute" : `noch ${daysLeft}d`})
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+
+                    {p.description && (
+                      <p className="text-[13px] text-slate-400 line-clamp-2">{p.description}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ABGESCHLOSSENE PROJEKTE */}
+        {done.length > 0 && (
+          <div>
+            <h2 className="text-xl font-black tracking-wide uppercase text-green-400 drop-shadow-[0_0_6px_rgba(34,197,94,0.4)] mb-4">
+              Abgeschlossen
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {done.map(p => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-950/20 border border-green-500/20"
+                >
+                  <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-green-100 truncate">{p.name}</p>
+                    {p.responsible && (
+                      <p className="text-[12px] text-slate-400 truncate">{p.responsible}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -186,6 +340,7 @@ export function TvLayout({
 
   const [infoEntries, setInfoEntries] = useState<DashboardInfoEntry[]>([]);
   const [allTickets, setAllTickets] = useState<any[]>([]);
+  const [projects, setProjects] = useState<TvProject[]>([]);
 
   /* Clock */
   const [clock, setClock] = useState(new Date());
@@ -197,6 +352,20 @@ export function TvLayout({
   /* Info Entries */
   useEffect(() => {
     const load = () => getInfoEntries().then(setInfoEntries).catch(() => { });
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Projects */
+  useEffect(() => {
+    const load = () =>
+      api.get("/projects")
+        .then(res => {
+          const rows = Array.isArray(res.data) ? res.data : (res.data?.rows ?? []);
+          setProjects(rows);
+        })
+        .catch(() => { });
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
@@ -344,10 +513,11 @@ export function TvLayout({
     { title: "Informationen & Anweisungen", icon: Megaphone },
     { title: "Nächste 72 Stunden", icon: AlertTriangle },
     { title: "Handover", icon: ArrowRightLeft },
+    { title: "Projekte", icon: FolderKanban },
   ];
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 bg-[#030711]">
       {/* SLIDE HEADER */}
       <SlideHeader now={clock} title={slides[currentSlide].title} icon={slides[currentSlide].icon} />
 
@@ -395,8 +565,10 @@ export function TvLayout({
                 const msUntil = dateObj ? dateObj.getTime() - clock.getTime() : null;
                 const isUrgent = msUntil !== null && msUntil < 24 * 3600 * 1000;
 
+                const cardGlow = isTT ? 'border-red-500/50 bg-red-950/20 shadow-[0_0_20px_3px_rgba(239,68,68,0.18)]' : `${tierClasses[tier]} ${tierGlow[tier]}`;
+
                 return (
-                  <div key={`${id}-${i}`} className={`flex flex-col gap-1.5 px-4 py-3 rounded-xl border bg-card shadow-sm ${isTT ? 'border-red-500/50 bg-red-500/5 shadow-[0_0_12px_rgba(239,68,68,0.1)]' : isUrgent ? 'border-orange-500/50 bg-orange-500/5' : 'border-border'}`}>
+                  <div key={`${id}-${i}`} className={`flex flex-col gap-1.5 px-4 py-3 rounded-xl border transition-all ${cardGlow}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono font-bold text-sm text-foreground">{id}</span>
                       <div className="flex items-center gap-1.5">
@@ -425,14 +597,17 @@ export function TvLayout({
             <TVHandoverMirror />
           </div>
         )}
+
+        {/* SLIDE 5: Projekte */}
+        {currentSlide === 4 && <ProjekteSlide projects={projects} />}
       </div>
 
       {/* SLIDE NAVIGATION */}
-      <div className="shrink-0 flex flex-col border-t border-border bg-card">
+      <div className="shrink-0 flex flex-col border-t border-blue-500/20" style={{ background: "linear-gradient(90deg, rgba(5,10,28,1) 0%, rgba(10,18,48,1) 50%, rgba(5,10,28,1) 100%)" }}>
         {/* Progress bar */}
-        <div className="h-0.5 bg-primary/10 w-full">
+        <div className="h-0.5 bg-blue-900/40 w-full">
           <div
-            className="h-full bg-primary/60 transition-all duration-1000"
+            className="h-full bg-cyan-400/70 transition-all duration-1000 shadow-[0_0_6px_rgba(0,216,255,0.6)]"
             style={{ width: `${((AUTO_ROTATE_MS / 1000 - countdown) / (AUTO_ROTATE_MS / 1000)) * 100}%` }}
           />
         </div>
@@ -449,7 +624,7 @@ export function TvLayout({
             <button
               key={i}
               onClick={() => goToSlide(i, true)}
-              className={`w-3 h-3 rounded-full transition-all ${i === currentSlide ? "bg-primary scale-125" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"}`}
+              className={`w-3 h-3 rounded-full transition-all ${i === currentSlide ? "bg-cyan-400 scale-125 shadow-[0_0_8px_rgba(0,216,255,0.8)]" : "bg-white/20 hover:bg-white/40"}`}
               aria-label={`Slide ${i + 1}`}
             />
           ))}

@@ -82,6 +82,10 @@ export const config = {
 
     // CORS
     CORS_ORIGINS,
+
+    // Teams Integration (optional — set in .env)
+    TEAMS_CHANNEL_WEBHOOK: process.env.TEAMS_CHANNEL_WEBHOOK || "",
+    TEAMS_PERSONAL_WEBHOOK: process.env.TEAMS_PERSONAL_WEBHOOK || "",
 };
 
 /* ─────────────────────────────────────────────────────────────────────────── */

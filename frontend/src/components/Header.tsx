@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X } from "lucide-react";
+import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload } from "lucide-react";
 
 import { api } from "../api/api";
 import { useTheme } from "./ThemeProvider";
@@ -15,6 +15,7 @@ import { WeatherDisplay } from "./WeatherDisplay";
 import { DashboardInfoBar } from "./dashboard/DashboardInfoBar";
 import { DashboardToggles } from "./dashboard/DashboardToggles";
 import { getFeatureToggles } from "../api/dashboard";
+import { ProjectsPanel } from "./dashboard/ProjectsPanel";
 
 import {
   DropdownMenu,
@@ -23,6 +24,19 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
+
+/* ---------------------------------------------------- */
+/* QUICK LINKS CONFIG                                   */
+/* Add / remove links here to extend the menu.         */
+/* ---------------------------------------------------- */
+
+const QUICK_LINKS = [
+  { label: "ESH", url: "https://esh.equinix.com", description: "Employee Self Help" },
+  { label: "Power BI", url: "https://app.powerbi.com", description: "Analytics & Reports" },
+  { label: "ServiceNow", url: "https://equinix.service-now.com", description: "IT Service Management" },
+  { label: "Concur", url: "https://www.concursolutions.com", description: "Travel & Expenses" },
+  { label: "Global Label Printer", url: "https://labelprint.equinix.com", description: "Label Printing" },
+];
 
 /* ---------------------------------------------------- */
 /* DATA                                                */
@@ -174,15 +188,39 @@ function ClockDisplay() {
 /* ---------------------------------------------------- */
 
 function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [mode, setMode] = useState<"instructions" | "projects">("instructions");
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-[9999] bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl w-[90vw] max-w-[90vw] xl:max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+      <div className="relative z-[9999] bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl w-[96vw] max-w-[96vw] h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-none">
-          <div className="flex items-center gap-2 font-semibold">
+          {/* MODE SWITCHER */}
+          <div className="flex items-center gap-3">
             <Info className="w-4 h-4 text-amber-400" />
-            Informationen und Anweisungen
+            <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
+              <button
+                onClick={() => setMode("instructions")}
+                className={`px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
+                  mode === "instructions"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Anweisungen
+              </button>
+              <button
+                onClick={() => setMode("projects")}
+                className={`px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
+                  mode === "projects"
+                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Projekte
+              </button>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -192,7 +230,11 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           </button>
         </div>
         <div className="flex-1 overflow-auto p-4 min-h-0">
-          <DashboardInfoBar />
+          {mode === "instructions" ? (
+            <DashboardInfoBar />
+          ) : (
+            <ProjectsPanel />
+          )}
         </div>
       </div>
     </div>
@@ -230,6 +272,49 @@ function AutomationenModal({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 /* ---------------------------------------------------- */
+/* QUICK LINKS MENU                                    */
+/* ---------------------------------------------------- */
+
+function QuickLinksMenu() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 transition-colors"
+          title="Quick Links"
+        >
+          <Link2 className="w-3.5 h-3.5" />
+          <span className="hidden xl:inline">Links</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56 bg-[#0f172a] border border-white/10 text-slate-200">
+        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Quick Links
+        </div>
+        <DropdownMenuSeparator className="bg-white/10" />
+        {QUICK_LINKS.map((link) => (
+          <DropdownMenuItem
+            key={link.label}
+            asChild
+            className="focus:bg-white/10 focus:text-white cursor-pointer"
+          >
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col gap-0.5 px-3 py-2"
+            >
+              <span className="font-semibold text-[13px] text-slate-200">{link.label}</span>
+              <span className="text-[11px] text-slate-500">{link.description}</span>
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/* ---------------------------------------------------- */
 /* COMPONENT                                           */
 /* ---------------------------------------------------- */
 
@@ -250,6 +335,9 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
   /* Automationen badge state: green if any toggle active */
   const [anyAutomationActive, setAnyAutomationActive] = useState(false);
+
+  /* Last shiftplan upload */
+  const [lastShiftplanUpload, setLastShiftplanUpload] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchToggles = () => {
@@ -293,6 +381,21 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
     fetchMeta();
     const interval = setInterval(fetchMeta, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  /* -------------------------------------------------- */
+  /* LAST SHIFTPLAN UPLOAD POLL                         */
+  /* -------------------------------------------------- */
+  useEffect(() => {
+    const fetchLastUpload = async () => {
+      try {
+        const res = await api.get("/schedules/last-upload");
+        setLastShiftplanUpload(res.data?.uploaded_at ?? null);
+      } catch { /* non-fatal */ }
+    };
+    fetchLastUpload();
+    const interval = setInterval(fetchLastUpload, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -406,6 +509,16 @@ export function Header({ onToggleSidebar }: HeaderProps) {
                 </div>
               </>
             )}
+
+            <div className="h-4 w-px bg-white/10" />
+
+            <div className="flex items-center gap-2">
+              <Upload className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-slate-500 font-medium">Shiftplan:</span>
+              <span className="font-bold text-slate-200">
+                {lastShiftplanUpload ? formatTime(lastShiftplanUpload) : "—"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -443,6 +556,9 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <Zap className="w-3.5 h-3.5" />
             <span className="hidden xl:inline">Automationen</span>
           </button>
+
+          {/* QUICK LINKS */}
+          <QuickLinksMenu />
 
           <div className="h-4 w-px bg-white/10 mx-1" />
 

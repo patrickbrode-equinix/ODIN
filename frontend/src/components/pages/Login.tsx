@@ -76,19 +76,28 @@ export default function Login() {
       {/* Login Card */}
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md border border-border/50 bg-background/85 backdrop-blur-xl shadow-2xl">
-          <CardHeader className="text-center space-y-4">
+          <CardHeader className="text-center space-y-3 pb-2">
+            {/* Logo */}
             <img
-              src="/app/Dispatcher-transparent.png"
+              src="/app/ODIN_Logo.png"
               alt="ODIN"
-              className="mx-auto h-16 w-auto"
+              className="mx-auto h-16 w-auto drop-shadow-[0_0_12px_rgba(0,216,255,0.5)]"
             />
 
-            <CardTitle className="text-3xl font-bold tracking-tight">
-              ODIN \n
+            {/* App name — subtle enterprise glow */}
+            <CardTitle
+              className="text-3xl font-bold tracking-[0.35em] uppercase"
+              style={{
+                textShadow:
+                  "0 0 18px rgba(99,179,237,0.50), 0 0 4px rgba(99,179,237,0.25)",
+              }}
+            >
+              O.D.I.N
             </CardTitle>
 
-            <p className="text-sm text-muted-foreground">
-              Operations & Shift Management
+            {/* Tagline */}
+            <p className="text-xs text-muted-foreground tracking-widest uppercase">
+              Operations Dispatching and Intelligence Node
             </p>
           </CardHeader>
 
