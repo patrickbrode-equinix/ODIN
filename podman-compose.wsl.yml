@@ -75,7 +75,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}   # leave unset → proxy mode (allow all); set explicitly for strict whitelist
       DB_HOST: localhost
       DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@localhost:${DB_PORT:-5432}/${DB_NAME:-odin}"
       # Set to "true" to ensure admin@local is always present, even on reused volumes.

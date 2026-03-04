@@ -69,7 +69,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}   # leave unset → proxy mode (allow all); set explicitly for strict whitelist
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-odin}

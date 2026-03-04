@@ -99,5 +99,6 @@ console.log(`  DATABASE   : ${DATABASE_URL ? "DATABASE_URL (set)" : `${db.host}:
 console.log(`  DB_PASS    : ${db.password ? "****" : "⚠ MISSING"}`);
 console.log(`  JWT_SECRET : ${config.JWT_SECRET && config.JWT_SECRET !== "dev-only-insecure-secret" ? "****" : (isProd ? "⚠ MISSING" : "dev (insecure)")}`);
 console.log(`  INGEST_KEY : ${config.QUEUE_INGEST_KEY ? "****" : "⚠ MISSING"}`);
-console.log(`  CORS       : ${config.CORS_ORIGINS.join(", ")}`);
+const corsMode = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN) ? `strict [${config.CORS_ORIGINS.join(", ")}]` : "proxy-mode (allow all — set CORS_ORIGINS to restrict)";
+console.log(`  CORS       : ${corsMode}`);
 console.log("─────────────────────────────────────────────────────────\n");

@@ -57,20 +57,34 @@ const PORT = config.PORT;
 /* MIDDLEWARE                                       */
 /* ------------------------------------------------ */
 
-// CORS: origins from config.CORS_ORIGINS, plus allow Chrome extensions for ingest
+// CORS: proxy-mode aware.
+// If CORS_ORIGINS env var is NOT explicitly set → proxy mode assumed → allow all origins.
+// If CORS_ORIGINS IS set → strict CSV whitelist.
+// Blocked origins return 403 (callback(null,false)), NEVER 500 (never throw Error).
+const CORS_ORIGINS_EXPLICIT = !!(process.env.CORS_ORIGINS || process.env.CORS_ORIGIN);
+if (!CORS_ORIGINS_EXPLICIT) {
+  console.warn("[CORS] CORS_ORIGINS not set — allowing all origins (proxy mode). Set CORS_ORIGINS=<comma-separated URLs> to enable strict whitelist.");
+} else {
+  console.log(`[CORS] Strict whitelist active: ${config.CORS_ORIGINS.join(", ")}`);
+}
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow if no origin (e.g. server-to-server, or some extension environments)
+    // Always allow: no origin header (curl, healthchecks, server-to-server)
     if (!origin) return callback(null, true);
 
-    // Allow explicitly configured origins
-    if (config.CORS_ORIGINS.includes(origin)) return callback(null, true);
-
-    // Allow any Chrome extension (important for OES Crawler background service worker)
+    // Always allow Chrome extensions (OES Crawler background service worker)
     if (origin.startsWith('chrome-extension://')) return callback(null, true);
 
-    // Disallow others
-    callback(new Error('Not allowed by CORS'));
+    // Proxy mode: no explicit whitelist → allow all
+    if (!CORS_ORIGINS_EXPLICIT) return callback(null, true);
+
+    // Strict whitelist check
+    if (config.CORS_ORIGINS.includes(origin)) return callback(null, true);
+
+    // Blocked — 403, NOT 500: use callback(null, false), never throw Error
+    console.warn(`[CORS] Blocked origin: ${origin} (not in whitelist: ${config.CORS_ORIGINS.join(", ")})`);
+    callback(null, false);
   },
   credentials: true,
 }));
