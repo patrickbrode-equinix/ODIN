@@ -9,6 +9,8 @@ const router = express.Router();
 
 /* ------------------------------------------------ */
 /* GET /api/health                                  */
+/* Always 200 — backend process is alive.           */
+/* Use /api/ready for dependency-aware checks.      */
 /* ------------------------------------------------ */
 
 router.get("/", async (req, res) => {
@@ -36,6 +38,33 @@ router.get("/", async (req, res) => {
     latencyMs: Date.now() - start,
     timestamp: new Date().toISOString(),
   });
+});
+
+/* ------------------------------------------------ */
+/* GET /api/ready                                   */
+/* 200 if backend + DB are ready.                  */
+/* 503 if DB is not reachable (used by healthcheck).*/
+/* ------------------------------------------------ */
+
+router.get("/ready", async (req, res) => {
+  const start = Date.now();
+  try {
+    await db.query("SELECT 1");
+    res.json({
+      ready: true,
+      database: "ok",
+      latencyMs: Date.now() - start,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(503).json({
+      ready: false,
+      database: "error",
+      error: err?.message || String(err),
+      latencyMs: Date.now() - start,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 export default router;

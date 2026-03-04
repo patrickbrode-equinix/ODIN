@@ -46,14 +46,14 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    image: odin-backend:prod
+      dockerfile: Dockerfile.dev
+    image: odin-backend:dev
     container_name: odin-backend
     restart: unless-stopped
     network_mode: host
     environment:
       PORT: ${PORT:-8001}
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: development
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       QUEUE_INGEST_KEY: ${QUEUE_INGEST_KEY:-CHANGE_ME_DEV_KEY}
@@ -67,16 +67,15 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: "/api"
-    image: odin-frontend:prod
+      dockerfile: Dockerfile.dev
+    image: odin-frontend:dev
     container_name: odin-frontend
     restart: unless-stopped
     network_mode: host
     environment:
-      NODE_ENV: production
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      NODE_ENV: development
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8001}
     depends_on:
       - backend
 
