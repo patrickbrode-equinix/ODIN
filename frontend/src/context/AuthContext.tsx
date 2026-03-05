@@ -15,6 +15,7 @@ import { api } from "../api/api";
 
 /* STORES */
 import { useCommitStore } from "../store/commitStore";
+import { bootstrapShiftData } from "../lib/bootstrapShiftData";
 
 /* SESSION DIALOG */
 import { SessionExpiredDialog } from "./SessionExpiredDialog";
@@ -188,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setUser(normalizeUser(JSON.parse(stored)));
         loadCommitBootstrap();
+        bootstrapShiftData().catch(() => {}); // populate shift store for Dashboard/TV
       } catch {
         localStorage.removeItem("auth_user");
         localStorage.removeItem("auth_token");
@@ -210,7 +212,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("auth_user", JSON.stringify(normalized));
 
     setUser(normalized);
-    await loadCommitBootstrap(); // ✅ HIER
+    await loadCommitBootstrap();                     // ✅ commit data
+    await bootstrapShiftData().catch(() => {});      // ✅ shift data for Dashboard/TV
   };
 
   /* ------------------------------------------------ */

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
-import { getInfoEntries, DashboardInfoEntry } from "../../api/dashboard";
+import type { DashboardInfoEntry } from "../../api/dashboard";
 import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User } from "lucide-react";
 import { api } from "../../api/api";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
@@ -349,18 +349,21 @@ export function TvLayout({
     return () => clearInterval(t);
   }, []);
 
-  /* Info Entries */
+  /* Info Entries — public TV endpoint, no auth required */
   useEffect(() => {
-    const load = () => getInfoEntries().then(setInfoEntries).catch(() => { });
+    const load = () =>
+      api.get("/tv/info-entries")
+        .then(res => setInfoEntries(Array.isArray(res.data?.data) ? res.data.data : []))
+        .catch(() => { });
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, []);
 
-  /* Projects */
+  /* Projects — public TV endpoint, no auth required */
   useEffect(() => {
     const load = () =>
-      api.get("/projects")
+      api.get("/tv/projects")
         .then(res => {
           const rows = Array.isArray(res.data) ? res.data : (res.data?.rows ?? []);
           setProjects(rows);

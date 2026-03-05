@@ -45,13 +45,32 @@ function requireIngestKey(req, res) {
 /* POST /snapshot                                   */
 /* ------------------------------------------------ */
 
+// Quick connectivity test — no auth needed, no DB access.
+// Usage: POST /api/queue/snapshot with body { "ping": true }
 router.post("/snapshot", async (req, res) => {
+  const body = req.body || {};
+
+  if (body.ping === true) {
+    return res.json({ ok: true, pong: true, ts: new Date().toISOString() });
+  }
+
   if (!requireIngestKey(req, res)) return;
 
-  const body  = req.body || {};
-  const nowIso = String(body.jarvisSeenAt || new Date().toISOString());
+  const nowIso = String(body.jarvisSeenAt || body.generatedAt || new Date().toISOString());
+  const keys   = Object.keys(body);
 
-  console.log(`\n[CRAWLER INGEST] Received payload. Keys:`, Object.keys(body));
+  console.log(`\n[CRAWLER INGEST] Received payload. Keys: ${JSON.stringify(keys)} ContentType: ${req.headers["content-type"] || "(none)"}`);
+
+  // Validate: body.queues must be present (object or array)
+  if (!body.queues || typeof body.queues !== "object") {
+    console.warn(`[CRAWLER INGEST] 400: 'queues' key missing or not an object. gotKeys=${JSON.stringify(keys)}`);
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_payload",
+      gotKeys: keys,
+      expected: "body.queues must be an object {smartHands,troubleTickets,ccInstalls} or an array of {queueType,items}",
+    });
+  }
 
   try {
     const { itemsToUpsert, completeTypes } = normalizePayload(body);

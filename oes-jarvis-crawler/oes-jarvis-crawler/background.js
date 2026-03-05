@@ -107,8 +107,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       // Read config from chrome.storage.local.
       // Default base URL: http://localhost:8001 (ODIN backend, local dev)
-      // VM production: chrome.storage.local.set({ odin_base_url: "http://fr2lxcops01.corp.equinix.com:8080", odin_ingest_key: "<KEY>" })
-      //   — or use Options page: chrome://extensions → OES Jarvis → Extension options
+      // VM production (DIRECT to backend — do NOT use :8080 Nginx proxy):
+      //   chrome.storage.local.set({ odin_base_url: "http://fr2lxcops01.corp.equinix.com:8001", odin_ingest_key: "<REAL_KEY>" })
+      //   — or use the Options page: chrome://extensions → OES Jarvis → Extension options
       const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
       const rawBase = (stored?.odin_base_url || "http://localhost:8001").replace(/\/$/, "");
       const ingestKey = stored?.odin_ingest_key || "CHANGE_ME";

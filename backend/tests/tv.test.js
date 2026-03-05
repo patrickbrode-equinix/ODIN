@@ -61,6 +61,45 @@ function createTvRouter(mockQuery) {
     }
   });
 
+  router.get("/projects", async (_req, res) => {
+    try {
+      const result = await mockQuery(
+        `SELECT id, name, responsible, expected_done, progress, description, status, creator, created_at FROM projects ORDER BY created_at DESC`
+      );
+      res.json(result.rows);
+    } catch (err) {
+      res.json([]);
+    }
+  });
+
+  const TV_SHIFT_TYPES = {
+    E1: { label: "E1", color: "bg-orange-500", name: "Frühschicht",  time: "06:30-15:30" },
+    E2: { label: "E2", color: "bg-orange-600", name: "Frühschicht",  time: "07:00-16:00" },
+    L1: { label: "L1", color: "bg-yellow-500", name: "Spätschicht",  time: "13:00-22:00" },
+    L2: { label: "L2", color: "bg-yellow-600", name: "Spätschicht",  time: "15:00-00:00" },
+    N:  { label: "N",  color: "bg-blue-600",   name: "Nachtschicht", time: "21:15-06:45" },
+  };
+
+  router.get("/schedules/today", async (_req, res) => {
+    try {
+      const result = await mockQuery(`shifts-today`);
+      const early = [], late = [], night = [];
+      for (const row of result.rows) {
+        const code = row.shift_code;
+        const info = TV_SHIFT_TYPES[code];
+        if (!info) continue;
+        const name = String(row.employee_name ?? "").replace(",", "").trim();
+        const entry = { name, shift: code, time: info.time, info };
+        if (code === "E1" || code === "E2") early.push(entry);
+        else if (code === "L1" || code === "L2") late.push(entry);
+        else if (code === "N") night.push(entry);
+      }
+      res.json({ early, late, night, dataFresh: true });
+    } catch (err) {
+      res.json({ early: [], late: [], night: [], dataFresh: false });
+    }
+  });
+
   return router;
 }
 
@@ -185,6 +224,102 @@ describe("GET /api/tv/* — public kiosk endpoints", () => {
     assert.strictEqual(res.status, 200, "should return 200 even on DB error");
     const body = await res.json();
     assert.deepStrictEqual(body.data, []);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* /api/tv/projects                                                  */
+  /* ---------------------------------------------------------------- */
+  test("GET /api/tv/projects → 200 + array (empty DB)", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/projects`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body), "response should be an array");
+    assert.strictEqual(body.length, 0);
+  });
+
+  test("GET /api/tv/projects → 200 + array with rows", async () => {
+    const fakeProjects = [
+      { id: 1, name: "Migration Alpha", status: "active", progress: 60, creator: "admin", created_at: new Date().toISOString() },
+      { id: 2, name: "Rollout Beta",    status: "completed", progress: 100, creator: "admin", created_at: new Date().toISOString() },
+    ];
+    mockQuery = async () => ({ rows: fakeProjects });
+
+    const res = await fetch(`${baseUrl}/api/tv/projects`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body));
+    assert.strictEqual(body.length, 2);
+    assert.strictEqual(body[0].name, "Migration Alpha");
+    assert.strictEqual(body[1].status, "completed");
+  });
+
+  test("GET /api/tv/projects → 200 (not 500) when DB throws", async () => {
+    mockQuery = async () => { throw new Error("DB unavailable"); };
+    const res = await fetch(`${baseUrl}/api/tv/projects`);
+    assert.strictEqual(res.status, 200, "should return 200 even on DB error");
+    const body = await res.json();
+    assert.ok(Array.isArray(body), "should return empty array on error");
+  });
+
+  test("GET /api/tv/projects requires NO auth token", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/projects`, { headers: {} });
+    assert.strictEqual(res.status, 200);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* /api/tv/schedules/today                                           */
+  /* ---------------------------------------------------------------- */
+  test("GET /api/tv/schedules/today → 200 + { early, late, night, dataFresh: true } (empty DB)", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/schedules/today`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.early),  "early should be array");
+    assert.ok(Array.isArray(body.late),   "late should be array");
+    assert.ok(Array.isArray(body.night),  "night should be array");
+    assert.strictEqual(body.dataFresh, true);
+  });
+
+  test("GET /api/tv/schedules/today → employees sorted into correct shift buckets", async () => {
+    mockQuery = async () => ({
+      rows: [
+        { employee_name: "Mustermann, Max", shift_code: "E1" },
+        { employee_name: "Schmidt, Anna",   shift_code: "L1" },
+        { employee_name: "Weber, Klaus",    shift_code: "N"  },
+        { employee_name: "Bauer, Lisa",     shift_code: "E2" },
+      ],
+    });
+
+    const res = await fetch(`${baseUrl}/api/tv/schedules/today`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.dataFresh, true);
+    assert.strictEqual(body.early.length, 2, "E1+E2 should be in early");
+    assert.strictEqual(body.late.length,  1, "L1 should be in late");
+    assert.strictEqual(body.night.length, 1, "N should be in night");
+    // Name normalization: "Mustermann, Max" → "Mustermann Max"
+    assert.ok(body.early.some(e => e.name === "Mustermann Max"));
+    assert.ok(body.late.some(e  => e.name === "Schmidt Anna"));
+    assert.ok(body.night.some(e => e.name === "Weber Klaus"));
+  });
+
+  test("GET /api/tv/schedules/today → 200 + dataFresh:false when DB throws", async () => {
+    mockQuery = async () => { throw new Error("DB connection error"); };
+    const res = await fetch(`${baseUrl}/api/tv/schedules/today`);
+    assert.strictEqual(res.status, 200, "should return 200 even on DB error");
+    const body = await res.json();
+    assert.strictEqual(body.dataFresh, false);
+    assert.ok(Array.isArray(body.early)  && body.early.length  === 0);
+    assert.ok(Array.isArray(body.late)   && body.late.length   === 0);
+    assert.ok(Array.isArray(body.night)  && body.night.length  === 0);
+  });
+
+  test("GET /api/tv/schedules/today requires NO auth token", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/schedules/today`, { headers: {} });
+    assert.strictEqual(res.status, 200);
   });
 });
 

@@ -93,10 +93,13 @@ section "2. Database Connectivity"
 check_field "DB status via ready"    "$BACKEND/api/health/ready"  "database" "ok"
 
 section "3. TV Public Endpoints (kiosk – NO auth required)"
-check_json  "TV health (no auth)"      "$BACKEND/api/tv/health"
-check_field "TV health.status=ok"      "$BACKEND/api/tv/health"   "status"   "ok"
-check_json  "TV tickets (no auth)"     "$BACKEND/api/tv/tickets"
-check_json  "TV info-entries (no auth)" "$BACKEND/api/tv/info-entries"
+check_json  "TV health (no auth)"           "$BACKEND/api/tv/health"
+check_field "TV health.status=ok"           "$BACKEND/api/tv/health"              "status"   "ok"
+check_json  "TV tickets (no auth)"          "$BACKEND/api/tv/tickets"
+check_json  "TV info-entries (no auth)"     "$BACKEND/api/tv/info-entries"
+check_json  "TV projects (no auth)"         "$BACKEND/api/tv/projects"
+check_json  "TV schedules/today (no auth)"  "$BACKEND/api/tv/schedules/today"
+check_field "TV schedules.dataFresh field"  "$BACKEND/api/tv/schedules/today"     "dataFresh" "true"
 
 section "4. Auth-gated endpoints return 401 (not 500/crash)"
 check_json "dashboard/info"          "$BACKEND/api/dashboard/info"            401
@@ -109,10 +112,11 @@ check_json "schedules/last-upload"   "$BACKEND/api/schedules/last-upload"     40
 check_json "commit/latest"           "$BACKEND/api/commit/latest"             401
 
 section "5. Frontend SPA"
-check_html "Frontend root"           "$FRONTEND/"
-check_html "Frontend /login"         "$FRONTEND/login"
-check_html "Frontend /dashboard"     "$FRONTEND/dashboard"
-check_html "Frontend /dbs"           "$FRONTEND/dbs"
+check_html "Frontend root"               "$FRONTEND/"
+check_html "Frontend /login"             "$FRONTEND/login"
+check_html "Frontend /dashboard"         "$FRONTEND/dashboard"
+check_html "Frontend /dbs"               "$FRONTEND/dbs"
+check_html "Frontend /tv-dashboard"      "$FRONTEND/tv-dashboard"
 
 section "6. Frontend -> Backend proxy"
 check_json  "Frontend /api/health"   "$FRONTEND/api/health"
