@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { Ticket, Monitor } from "lucide-react";
-import { getInfoEntries, getFeatureToggles, DashboardInfoEntry } from "../../api/dashboard";
+import type { DashboardInfoEntry } from "../../api/dashboard";
 import { api } from "../../api/api";
 import { TVContent } from "../tv/TVContent";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
@@ -22,11 +22,12 @@ function TVDashboard() {
 
   const fetchTickets = async () => {
     try {
-      const res = await api.get("/queue/tickets", { params: { limit: 50 } });
+      const res = await api.get("/tv/tickets", { params: { limit: 50 } });
       const list = Array.isArray(res.data) ? res.data : [];
       setTickets(list);
     } catch (e) {
       console.error("Failed to fetch tickets for TV", e);
+      setTickets([]);
     }
   };
 
@@ -36,7 +37,14 @@ function TVDashboard() {
   }, []);
 
   useEffect(() => {
-    const load = () => getInfoEntries().then(setInfoEntries).catch(() => { });
+    const load = async () => {
+      try {
+        const res = await api.get("/tv/info-entries");
+        setInfoEntries(Array.isArray(res.data?.data) ? res.data.data : []);
+      } catch {
+        setInfoEntries([]);
+      }
+    };
     load();
     const int = setInterval(load, 30000);
     return () => clearInterval(int);

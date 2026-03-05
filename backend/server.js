@@ -42,6 +42,7 @@ import projectsRoutes from "./routes/projects.js";
 import appSettingsRoutes from "./routes/appSettings.js";
 import sseRoutes from "./routes/sse.js";
 import teamsRoutes from "./routes/teams.js";
+import tvRoutes from "./routes/tv.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,6 +94,9 @@ app.use(express.json({ limit: "50mb" }));
 /* ------------------------------------------------ */
 /* ROUTES                                           */
 /* ------------------------------------------------ */
+
+// 0. TV Public endpoints (kiosk-safe, no auth)
+app.use("/api/tv", tvRoutes);
 
 // 1. Health + Metrics (proper route files with error handling)
 app.use("/api/health", healthRoutes);

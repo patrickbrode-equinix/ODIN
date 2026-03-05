@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OES Jarvis Queue Crawler",
-  "version": "1.0.1",
-  "description": "Extracts SmartHands, TroubleTickets and CC Installs and uploads them to local DB.",
+  "version": "1.1.0",
+  "description": "Extracts SmartHands, TroubleTickets and CC Installs and uploads them to ODIN (configurable target URL).",
   "permissions": [
     "alarms",
     "tabs",
@@ -15,8 +15,13 @@
     "http://127.0.0.1:5055/*",
     "http://127.0.0.1:8001/*",
     "http://localhost:5055/*",
-    "http://localhost:8001/*"
+    "http://localhost:8001/*",
+    "http://localhost:8000/*",
+    "http://fr2lxcops01.corp.equinix.com/*",
+    "http://fr2lxcops01.corp.equinix.com:8080/*",
+    "http://fr2lxcops01.corp.equinix.com:8001/*"
   ],
+  "options_page": "options.html",
   "background": {
     "service_worker": "background.js"
   },

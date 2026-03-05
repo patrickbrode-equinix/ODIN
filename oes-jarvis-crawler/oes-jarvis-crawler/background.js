@@ -102,17 +102,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     err("Scrape error on:", msg.url, msg.message);
   }
 
-  // ✅ Upload snapshot (from content.js) -> Local ingest server
+  // ✅ Upload snapshot (from content.js) -> ODIN ingest server (configurable)
   if (msg?.type === "OES_UPLOAD_SNAPSHOT" && msg.payload) {
     (async () => {
       // Read config from chrome.storage.local.
-      // Defaults: baseUrl = "http://localhost:5055" (dev), ingestKey = "CHANGE_ME"
-      // To point at VM: chrome.storage.local.set({ odin_base_url: "http://<VM_IP>:8001", odin_ingest_key: "<KEY>" })
+      // Default base URL: http://localhost:8001 (ODIN backend, local dev)
+      // VM production: chrome.storage.local.set({ odin_base_url: "http://fr2lxcops01.corp.equinix.com:8080", odin_ingest_key: "<KEY>" })
+      //   — or use Options page: chrome://extensions → OES Jarvis → Extension options
       const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
-      const baseUrl = (stored?.odin_base_url || "http://localhost:5055").replace(/\/$/, "");
+      const rawBase = (stored?.odin_base_url || "http://localhost:8001").replace(/\/$/, "");
       const ingestKey = stored?.odin_ingest_key || "CHANGE_ME";
 
-      const url = `${baseUrl}/api/queue/snapshot`;
+      // Use URL constructor to avoid double-slash / path bugs
+      let url;
+      try {
+        url = new URL("/api/queue/snapshot", rawBase).toString();
+      } catch (urlErr) {
+        err("Invalid odin_base_url in storage:", rawBase, urlErr);
+        sendResponse({ ok: false, error: `Invalid odin_base_url: ${rawBase}` });
+        return;
+      }
+
+      log(`Sending snapshot to: ${url}`);
       const method = "POST";
       try {
         const res = await fetch(url, {

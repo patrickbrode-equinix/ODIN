@@ -71,12 +71,17 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token ungültig / abgelaufen
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_user");
+      // Skip login redirect on public TV kiosk pages
+      const isPublicPage = window.location.pathname.startsWith("/tv-dashboard") ||
+                           window.location.pathname.startsWith("/tv-fullscreen");
+      if (!isPublicPage) {
+        // Token ungültig / abgelaufen
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
 
-      // Hard redirect (Context-unabhängig, sicher)
-      window.location.href = "/login";
+        // Hard redirect (Context-unabhängig, sicher)
+        window.location.href = "/login";
+      }
     }
 
     return Promise.reject(error);

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ODIN Crawler — Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 32px 24px;
+      min-width: 420px;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #00d8ff;
+      margin: 0 0 4px 0;
+      letter-spacing: 0.04em;
+    }
+    .subtitle {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin: 0 0 28px 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="url"] {
+      display: block;
+      width: 100%;
+      padding: 9px 12px;
+      background: #1e2230;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 18px;
+    }
+    input:focus {
+      border-color: #00d8ff;
+    }
+
+    .field-hint {
+      font-size: 0.73rem;
+      color: #475569;
+      margin-top: -14px;
+      margin-bottom: 18px;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    button {
+      padding: 9px 22px;
+      background: #00d8ff;
+      color: #0f1117;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #00b8d9; }
+    button:active { background: #0099b3; }
+
+    button.secondary {
+      background: #1e2230;
+      color: #94a3b8;
+      border: 1px solid #2d3748;
+      font-weight: 500;
+    }
+    button.secondary:hover { background: #2d3748; }
+
+    #status {
+      font-size: 0.82rem;
+      padding: 4px 0;
+      min-height: 1.4em;
+      transition: color 0.2s;
+    }
+    #status.ok  { color: #22c55e; }
+    #status.err { color: #f87171; }
+
+    hr {
+      border: none;
+      border-top: 1px solid #1e2230;
+      margin: 24px 0;
+    }
+
+    .current-label {
+      font-size: 0.75rem;
+      color: #475569;
+      margin-bottom: 2px;
+    }
+    .current-value {
+      font-family: "Cascadia Code", "Fira Mono", monospace;
+      font-size: 0.8rem;
+      color: #64748b;
+      word-break: break-all;
+    }
+
+    .quick-btns {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .quick-btn {
+      font-size: 0.72rem;
+      padding: 4px 10px;
+      background: #1e2230;
+      border: 1px solid #2d3748;
+      border-radius: 4px;
+      color: #94a3b8;
+      cursor: pointer;
+      font-weight: 400;
+    }
+    .quick-btn:hover { background: #2d3748; color: #e2e8f0; border-color: #00d8ff; }
+  </style>
+</head>
+<body>
+  <h1>⚙ ODIN Crawler Settings</h1>
+  <p class="subtitle">OES Jarvis Queue Crawler — Target URL configuration</p>
+
+  <label for="baseUrl">ODIN Server URL</label>
+  <input type="url" id="baseUrl"
+    placeholder="http://fr2lxcops01.corp.equinix.com:8080"
+    autocomplete="off" spellcheck="false" />
+  <p class="field-hint">
+    Local dev: <code>http://localhost:8001</code> &nbsp;|&nbsp;
+    VM (Portainer): <code>http://fr2lxcops01.corp.equinix.com:8080</code>
+  </p>
+
+  <div class="quick-btns">
+    <button class="quick-btn" data-url="http://localhost:8001">localhost:8001</button>
+    <button class="quick-btn" data-url="http://localhost:5055">localhost:5055</button>
+    <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com:8080">VM :8080</button>
+    <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com">VM (no port)</button>
+  </div>
+
+  <label for="ingestKey">Ingest Key (X-OES-INGEST-KEY)</label>
+  <input type="password" id="ingestKey"
+    placeholder="QUEUE_INGEST_KEY value from .env / Portainer"
+    autocomplete="off" />
+  <p class="field-hint">
+    Must match <code>QUEUE_INGEST_KEY</code> on the ODIN backend.
+    Leave blank to use built-in default (<code>CHANGE_ME</code>).
+  </p>
+
+  <div class="row-actions">
+    <button id="saveBtn">Save</button>
+    <button id="resetBtn" class="secondary">Reset to defaults</button>
+    <span id="status"></span>
+  </div>
+
+  <hr />
+
+  <div class="current-label">Current saved values:</div>
+  <div class="current-value" id="currentDisplay">loading…</div>
+
+  <script src="options.js"></script>
+</body>
+</html>

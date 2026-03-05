@@ -56,6 +56,12 @@ export default function App() {
         <Route path="/tv-fullscreen" element={<TVFullscreen />} />
 
         {/* ========================= */}
+        {/* PUBLIC TV DASHBOARD       */}
+        {/* kiosk-ready, no auth      */}
+        {/* ========================= */}
+        <Route path="/tv-dashboard" element={<TVDashboard />} />
+
+        {/* ========================= */}
         {/* AUTHENTICATED ONLY        */}
         {/* ========================= */}
         <Route element={<ProtectedRoute />}>
@@ -133,14 +139,7 @@ export default function App() {
               element={<Navigate to="/dashboard" replace />}
             />
 
-            <Route
-              path="tv-dashboard"
-              element={
-                <PageGuard pageKey="tv_dashboard">
-                  <TVDashboard />
-                </PageGuard>
-              }
-            />
+            {/* tv-dashboard is public — handled above outside ProtectedRoute */}
 
             {/* Tools */}
             <Route

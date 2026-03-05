@@ -3,6 +3,10 @@
 The crawler is a Chrome MV3 extension that scrapes the OES/Jarvis ticket queue and
 posts snapshots to the ODIN backend via `POST /api/queue/snapshot`.
 
+The target URL is **fully configurable** — no hardcoded values in code.  
+Default (local dev): `http://localhost:8001`  
+Production VM: `http://fr2lxcops01.corp.equinix.com:8080`
+
 ---
 
 ## 1. Load the Extension in Chrome
@@ -19,7 +23,20 @@ posts snapshots to the ODIN backend via `POST /api/queue/snapshot`.
 The crawler reads its backend URL and authentication key from **Chrome local storage**
 (not from hardcoded values). You must set these once per browser profile.
 
-### Via Chrome DevTools Console (easiest)
+### Option A — Extension Options Page (recommended)
+
+1. Open **chrome://extensions**
+2. Find **OES Jarvis Crawler** → click **Extension options** (or right-click the icon → Options)
+3. Set **ODIN Server URL**:
+   - Local dev: `http://localhost:8001`
+   - VM (Portainer/Podman on port 8080): `http://fr2lxcops01.corp.equinix.com:8080`
+   - VM via Reverse Proxy (no port): `http://fr2lxcops01.corp.equinix.com`
+4. Set **Ingest Key** — must match `QUEUE_INGEST_KEY` in ODIN's `.env` / Portainer env
+5. Click **Save** — changes take effect on the next scrape cycle (≤1 minute)
+
+Quick-select buttons for common environments are available on the Options page.
+
+### Option B — Chrome DevTools Console
 
 1. Open any tab in Chrome
 2. Press **F12** → go to the **Console** tab
@@ -27,8 +44,8 @@ The crawler reads its backend URL and authentication key from **Chrome local sto
 
 ```js
 chrome.storage.local.set({
-  odin_base_url:  "http://<VM_IP>:8001",   // e.g. "http://192.168.1.50:8001"
-  odin_ingest_key: "<YOUR_INGEST_KEY>"      // value of QUEUE_INGEST_KEY in .env
+  odin_base_url:   "http://fr2lxcops01.corp.equinix.com:8080",
+  odin_ingest_key: "<YOUR_INGEST_KEY>"   // value of QUEUE_INGEST_KEY in .env
 });
 ```
 
@@ -36,10 +53,10 @@ chrome.storage.local.set({
 
 ```js
 chrome.storage.local.get(["odin_base_url", "odin_ingest_key"], console.log);
-// → {odin_base_url: "http://192.168.1.50:8001", odin_ingest_key: "..."}
+// → {odin_base_url: "http://fr2lxcops01.corp.equinix.com:8080", odin_ingest_key: "..."}
 ```
 
-### Via the Extension's Service Worker Console
+### Option C — Service Worker Console
 
 1. Open **chrome://extensions**
 2. Find **OES Jarvis Crawler** → click **Service Worker** (inspect)
@@ -49,14 +66,26 @@ chrome.storage.local.get(["odin_base_url", "odin_ingest_key"], console.log);
 
 ## 3. Local Development (no VM)
 
-For local development with the backend running on port 5055:
+For local development with the ODIN backend on port 8001 (default):
 
 ```js
 chrome.storage.local.set({
-  odin_base_url:  "http://localhost:5055",
-  odin_ingest_key: "CHANGE_ME_DEV_KEY"
+  odin_base_url:   "http://localhost:8001",
+  odin_ingest_key: "CHANGE_ME"
 });
 ```
+
+Alternate port 5055 / legacy proxy:
+
+```js
+chrome.storage.local.set({
+  odin_base_url:   "http://localhost:5055",
+  odin_ingest_key: "CHANGE_ME"
+});
+```
+
+If neither key is set in storage, the extension defaults to `http://localhost:8001` with
+ingest key `CHANGE_ME`.
 
 ---
 
@@ -69,6 +98,17 @@ chrome.runtime.sendMessage({ type: "OES_UPLOAD_SNAPSHOT" });
 ```
 
 Or use the extension popup / keyboard shortcut if the extension registers one.
+
+---
+
+## 4b. Storage Keys Reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `odin_base_url` | `http://localhost:8001` | ODIN backend base URL (no trailing slash) |
+| `odin_ingest_key` | `CHANGE_ME` | Value of `QUEUE_INGEST_KEY` in ODIN `.env` |
+
+The ingest endpoint is always: `<odin_base_url>/api/queue/snapshot`
 
 ---
 
@@ -90,23 +130,42 @@ Then set it in both places:
 
 ---
 
-## 6. Troubleshooting
+## 6. Supported Host Permissions
+
+The extension's `manifest.json` pre-authorises the following targets:
+
+| URL | Use case |
+|-----|----------|
+| `http://localhost:8001` | Local ODIN backend (default) |
+| `http://localhost:5055` | Local ODIN backend (alternate port) |
+| `http://127.0.0.1:8001` | Local (loopback alias) |
+| `http://127.0.0.1:5055` | Local (loopback alias, alternate) |
+| `http://localhost:8000` | Local ODIN frontend proxy |
+| `http://fr2lxcops01.corp.equinix.com` | Production VM (reverse proxy / no port) |
+| `http://fr2lxcops01.corp.equinix.com:8080` | Production VM (Portainer mapped port) |
+| `http://fr2lxcops01.corp.equinix.com:8001` | Production VM (direct backend port) |
+
+If you point the crawler at a different host/port, add it to `host_permissions` in
+`manifest.json` and reload the extension.
+
+---
+
+## 7. CORS
+
+The ODIN backend (`backend/server.js`) already allows `chrome-extension://*` origins
+globally. No additional CORS configuration is needed on the server side.
+
+---
+
+## 8. Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
-| `401 Unauthorized` from backend | Ingest key mismatch — re-run step 2 |
-| `ERR_CONNECTION_REFUSED` | VM IP wrong or backend not running — `podman compose ps` |
-| `net::ERR_BLOCKED_BY_CLIENT` | Check `manifest.json` `host_permissions` includes the VM IP/port |
+| `401 Unauthorized` | Ingest key mismatch — check Options page or storage values |
+| `403 Forbidden` | Ingest key missing or wrong — verify `QUEUE_INGEST_KEY` on server |
+| `ERR_CONNECTION_REFUSED` | Wrong URL or backend not running — `podman compose ps` on VM |
+| `net::ERR_BLOCKED_BY_CLIENT` | URL not in `manifest.json` `host_permissions` — add and reload |
+| `Invalid odin_base_url` in service worker log | URL does not start with `http://` or `https://` |
 | Snapshot posts but queue unchanged | OES page not open or session expired — re-login to OES |
 
-For `host_permissions`, the extension currently allows:
-
-```
-http://127.0.0.1:5055/*
-http://127.0.0.1:8001/*
-http://localhost:5055/*
-http://localhost:8001/*
-```
-
-If your VM has a different IP, add it to `manifest.json → host_permissions` and reload
-the extension.
+Inspect service worker logs: **chrome://extensions** → OES Jarvis Crawler → **Service Worker** (inspect) → Console.

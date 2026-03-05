@@ -92,7 +92,13 @@ check_field "Ready.ready=true"       "$BACKEND/api/health/ready"  "ready"    "tr
 section "2. Database Connectivity"
 check_field "DB status via ready"    "$BACKEND/api/health/ready"  "database" "ok"
 
-section "3. Auth-gated endpoints return 401 (not 500/crash)"
+section "3. TV Public Endpoints (kiosk – NO auth required)"
+check_json  "TV health (no auth)"      "$BACKEND/api/tv/health"
+check_field "TV health.status=ok"      "$BACKEND/api/tv/health"   "status"   "ok"
+check_json  "TV tickets (no auth)"     "$BACKEND/api/tv/tickets"
+check_json  "TV info-entries (no auth)" "$BACKEND/api/tv/info-entries"
+
+section "4. Auth-gated endpoints return 401 (not 500/crash)"
 check_json "dashboard/info"          "$BACKEND/api/dashboard/info"            401
 check_json "schedules"               "$BACKEND/api/schedules"                 401
 check_json "projects"                "$BACKEND/api/projects"                  401
@@ -102,24 +108,24 @@ check_json "handover"                "$BACKEND/api/handover"                  40
 check_json "schedules/last-upload"   "$BACKEND/api/schedules/last-upload"     401
 check_json "commit/latest"           "$BACKEND/api/commit/latest"             401
 
-section "4. Frontend SPA"
+section "5. Frontend SPA"
 check_html "Frontend root"           "$FRONTEND/"
 check_html "Frontend /login"         "$FRONTEND/login"
 check_html "Frontend /dashboard"     "$FRONTEND/dashboard"
 check_html "Frontend /dbs"           "$FRONTEND/dbs"
 
-section "5. Frontend -> Backend proxy"
+section "6. Frontend -> Backend proxy"
 check_json  "Frontend /api/health"   "$FRONTEND/api/health"
 check_field "Frontend proxy working" "$FRONTEND/api/health"        "backend"  "ok"
 
-section "6. SSE endpoint"
+section "7. SSE endpoint"
 http_sse=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$BACKEND/api/sse" 2>/dev/null || echo "000")
 [ "$http_sse" = "401" ] && pass "SSE no-auth -> 401 (correct)" || { [ "$http_sse" = "000" ] && fail "SSE -> connection refused" || warn "SSE -> HTTP $http_sse (expected 401)"; }
 
 http_sse_bad=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$BACKEND/api/sse?token=bogus" 2>/dev/null || echo "000")
 [ "$http_sse_bad" = "401" ] && pass "SSE invalid-token -> 401 (correct)" || warn "SSE invalid-token -> HTTP $http_sse_bad (expected 401)"
 
-section "7. Teams endpoint (optional)"
+section "8. Teams endpoint (optional)"
 http_teams=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$BACKEND/api/teams/log" 2>/dev/null || echo "000")
 if [ "$http_teams" = "401" ] || [ "$http_teams" = "200" ]; then
   pass "Teams log -> HTTP $http_teams (no crash)"
