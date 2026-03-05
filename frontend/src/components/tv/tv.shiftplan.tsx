@@ -11,17 +11,17 @@ import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "
 /* SHIFT COLORS                                     */
 /* ------------------------------------------------ */
 const SHIFT_COLORS = {
-  // Frühschicht → Yellow
+  // Frühschicht → Orange
   early: {
-    header: "border-yellow-400/40 shadow-[0_2px_12px_rgba(250,204,21,0.12)]",
-    badge: "bg-yellow-400 text-black",
-    title: "text-amber-400",
-  },
-  // Spätschicht → Orange
-  late: {
     header: "border-orange-400/40 shadow-[0_2px_12px_rgba(251,146,60,0.12)]",
     badge: "bg-orange-400 text-black",
     title: "text-orange-400",
+  },
+  // Spätschicht → Yellow
+  late: {
+    header: "border-yellow-400/40 shadow-[0_2px_12px_rgba(250,204,21,0.12)]",
+    badge: "bg-yellow-400 text-black",
+    title: "text-amber-400",
   },
   // Nachtschicht → Blue
   night: {

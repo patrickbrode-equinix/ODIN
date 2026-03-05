@@ -58,7 +58,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: odin-backend:prod
+    image: localhost/odin-backend:prod
     container_name: odin-backend
     restart: unless-stopped
     ports:
@@ -99,7 +99,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: "/api"
-    image: odin-frontend:prod
+    image: localhost/odin-frontend:prod
     container_name: odin-frontend
     restart: unless-stopped
     ports:
