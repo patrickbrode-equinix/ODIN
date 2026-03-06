@@ -193,10 +193,6 @@ app.use("/api/teams", teamsRoutes);
 // Events (photos for TV slide, auth-protected upload)
 app.use("/api/events", eventsRoutes);
 
-// 27. New Starters / Probation Management
-import newStartersRoutes from "./routes/newStarters.js";
-app.use("/api/new-starters", newStartersRoutes);
-
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */
 /* Catches express.json() SyntaxError (malformed    */
