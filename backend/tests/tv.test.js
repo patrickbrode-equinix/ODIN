@@ -100,6 +100,17 @@ function createTvRouter(mockQuery) {
     }
   });
 
+  router.get("/events/images", async (_req, res) => {
+    try {
+      const result = await mockQuery(
+        `SELECT id, filename, original_name, url_path, created_at FROM events_images ORDER BY created_at DESC`
+      );
+      res.json(result.rows);
+    } catch (err) {
+      res.json([]); // never 500 for TV
+    }
+  });
+
   return router;
 }
 
@@ -319,6 +330,47 @@ describe("GET /api/tv/* — public kiosk endpoints", () => {
   test("GET /api/tv/schedules/today requires NO auth token", async () => {
     mockQuery = async () => ({ rows: [] });
     const res = await fetch(`${baseUrl}/api/tv/schedules/today`, { headers: {} });
+    assert.strictEqual(res.status, 200);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* /api/tv/events/images                                             */
+  /* ---------------------------------------------------------------- */
+  test("GET /api/tv/events/images → 200 + [] (empty DB)", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/events/images`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body), "response should be an array");
+    assert.strictEqual(body.length, 0);
+  });
+
+  test("GET /api/tv/events/images → 200 + image rows", async () => {
+    const fakeImages = [
+      { id: 1, filename: "img1.jpg", original_name: "party.jpg", url_path: "/uploads/events/img1.jpg", created_at: "2026-01-01T12:00:00Z" },
+      { id: 2, filename: "img2.png", original_name: "team.png",  url_path: "/uploads/events/img2.png",  created_at: "2026-01-02T12:00:00Z" },
+    ];
+    mockQuery = async () => ({ rows: fakeImages });
+    const res = await fetch(`${baseUrl}/api/tv/events/images`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body));
+    assert.strictEqual(body.length, 2);
+    assert.strictEqual(body[0].url_path, "/uploads/events/img1.jpg");
+    assert.strictEqual(body[1].url_path, "/uploads/events/img2.png");
+  });
+
+  test("GET /api/tv/events/images → 200 (not 500) when DB throws", async () => {
+    mockQuery = async () => { throw new Error("DB error"); };
+    const res = await fetch(`${baseUrl}/api/tv/events/images`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body) && body.length === 0);
+  });
+
+  test("GET /api/tv/events/images requires NO auth token", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/events/images`, { headers: {} });
     assert.strictEqual(res.status, 200);
   });
 });

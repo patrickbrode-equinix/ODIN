@@ -43,6 +43,7 @@ import appSettingsRoutes from "./routes/appSettings.js";
 import sseRoutes from "./routes/sse.js";
 import teamsRoutes from "./routes/teams.js";
 import tvRoutes from "./routes/tv.js";
+import eventsRoutes from "./routes/events.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -90,6 +91,12 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: "50mb" }));
+
+/* ------------------------------------------------ */
+/* STATIC FILES                                     */
+/* Serve /uploads/* directly (images etc.)          */
+/* ------------------------------------------------ */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ------------------------------------------------ */
 /* ROUTES                                           */
@@ -182,6 +189,9 @@ app.use("/api/projects", projectsRoutes);
 app.use("/api/app-settings", appSettingsRoutes);
 app.use("/api/sse", sseRoutes);
 app.use("/api/teams", teamsRoutes);
+
+// Events (photos for TV slide, auth-protected upload)
+app.use("/api/events", eventsRoutes);
 
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */

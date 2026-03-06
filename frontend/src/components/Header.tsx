@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload } from "lucide-react";
+import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload, Camera, Trash2 } from "lucide-react";
 
 import { api } from "../api/api";
 import { useTheme } from "./ThemeProvider";
@@ -184,11 +184,133 @@ function ClockDisplay() {
 }
 
 /* ---------------------------------------------------- */
+/* EVENTS PANEL (upload + manage event photos)          */
+/* ---------------------------------------------------- */
+
+function EventsPanel() {
+  const [images, setImages] = useState<Array<{
+    id: number;
+    url_path: string;
+    original_name?: string;
+    filename: string;
+    created_at: string;
+  }>>([]);
+  const [uploading, setUploading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = async () => {
+    try {
+      const res = await api.get("/events/images");
+      setImages(Array.isArray(res.data) ? res.data : []);
+      setLoadError(null);
+    } catch {
+      setLoadError("Bilder konnten nicht geladen werden.");
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleUpload = async (files: FileList) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      for (const f of Array.from(files)) form.append("images", f);
+      await api.post("/events/images", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await load();
+    } catch {
+      alert("Upload fehlgeschlagen.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Bild löschen?")) return;
+    try {
+      await api.delete(`/events/images/${id}`);
+      setImages(prev => prev.filter(i => i.id !== id));
+    } catch {
+      alert("Löschen fehlgeschlagen.");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Upload trigger */}
+      <div>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={e => {
+            if (e.target.files) handleUpload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-sm font-semibold transition disabled:opacity-60"
+        >
+          <Upload className="w-4 h-4" />
+          {uploading ? "Wird hochgeladen..." : "Bilder hochladen"}
+        </button>
+        <p className="text-[11px] text-muted-foreground mt-1">JPG, PNG, WebP, GIF · max. 20 MB pro Datei</p>
+      </div>
+
+      {loadError && <p className="text-red-400 text-sm">{loadError}</p>}
+
+      {/* Image list */}
+      {images.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+          <Camera className="w-12 h-12 opacity-20" />
+          <p className="text-sm">Keine Event-Bilder vorhanden</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {images.map(img => (
+            <div
+              key={img.id}
+              className="relative rounded-xl overflow-hidden border border-white/10 bg-white/5 group"
+            >
+              <img
+                src={img.url_path}
+                alt={img.original_name ?? img.filename}
+                className="w-full h-28 object-cover"
+                loading="lazy"
+              />
+              <div className="flex items-center justify-between px-2 py-1.5 gap-1">
+                <span className="text-[11px] text-slate-400 truncate">
+                  {img.original_name ?? img.filename}
+                </span>
+                <button
+                  onClick={() => handleDelete(img.id)}
+                  className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition"
+                  title="Löschen"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- */
 /* INFOS MODAL                                         */
 /* ---------------------------------------------------- */
 
 function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [mode, setMode] = useState<"instructions" | "projects">("instructions");
+  const [mode, setMode] = useState<"instructions" | "projects" | "events">("instructions");
 
   if (!open) return null;
   return (
@@ -220,6 +342,17 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               >
                 Projekte
               </button>
+              <button
+                onClick={() => setMode("events")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
+                  mode === "events"
+                    ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Camera className="w-3 h-3" />
+                Events
+              </button>
             </div>
           </div>
           <button
@@ -232,8 +365,10 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div className="flex-1 overflow-auto p-4 min-h-0">
           {mode === "instructions" ? (
             <DashboardInfoBar />
-          ) : (
+          ) : mode === "projects" ? (
             <ProjectsPanel />
+          ) : (
+            <EventsPanel />
           )}
         </div>
       </div>

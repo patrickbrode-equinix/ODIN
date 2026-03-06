@@ -11,12 +11,12 @@ import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
 import type { DashboardInfoEntry } from "../../api/dashboard";
-import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera } from "lucide-react";
 import { api } from "../../api/api";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
-const SLIDE_COUNT = 5;
+const SLIDE_COUNT = 6;
 const AUTO_ROTATE_MS = 10_000; // 10 seconds – adjustable TV default
 const PAUSE_AFTER_MANUAL_MS = 60_000;
 
@@ -131,6 +131,17 @@ function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; ico
 }
 
 /* ------------------------------------------------ */
+/* HELPER: project glow by progress %               */
+/* ------------------------------------------------ */
+function getProjectGlow(progress: number): string {
+  const p = Math.min(100, Math.max(0, progress));
+  if (p <= 25) return "shadow-[0_0_20px_3px_rgba(239,68,68,0.45)] border-red-500/40";
+  if (p <= 50) return "shadow-[0_0_20px_3px_rgba(249,115,22,0.45)] border-orange-500/40";
+  if (p <= 75) return "shadow-[0_0_20px_3px_rgba(21,128,61,0.5)] border-green-700/40";
+  return "shadow-[0_0_20px_3px_rgba(134,239,172,0.45)] border-green-400/40";
+}
+
+/* ------------------------------------------------ */
 /* PROJEKTE SLIDE (read-only, TV-optimiert)          */
 /* ------------------------------------------------ */
 
@@ -194,7 +205,7 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
                 return (
                   <div
                     key={p.id}
-                    className="flex flex-col gap-3 px-5 py-4 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border border-blue-500/25 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                    className={`flex flex-col gap-3 px-5 py-4 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border ${getProjectGlow(p.progress)}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-bold text-lg text-slate-100 leading-snug">{p.name}</h3>
@@ -264,49 +275,53 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
 
 /* ------------------------------------------------ */
 /* INFO & ANWEISUNGEN SLIDE                         */
+/* Full-width list, glow by type                    */
 /* ------------------------------------------------ */
 function InfoAnweisungenSlide({ entries }: { entries: DashboardInfoEntry[] }) {
-  const anweisungen = entries.filter(e => (e as any).type === "Anweisung" || (e as any).category === "Anweisung");
-  const infos = entries.filter(e => (e as any).type !== "Anweisung" && (e as any).category !== "Anweisung");
+  // DB values: 'instruction' | 'info'
+  const anweisungen = entries.filter(e => e.type === "instruction");
+  const infos = entries.filter(e => e.type !== "instruction");
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* ANWEISUNGEN – aggressive red styling */}
+      <div className="w-full space-y-4">
+
+        {/* ANWEISUNGEN – red glow, full-width */}
         {anweisungen.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
               <Megaphone className="w-5 h-5 text-red-400 animate-pulse" />
               <h2 className="text-xl font-black tracking-wide uppercase text-red-500 animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]">Anweisungen</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {anweisungen.map((e) => (
-                <div key={e.id} className="group relative flex flex-col gap-2 px-5 py-4 rounded-xl bg-[#0f111a] border border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.25)] overflow-hidden">
-                  {/* Internal Glow */}
-                  <div className="absolute inset-0 bg-red-500/10 pointer-events-none animate-pulse" />
-                  <div className="flex items-start gap-3 relative z-10">
-                    <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
-                    <p className="font-extrabold text-lg text-red-100 leading-snug tracking-wide">{e.content}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {anweisungen.map((e) => (
+              <div
+                key={e.id}
+                className="relative w-full flex items-start gap-4 px-6 py-5 rounded-2xl bg-[#120808] border border-red-500/60 shadow-[0_0_26px_4px_rgba(239,68,68,0.48)] overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-red-500/8 pointer-events-none" />
+                <span className="shrink-0 mt-0.5 px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-[11px] font-black uppercase tracking-wider relative z-10">Anweisung</span>
+                <AlertTriangle className="w-6 h-6 text-red-400 shrink-0 mt-0.5 relative z-10" />
+                <p className="font-extrabold text-2xl text-red-50 leading-snug tracking-wide relative z-10">{e.content}</p>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* INFORMATIONEN – soft blue */}
+        {/* INFORMATIONEN – blue glow, full-width */}
         {infos.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-2xl font-black tracking-wide uppercase text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]">Informationen</h2>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-xl font-black tracking-wide uppercase text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]">Informationen</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
-              {infos.map((e) => (
-                <div key={e.id} className="flex flex-col gap-2 px-6 py-5 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border border-blue-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                  <p className="text-2xl font-bold text-blue-50 leading-relaxed tracking-wide">{e.content}</p>
-                </div>
-              ))}
-            </div>
+            {infos.map((e) => (
+              <div
+                key={e.id}
+                className="w-full flex items-start gap-4 px-6 py-5 rounded-2xl bg-[#0a0f1e]/90 backdrop-blur-md border border-blue-500/55 shadow-[0_0_26px_4px_rgba(59,130,246,0.45),inset_0_1px_0_rgba(255,255,255,0.05)]"
+              >
+                <span className="shrink-0 mt-0.5 px-2.5 py-1 rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-300 text-[11px] font-black uppercase tracking-wider">Info</span>
+                <p className="text-2xl font-bold text-blue-50 leading-relaxed tracking-wide">{e.content}</p>
+              </div>
+            ))}
           </div>
         )}
 
@@ -317,6 +332,86 @@ function InfoAnweisungenSlide({ entries }: { entries: DashboardInfoEntry[] }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------ */
+/* EVENTS SLIDE                                     */
+/* Shows event photos full-screen with slideshow    */
+/* ------------------------------------------------ */
+
+interface EventImage {
+  id: number;
+  filename: string;
+  original_name?: string;
+  url_path: string;
+  created_at: string;
+}
+
+function EventsSlide() {
+  const [images, setImages] = useState<EventImage[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch("/api/tv/events/images");
+        const data = res.ok ? await res.json() : [];
+        const imgs = Array.isArray(data) ? data : [];
+        setImages(imgs);
+        setCurrentIdx(0);
+      } catch {
+        setImages([]);
+      }
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Auto-advance within events slide (every 10 s)
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const id = setInterval(() => setCurrentIdx(i => (i + 1) % images.length), 10_000);
+    return () => clearInterval(id);
+  }, [images.length]);
+
+  if (images.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-6 text-muted-foreground">
+        <Camera className="w-20 h-20 opacity-20" />
+        <p className="text-2xl font-semibold">Keine Events vorhanden</p>
+      </div>
+    );
+  }
+
+  const img = images[currentIdx];
+
+  return (
+    <div className="h-full relative flex items-center justify-center bg-black">
+      <img
+        key={img.id}
+        src={img.url_path}
+        alt={img.original_name ?? img.filename}
+        className="max-h-full max-w-full object-contain animate-in fade-in duration-500"
+      />
+      {images.length > 1 && (
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentIdx(i)}
+              className={`w-3 h-3 rounded-full transition-all ${
+                i === currentIdx
+                  ? "bg-cyan-400 scale-125 shadow-[0_0_6px_rgba(0,216,255,0.8)]"
+                  : "bg-white/30 hover:bg-white/55"
+              }`}
+              aria-label={`Bild ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -517,6 +612,7 @@ export function TvLayout({
     { title: "Nächste 72 Stunden", icon: AlertTriangle },
     { title: "Handover", icon: ArrowRightLeft },
     { title: "Projekte", icon: FolderKanban },
+    { title: "Events", icon: Camera },
   ];
 
   return (
@@ -603,6 +699,9 @@ export function TvLayout({
 
         {/* SLIDE 5: Projekte */}
         {currentSlide === 4 && <ProjekteSlide projects={projects} />}
+
+        {/* SLIDE 6: Events */}
+        {currentSlide === 5 && <EventsSlide />}
       </div>
 
       {/* SLIDE NAVIGATION */}

@@ -183,6 +183,24 @@ router.get("/schedules/today", async (_req, res) => {
 });
 
 /* ------------------------------------------------ */
+/* GET /api/tv/events/images                        */
+/* Public read-only events images for TV kiosk.    */
+/* ------------------------------------------------ */
+router.get("/events/images", async (_req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, filename, original_name, url_path, created_at
+       FROM events_images
+       ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("[TV] /events/images error:", err.message);
+    res.json([]); // never 500 for TV
+  }
+});
+
+/* ------------------------------------------------ */
 /* GET /api/tv/handover                             */
 /* Public read-only handover list for TV kiosk.    */
 /* Only non-completed items are returned.           */
