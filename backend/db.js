@@ -6,7 +6,20 @@
 // NOTE: do NOT add "import dotenv/config" here — config/index.js handles it.
 import { config } from "./config/index.js";
 import pkg from "pg";
-const { Pool } = pkg;
+const { Pool, types } = pkg;
+
+/*
+ * TIMEZONE FIX – OID 1114 = TIMESTAMP WITHOUT TIME ZONE
+ *
+ * Problem: parseAnyDateToIso() stores dates as UTC ISO strings (via toISOString()).
+ * Postgres strips the 'Z' when inserting into TIMESTAMP columns, so it stores
+ * the UTC face value (e.g. "13:00:00" for a 14:00 CET commit).
+ * By default, pg reads TIMESTAMP values back as LOCAL time, which means
+ * new Date("2026-03-06 13:00:00") = local 13:00 CET = UTC 12:00 → 1 h too early.
+ *
+ * Fix: tell pg to treat TIMESTAMP face values as UTC (matching storage convention).
+ */
+types.setTypeParser(1114, val => val === null ? null : new Date(val.replace(' ', 'T') + 'Z'));
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Pool configuration: DATABASE_URL preferred, db.* fallback                  */

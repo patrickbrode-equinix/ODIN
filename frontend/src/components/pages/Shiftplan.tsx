@@ -55,6 +55,7 @@ import { fetchAbsences, fetchAbsenceConflicts, Absence, AbsenceConflict, createA
 import { fetchConstraints, fetchViolations as fetchConstraintViolations, EmployeeConstraints, ConstraintViolation } from "../../api/constraints";
 import { ConstraintDialog } from "../shiftplan/ConstraintDialog";
 import { RamadanBadge } from "../shiftplan/RamadanBadge"; // [NEW]
+import { NewStartersTab } from "../shiftplan/NewStartersTab"; // [NEW] Neustarter
 import { getShiftplanPreferences, updateShiftplanPreferences } from "../../api/userPreferences";
 import { generateReport, downloadReport } from "../../api/reports"; // [NEW]
 import { fetchRamadanMeta, fetchSunTimes, RamadanMeta, SunTime } from "../../api/ramadan"; // [NEW]
@@ -85,6 +86,9 @@ export default function Shiftplan() {
 
   // View mode: month (default) or full-year overview
   const [viewMode, setViewMode] = useState<"month" | "year">("month");
+
+  // Main section tab: shiftplan or new starters
+  const [mainView, setMainView] = useState<"plan" | "neustarter">("plan");
 
   const [schedule, setSchedule] = useState<Record<string, any>>({});
   const [daysInMonth, setDaysInMonth] = useState<number>(31);
@@ -896,6 +900,35 @@ export default function Shiftplan() {
         }
       />
 
+      {/* VIEW TABS */}
+      <EnterpriseCard className="!py-2 !px-3 bg-black/20" noPadding={false}>
+        <div className="flex items-center gap-1">
+          {(["plan", "neustarter"] as const).map(view => {
+            const labels: Record<string, string> = { plan: "Schichtplan", neustarter: "Neustarter" };
+            const active = view === mainView;
+            return (
+              <button
+                key={view}
+                onClick={() => setMainView(view)}
+                className={`
+                  px-4 py-1.5 text-[11px] rounded-md transition-all font-bold uppercase tracking-wider
+                  whitespace-nowrap border
+                  ${active
+                    ? "bg-indigo-600/90 text-white shadow-sm border-indigo-500"
+                    : "text-muted-foreground/50 border-white/5 bg-white/5 hover:bg-white/10"
+                  }
+                `}
+              >
+                {labels[view]}
+              </button>
+            );
+          })}
+        </div>
+      </EnterpriseCard>
+
+      {/* ── PLAN VIEW ── */}
+      {mainView === "plan" && (<>
+
       {/* MONTH NAVIGATION */}
       <EnterpriseCard className="flex items-center justify-center relative !py-2 !px-4 bg-black/20" noPadding={false}>
         <div className="absolute left-4 flex items-center gap-2 p-1 rounded-md bg-white/5 border border-white/10">
@@ -1093,6 +1126,15 @@ export default function Shiftplan() {
           </div>
         )}
       </EnterpriseCard>
+
+      </>)}
+
+      {/* ── NEUSTARTER VIEW ── */}
+      {mainView === "neustarter" && (
+        <EnterpriseCard noPadding={false} className="flex-1 min-h-0" style={{ minHeight: "60vh" }}>
+          <NewStartersTab />
+        </EnterpriseCard>
+      )}
 
       {/* EDIT DIALOG */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
