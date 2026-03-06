@@ -168,19 +168,6 @@ interface TvProject {
   created_at: string;
 }
 
-function ProgressBarTv({ progress }: { progress: number }) {
-  const pct = Math.min(100, Math.max(0, progress));
-  const color =
-    pct >= 100 ? "bg-green-500" :
-    pct >= 60 ? "bg-blue-500" :
-    pct >= 30 ? "bg-yellow-500" : "bg-red-500";
-  return (
-    <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
-
 function ProjekteSlide({ projects }: { projects: TvProject[] }) {
   if (projects.length === 0) {
     return (
@@ -196,48 +183,61 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-4">
         {/* AKTIVE PROJEKTE */}
         {active.length > 0 && (
-          <div>
-            <h2 className="text-xl font-black tracking-wide uppercase text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)] mb-4">
-              Aktive Projekte
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {active.map(p => {
-                const daysLeft = p.expected_done
-                  ? Math.ceil((new Date(p.expected_done).getTime() - Date.now()) / 86400000)
-                  : null;
-                const daysColor =
-                  daysLeft === null ? "text-slate-500"
-                  : daysLeft < 0 ? "text-red-400"
-                  : daysLeft < 7 ? "text-orange-400"
-                  : "text-slate-300";
-                return (
-                  <div
-                    key={p.id}
-                    className={`flex flex-col gap-3 px-5 py-4 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border ${getProjectGlow(p.progress)}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-bold text-lg text-slate-100 leading-snug">{p.name}</h3>
-                      <span className="text-lg font-black text-blue-300 shrink-0">{p.progress}%</span>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FolderKanban className="w-5 h-5 text-blue-400" />
+              <h2 className="text-xl font-black tracking-wide uppercase text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]">
+                Aktive Projekte
+              </h2>
+            </div>
+            {active.map(p => {
+              const daysLeft = p.expected_done
+                ? Math.ceil((new Date(p.expected_done).getTime() - Date.now()) / 86400000)
+                : null;
+              const daysColor =
+                daysLeft === null ? "text-slate-500"
+                : daysLeft < 0 ? "text-red-400"
+                : daysLeft < 7 ? "text-orange-400"
+                : "text-slate-300";
+              return (
+                <div
+                  key={p.id}
+                  className={`w-full flex items-start gap-6 px-6 py-5 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border ${getProjectGlow(p.progress)}`}
+                >
+                  {/* Left: Progress badge */}
+                  <span className="shrink-0 mt-0.5 px-3 py-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 text-lg font-black tabular-nums min-w-[4rem] text-center">
+                    {p.progress}%
+                  </span>
+
+                  {/* Center: Content */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <h3 className="font-bold text-2xl text-slate-100 leading-snug tracking-wide">{p.name}</h3>
+
+                    <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          p.progress >= 76 ? "bg-green-400" : p.progress >= 51 ? "bg-green-600" : p.progress >= 26 ? "bg-orange-500" : "bg-red-500"
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }}
+                      />
                     </div>
 
-                    <ProgressBarTv progress={p.progress} />
-
-                    <div className="flex flex-wrap gap-3 text-[13px] text-slate-400">
+                    <div className="flex flex-wrap items-center gap-4 text-base text-slate-400">
                       {p.responsible && (
                         <span className="flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5 text-slate-500" />
+                          <User className="w-4 h-4 text-slate-500" />
                           {p.responsible}
                         </span>
                       )}
                       {p.expected_done && (
                         <span className={`flex items-center gap-1.5 ${daysColor}`}>
-                          <Calendar className="w-3.5 h-3.5" />
+                          <Calendar className="w-4 h-4" />
                           {new Date(p.expected_done).toLocaleDateString("de-DE")}
                           {daysLeft !== null && (
-                            <span className="text-[12px]">
+                            <span className="text-sm">
                               ({daysLeft < 0 ? `${Math.abs(daysLeft)}d überfällig` : daysLeft === 0 ? "heute" : `noch ${daysLeft}d`})
                             </span>
                           )}
@@ -246,37 +246,36 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
                     </div>
 
                     {p.description && (
-                      <p className="text-[13px] text-slate-400 line-clamp-2">{p.description}</p>
+                      <p className="text-base text-slate-400 leading-relaxed">{p.description}</p>
                     )}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* ABGESCHLOSSENE PROJEKTE */}
         {done.length > 0 && (
-          <div>
-            <h2 className="text-xl font-black tracking-wide uppercase text-green-400 drop-shadow-[0_0_6px_rgba(34,197,94,0.4)] mb-4">
-              Abgeschlossen
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {done.map(p => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-950/20 border border-green-500/20"
-                >
-                  <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-green-100 truncate">{p.name}</p>
-                    {p.responsible && (
-                      <p className="text-[12px] text-slate-400 truncate">{p.responsible}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="w-5 h-5 text-green-400" />
+              <h2 className="text-xl font-black tracking-wide uppercase text-green-400 drop-shadow-[0_0_6px_rgba(34,197,94,0.4)]">
+                Abgeschlossen
+              </h2>
             </div>
+            {done.map(p => (
+              <div
+                key={p.id}
+                className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl bg-green-950/20 border border-green-500/20"
+              >
+                <CheckCircle2 className="w-6 h-6 text-green-400 shrink-0" />
+                <p className="font-semibold text-xl text-green-100">{p.name}</p>
+                {p.responsible && (
+                  <span className="text-base text-slate-400 ml-auto">{p.responsible}</span>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
