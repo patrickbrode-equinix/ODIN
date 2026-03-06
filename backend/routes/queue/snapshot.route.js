@@ -32,10 +32,20 @@ function requireIngestKey(req, res) {
     return true;
   }
 
-  const got = String(req.header("X-OES-INGEST-KEY") || "").trim();
+  const rawHeader = req.header("X-OES-INGEST-KEY");
+  const got = String(rawHeader || "").trim();
+  const missingHeader = rawHeader === undefined || rawHeader === null || String(rawHeader).trim() === "";
   if (!got || got !== expected) {
-    console.warn(`[SEC] Invalid ingest key from ${req.ip}`);
-    res.status(401).json({ ok: false, error: "Unauthorized ingest" });
+    console.warn(
+      `[SEC] Ingest key rejected — ip=${req.ip} missingHeader=${missingHeader} receivedLen=${got.length} expectedLen=${expected.length}`
+    );
+    res.status(401).json({
+      ok: false,
+      error: "Unauthorized ingest",
+      missingHeader,
+      headerKeyLength: got.length,
+      expectedKeySet: !!expected,
+    });
     return false;
   }
   return true;

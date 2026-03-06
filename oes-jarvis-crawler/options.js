@@ -3,7 +3,7 @@
 // MV3 Options Page logic
 // ==============================
 
-const DEFAULT_BASE_URL = "http://localhost:8001";
+const DEFAULT_BASE_URL = "http://fr2lxcops01.corp.equinix.com:8001";
 const STORAGE_KEY_URL  = "odin_base_url";
 const STORAGE_KEY_KEY  = "odin_ingest_key";
 
@@ -18,7 +18,7 @@ function setStatus(msg, isError = false) {
 
 function refreshDisplay(url, key) {
   const u = url || DEFAULT_BASE_URL + " (default)";
-  const k = key ? "●●●●●●●● (set)" : "(using default — CHANGE_ME)";
+  const k = key ? `●●●●●●●● (set, ${key.length} chars)` : "(using default — CHANGE_ME)";
   $("currentDisplay").textContent = `URL: ${u}   |   Key: ${k}`;
 }
 

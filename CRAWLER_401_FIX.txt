@@ -1,0 +1,156 @@
+================================================================================
+CRAWLER 401 FIX — Änderungsprotokoll
+Datum: 06.03.2026
+================================================================================
+
+GEFUNDENE FEHLER
+--------------------------------------------------------------------------------
+
+FEHLER 1 — background.js (Extension)
+  Ort   : oes-jarvis-crawler/background.js, Zeile ~116
+  Problem: odin_ingest_key wurde aus chrome.storage gelesen, aber NICHT
+           getrimmt. Wenn der Key per direktem chrome.storage.set() mit
+           führenden/nachgestellten Leerzeichen gesetzt wurde (z.B. aus
+           Copy-Paste), kam der Vergleich mit dem Backend-Key fehl.
+           Resultat: stiller 401, obwohl der richtige Key gespeichert war.
+
+FEHLER 2 — background.js (Extension)
+  Ort   : oes-jarvis-crawler/background.js, Zeile ~129
+  Problem: Kein aussagekräftiges Debug-Logging vor dem fetch().
+           Es war unmöglich zu sagen ob:
+             a) kein Key gesetzt war (CHANGE_ME default)
+             b) Key vorhanden, aber falsch/leer
+             c) Header korrekt gesetzt wurde
+           Einziger Log war "key length: X" nach dem fetch — zu spät.
+
+FEHLER 3 — options.js (Extension Options Page)
+  Ort   : oes-jarvis-crawler/options.js, Zeile ~20
+  Problem: Das Status-Display zeigte nur "●●●●●●●● (set)" ohne Längenangabe.
+           Damit war nicht prüfbar, ob der gespeicherte Key die richtige
+           Länge hat (z.B. 32 Zeichen erwartet, aber nur 10 gespeichert
+           wegen abgeschnittenem Copy-Paste).
+
+FEHLER 4 — snapshot.route.js (Backend)
+  Ort   : backend/routes/queue/snapshot.route.js, Zeile ~35
+  Problem: Bei 401 wurde nur zurückgegeben:
+             {"ok":false,"error":"Unauthorized ingest"}
+           Kein Hinweis ob:
+             - Der Header X-OES-INGEST-KEY komplett fehlt
+             - Der Header vorhanden aber leer ist
+             - Die Länge des empfangenen Keys falsch ist
+             - QUEUE_INGEST_KEY auf dem Server gar nicht gesetzt ist
+           Das machte Remote-Diagnose ohne Server-Log-Zugriff unmöglich.
+
+FEHLER 5 — queueSnapshotPublic.js (Backend, inaktive Datei)
+  Ort   : backend/routes/queueSnapshotPublic.js, Zeile ~346
+  Problem: Identischer Guard wie snapshot.route.js — gleiches Problem.
+           Datei ist aktuell nicht in server.js eingebunden, aber der Code
+           wäre bei einer späteren Aktivierung genauso fehlerhaft.
+
+================================================================================
+
+DURCHGEFÜHRTE ÄNDERUNGEN
+--------------------------------------------------------------------------------
+
+ÄNDERUNG 1 — oes-jarvis-crawler/background.js
+  Was   : ingestKey wird jetzt nach dem Lesen aus storage getrimmt.
+          Zusätzlich wird keyIsReal berechnet (true wenn Key gesetzt UND
+          nicht "CHANGE_ME").
+  Vorher:
+    const ingestKey = stored?.odin_ingest_key || "CHANGE_ME";
+
+  Nachher:
+    const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
+    const keyIsReal = !!stored?.odin_ingest_key && ingestKey !== "CHANGE_ME";
+    log(`[DEBUG] ingest key: set=${keyIsReal} len=${ingestKey.length}`);
+
+ÄNDERUNG 2 — oes-jarvis-crawler/background.js
+  Was   : Sicheres Debug-Logging direkt vor dem fetch() — zeigt ob Key
+          gesetzt ist und seine Länge, OHNE den Key selbst zu loggen.
+  Vorher:
+    log(`Sending snapshot to: ${url} (key length: ${ingestKey.length})`);
+    const res = await fetch(url, {
+
+  Nachher:
+    log(`Sending snapshot to: ${url} (keySet=${keyIsReal} keyLen=${ingestKey.length})`);
+    log(`[DEBUG] Setting header X-OES-INGEST-KEY: len=${ingestKey.length} set=${keyIsReal}`);
+    const res = await fetch(url, {
+
+ÄNDERUNG 3 — oes-jarvis-crawler/options.js
+  Was   : Key-Länge wird jetzt im Status-Display angezeigt.
+  Vorher:
+    const k = key ? "●●●●●●●● (set)" : "(using default — CHANGE_ME)";
+
+  Nachher:
+    const k = key ? `●●●●●●●● (set, ${key.length} chars)` : "(using default — CHANGE_ME)";
+
+ÄNDERUNG 4 — backend/routes/queue/snapshot.route.js
+  Was   : 401-Antwort enthält jetzt Diagnose-Felder. Server-Log enthält
+          empfangene vs. erwartete Key-Länge.
+  Vorher:
+    const got = String(req.header("X-OES-INGEST-KEY") || "").trim();
+    if (!got || got !== expected) {
+      console.warn(`[SEC] Invalid ingest key from ${req.ip}`);
+      res.status(401).json({ ok: false, error: "Unauthorized ingest" });
+      return false;
+    }
+
+  Nachher:
+    const rawHeader = req.header("X-OES-INGEST-KEY");
+    const got = String(rawHeader || "").trim();
+    const missingHeader = rawHeader === undefined || rawHeader === null || String(rawHeader).trim() === "";
+    if (!got || got !== expected) {
+      console.warn(
+        `[SEC] Ingest key rejected — ip=${req.ip} missingHeader=${missingHeader} receivedLen=${got.length} expectedLen=${expected.length}`
+      );
+      res.status(401).json({
+        ok: false,
+        error: "Unauthorized ingest",
+        missingHeader,
+        headerKeyLength: got.length,
+        expectedKeySet: !!expected,
+      });
+      return false;
+    }
+
+ÄNDERUNG 5 — backend/routes/queueSnapshotPublic.js
+  Was   : Identische Verbesserung wie Änderung 4 (Konsistenz).
+  (Datei ist aktuell nicht in server.js gemountet.)
+
+================================================================================
+
+WIE MAN DEN 401 JETZT DIAGNOSTIZIERT
+--------------------------------------------------------------------------------
+
+Schritt 1 — Extension Service Worker Console prüfen:
+  chrome://extensions → OES Jarvis Crawler → Details → Service Worker
+  Erwartete Logs OHNE Fehler:
+    [ODIN Crawler] [DEBUG] ingest key: set=true len=32
+    [ODIN Crawler] [DEBUG] Setting header X-OES-INGEST-KEY: len=32 set=true
+
+  Warnsignale:
+    set=false → Key nicht gesetzt oder noch "CHANGE_ME" → Options Page öffnen
+    len=0     → Leerer Key gespeichert
+
+Schritt 2 — 401-Antwort lesen (Network Tab oder Log):
+  {"ok":false,"error":"Unauthorized ingest","missingHeader":true,"headerKeyLength":0,"expectedKeySet":true}
+    → Header wurde nie gesendet (CORS? fetch-Fehler vor send?)
+
+  {"ok":false,"error":"Unauthorized ingest","missingHeader":false,"headerKeyLength":15,"expectedKeySet":true}
+    → Header kam an, aber falsche Länge → Key in Options Page neu setzen
+
+  {"ok":false,"error":"Unauthorized ingest","missingHeader":false,"headerKeyLength":32,"expectedKeySet":false}
+    → Key korrekt gesendet, aber QUEUE_INGEST_KEY ist auf dem Server nicht
+      gesetzt → VM: docker/podman neu starten mit korrekter ENV-Variable
+
+Schritt 3 — VM Backend ENV prüfen:
+  QUEUE_INGEST_KEY muss in der .env / docker-compose.prod.yml gesetzt sein.
+  Nach Änderung: Container neu starten.
+
+================================================================================
+SICHERHEITSHINWEISE
+================================================================================
+  - Kein einziger Log gibt den tatsächlichen Key-Wert aus.
+  - 401-Response gibt nur Länge und bool-Felder zurück (kein Key-Fragment).
+  - missingHeader / headerKeyLength / expectedKeySet sind harmlose Metadaten.
+================================================================================

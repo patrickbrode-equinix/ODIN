@@ -111,8 +111,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       //   chrome.storage.local.set({ odin_base_url: "http://fr2lxcops01.corp.equinix.com:8001", odin_ingest_key: "<REAL_KEY>" })
       //   — or use the Options page: chrome://extensions → OES Jarvis → Extension options
       const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
-      const rawBase = (stored?.odin_base_url || "http://localhost:8001").replace(/\/$/, "");
-      const ingestKey = stored?.odin_ingest_key || "CHANGE_ME";
+      const rawBase = (stored?.odin_base_url || "http://fr2lxcops01.corp.equinix.com:8001").replace(/\/$/, "");
+      // Trim defensively; options.js trims on save, but direct storage.set calls may not.
+      const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
+      const keyIsReal = !!stored?.odin_ingest_key && ingestKey !== "CHANGE_ME";
+      log(`[DEBUG] ingest key: set=${keyIsReal} len=${ingestKey.length}`);
 
       // Use URL constructor to avoid double-slash / path bugs
       let url;
@@ -124,9 +127,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      log(`Sending snapshot to: ${url} (key length: ${ingestKey.length})`);
+      log(`Sending snapshot to: ${url} (keySet=${keyIsReal} keyLen=${ingestKey.length})`);
       const method = "POST";
       try {
+        log(`[DEBUG] Setting header X-OES-INGEST-KEY: len=${ingestKey.length} set=${keyIsReal}`);
         const res = await fetch(url, {
           method,
           headers: {
