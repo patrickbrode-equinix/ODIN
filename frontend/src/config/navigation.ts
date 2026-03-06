@@ -15,6 +15,7 @@ import {
   Database,
   ScrollText,
   FileCheck,
+  Brain,
 } from "lucide-react";
 
 /* ———————————————————————————————— */
@@ -66,6 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   { to: "/protokoll", icon: ScrollText, label: "Protokoll", section: "top", pageKey: "protokoll" },
   { to: "/commit-compliance", icon: FileCheck, label: "Commit Compliance", section: "top", pageKey: "commit_compliance" },
+  { to: "/odin-logic", icon: Brain, label: "ODIN-Logik", section: "top", pageKey: "odin_logic" },
   { to: "/users", icon: UsersIcon, label: "User Management", section: "top", pageKey: "user_management" },
   // Settings hidden from sidebar (still accessible via /settings directly)
 ];
@@ -88,6 +90,7 @@ export const PAGE_DEFS = [
   { key: "protokoll", label: "Protokoll" },
   { key: "commit_compliance", label: "Commit Compliance" },
   { key: "settings", label: "Settings" },
+  { key: "odin_logic", label: "ODIN-Logik" },
   { key: "user_management", label: "User Management" },
 ] as const;
 

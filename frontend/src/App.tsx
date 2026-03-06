@@ -29,6 +29,7 @@ const TeamsBenachrichtigungen = lazy(() => import("./components/pages/TeamsBenac
 const AutomatedAssignment    = lazy(() => import("./components/pages/AutomatedAssignment"));
 const DBSPage                = lazy(() => import("./components/pages/DBS"));
 const CommitCompliance       = lazy(() => import("./components/pages/CommitCompliance"));
+const OdinLogicPage          = lazy(() => import("./components/pages/OdinLogicPage"));
 
 /* Loading fallback */
 function PageLoader() {
@@ -198,6 +199,16 @@ export default function App() {
               element={
                 <PageGuard pageKey="commit_compliance">
                   <CommitCompliance />
+                </PageGuard>
+              }
+            />
+
+            {/* ODIN-Logik (Assignment Engine) */}
+            <Route
+              path="odin-logic"
+              element={
+                <PageGuard pageKey="odin_logic">
+                  <OdinLogicPage />
                 </PageGuard>
               }
             />

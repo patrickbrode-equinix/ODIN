@@ -44,6 +44,7 @@ import sseRoutes from "./routes/sse.js";
 import teamsRoutes from "./routes/teams.js";
 import tvRoutes from "./routes/tv.js";
 import eventsRoutes from "./routes/events.js";
+import assignmentRoutes from "./routes/assignment.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -192,6 +193,9 @@ app.use("/api/teams", teamsRoutes);
 
 // Events (photos for TV slide, auth-protected upload)
 app.use("/api/events", eventsRoutes);
+
+// Assignment Engine (ODIN-Logik, Phase 1 Shadow Mode)
+app.use("/api/assignment", assignmentRoutes);
 
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */

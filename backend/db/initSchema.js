@@ -38,6 +38,7 @@ const DEFAULT_POLICY = {
   tv_dashboard: "view",
   settings: "view",
   user_management: "none",
+  odin_logic: "view",
 };
 
 const DEFAULT_GROUPS = [
