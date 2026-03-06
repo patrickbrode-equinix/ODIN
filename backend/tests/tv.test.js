@@ -387,3 +387,187 @@ describe("TV_KEY guard (when TV_KEY env var is set)", () => {
     assert.strictEqual(res.status, 403);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* GET /api/tv/handover — public handover endpoint (no auth required)  */
+/* ------------------------------------------------------------------ */
+describe("GET /api/tv/handover — public handover endpoint", () => {
+  let server;
+  let baseUrl;
+  let mockQuery;
+
+  function createHandoverTvRouter(queryFn) {
+    const router = express.Router();
+
+    function _pad(n) { return String(n).padStart(2, "0"); }
+    function _buildCommitAt(commitDate, commitTime) {
+      if (!commitDate || !commitTime) return null;
+      try {
+        const d = new Date(commitDate);
+        const yyyy = d.getFullYear();
+        const mm = _pad(d.getMonth() + 1);
+        const dd = _pad(d.getDate());
+        let hh = "00", min = "00";
+        if (typeof commitTime === "string") [hh, min] = commitTime.split(":");
+        return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+      } catch { return null; }
+    }
+
+    router.get("/handover", async (_req, res) => {
+      try {
+        const result = await queryFn();
+        const rows = result.rows.map((h) => ({
+          id: h.id,
+          ticketNumber:  h.ticketNumber  || "",
+          customerName:  h.customerName  || "",
+          priority:      h.priority      || "Low",
+          type:          h.type          || "Workload",
+          activity:      h.activity      || "",
+          systemName:    h.systemName    || "",
+          status:        h.status        || "Offen",
+          commitAt:      _buildCommitAt(h.commitdate, h.committime),
+          createdAt:     h.createdAt,
+          files:         [],
+        }));
+        res.json(rows);
+      } catch (err) {
+        res.json([]);
+      }
+    });
+
+    return router;
+  }
+
+  before(async () => {
+    mockQuery = async () => ({ rows: [] });
+
+    const app = express();
+    app.use("/api/tv", createHandoverTvRouter((...args) => mockQuery(...args)));
+
+    await new Promise((resolve) => {
+      server = createServer(app);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const { port } = server.address();
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  test("GET /api/tv/handover → 200 + array (empty DB)", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/handover`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body), "should return an array");
+    assert.strictEqual(body.length, 0);
+  });
+
+  test("GET /api/tv/handover → 200 + array with rows", async () => {
+    mockQuery = async () => ({
+      rows: [
+        { id: 1, ticketNumber: "INC001", customerName: "Acme", priority: "High",
+          type: "Workload", activity: "Check server", systemName: "SRV01",
+          status: "Offen", commitdate: null, committime: null, createdAt: new Date().toISOString() },
+        { id: 2, ticketNumber: "INC002", customerName: "Globex", priority: "Low",
+          type: "Workload", activity: "Reboot", systemName: "SRV02",
+          status: "Übernommen", commitdate: "2025-06-01", committime: "10:00",
+          createdAt: new Date().toISOString() },
+      ]
+    });
+    const res = await fetch(`${baseUrl}/api/tv/handover`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body));
+    assert.strictEqual(body.length, 2);
+    assert.strictEqual(body[0].ticketNumber, "INC001");
+    assert.strictEqual(body[1].commitAt, "2025-06-01T10:00");
+  });
+
+  test("GET /api/tv/handover → 200 (not 500) when DB throws", async () => {
+    mockQuery = async () => { throw new Error("DB unavailable"); };
+    const res = await fetch(`${baseUrl}/api/tv/handover`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body), "should return empty array on error");
+    assert.strictEqual(body.length, 0);
+  });
+
+  test("GET /api/tv/handover requires NO auth token", async () => {
+    mockQuery = async () => ({ rows: [] });
+    const res = await fetch(`${baseUrl}/api/tv/handover`, { headers: {} });
+    assert.strictEqual(res.status, 200);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* JSON parse error handler — returns JSON 400, not HTML              */
+/* ------------------------------------------------------------------ */
+describe("POST with invalid JSON → JSON 400 error (not HTML)", () => {
+  let server;
+  let baseUrl;
+
+  before(async () => {
+    const app = express();
+    app.use(express.json({ limit: "50mb" }));
+
+    // Dummy route that would accept JSON
+    app.post("/api/test-json", (req, res) => {
+      res.json({ ok: true, body: req.body });
+    });
+
+    // Global error handler (same as server.js)
+    // eslint-disable-next-line no-unused-vars
+    app.use((err, req, res, _next) => {
+      if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+        return res.status(400).json({
+          ok: false,
+          error: "json_parse_error",
+          hint: "Request body is not valid JSON.",
+        });
+      }
+      const status = typeof err.status === "number" ? err.status : 500;
+      return res.status(status).json({ ok: false, error: err.message || "Internal Server Error" });
+    });
+
+    await new Promise((resolve) => {
+      server = createServer(app);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const { port } = server.address();
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  test("valid JSON body → 200", async () => {
+    const res = await fetch(`${baseUrl}/api/test-json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ foo: "bar" }),
+    });
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.ok, true);
+  });
+
+  test("invalid JSON body → 400 with JSON response (not HTML)", async () => {
+    const res = await fetch(`${baseUrl}/api/test-json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{ not valid json !!!",
+    });
+    assert.strictEqual(res.status, 400);
+    const ct = res.headers.get("content-type") || "";
+    assert.ok(ct.includes("application/json"), `Expected JSON content-type, got: ${ct}`);
+    const body = await res.json();
+    assert.strictEqual(body.ok, false);
+    assert.strictEqual(body.error, "json_parse_error");
+  });
+});

@@ -183,6 +183,33 @@ app.use("/api/app-settings", appSettingsRoutes);
 app.use("/api/sse", sseRoutes);
 app.use("/api/teams", teamsRoutes);
 
+/* ------------------------------------------------ */
+/* GLOBAL ERROR HANDLER                             */
+/* Catches express.json() SyntaxError (malformed    */
+/* JSON body) and returns structured JSON 400       */
+/* instead of Express's default HTML error page.   */
+/* Also catches other unhandled route errors.       */
+/* ------------------------------------------------ */
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  // Body-parser SyntaxError (invalid JSON)
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    console.warn(`[BODY PARSE] Invalid JSON from ${req.ip} ${req.method} ${req.path}: ${err.message}`);
+    return res.status(400).json({
+      ok: false,
+      error: "json_parse_error",
+      hint: "Request body is not valid JSON. Ensure Content-Type: application/json and body is valid JSON.",
+    });
+  }
+  // Generic fallback error handler
+  const status = typeof err.status === "number" ? err.status : 500;
+  console.error(`[ERROR HANDLER] ${req.method} ${req.path} → ${status}:`, err.message || err);
+  return res.status(status).json({
+    ok: false,
+    error: err.message || "Internal Server Error",
+  });
+});
+
 let serverInstance = null;
 
 async function start() {

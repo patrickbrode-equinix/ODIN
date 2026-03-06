@@ -58,17 +58,17 @@ function EmployeeCard({
   return (
     <div className={`flex flex-col rounded-md bg-card border ${colors.header} overflow-hidden`}>
       {/* NAME ROW */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-b border-white/5">
-        <span className={`text-[11px] font-bold px-1.5 py-1 rounded uppercase tracking-wider shrink-0 ${colors.badge}`}>
+      <div className="flex items-center gap-2 px-3 py-3 bg-muted/20 border-b border-white/5">
+        <span className={`text-sm font-bold px-2 py-1 rounded uppercase tracking-wider shrink-0 ${colors.badge}`}>
           {shift}
         </span>
-        <span className="flex-1 font-bold text-[14px] truncate leading-tight">{name}</span>
+        <span className="flex-1 font-bold text-base truncate leading-tight">{name}</span>
         {category && (
-          <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded uppercase font-bold border border-primary/20 shrink-0">
+          <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded uppercase font-bold border border-primary/20 shrink-0">
             {category}
           </span>
         )}
-        <span className="text-[10px] text-muted-foreground font-mono hidden xl:inline shrink-0">{time}</span>
+        <span className="text-xs text-muted-foreground font-mono hidden xl:inline shrink-0">{time}</span>
       </div>
 
       {/* TICKETS */}
@@ -86,9 +86,9 @@ function EmployeeCard({
             const status = String(t.status ?? t.state ?? t.Status ?? "").trim();
 
             return (
-              <div key={`${id}-${idx}`} className={`flex items-start justify-between px-2.5 py-2 gap-2 ${css}`}>
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 flex-1 text-[12px] leading-snug">
-                  <span className="font-mono font-bold text-[13px] text-white/95">{id}</span>
+              <div key={`${id}-${idx}`} className={`flex items-start justify-between px-3 py-2.5 gap-2 ${css}`}>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 flex-1 text-sm leading-snug">
+                  <span className="font-mono font-bold text-base text-white/95">{id}</span>
                   <span className="text-white/30 font-light">|</span>
                   <span className="font-medium text-white/90">{activity}</span>
                   {system && (
@@ -110,12 +110,12 @@ function EmployeeCard({
                     </>
                   )}
                 </div>
-                {rem && <span className="font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded text-[11px] shrink-0 mt-px">{rem}</span>}
+                {rem && <span className="font-mono font-bold bg-black/40 px-2 py-0.5 rounded text-sm shrink-0 mt-px">{rem}</span>}
               </div>
             );
           })}
           {extra > 0 && (
-            <div className="text-[11px] font-semibold text-muted-foreground italic text-center py-1 bg-white/5">
+            <div className="text-sm font-semibold text-muted-foreground italic text-center py-1.5 bg-white/5">
               + {extra} weitere {extra === 1 ? "Ticket" : "Tickets"}
             </div>
           )}
@@ -143,13 +143,13 @@ function ShiftBlock({
 
   return (
     <div className="space-y-3">
-      <div className={`text-lg font-black tracking-wide flex items-center gap-2 ${colors.title}`}>
+      <div className={`text-xl font-black tracking-wide flex items-center gap-2 ${colors.title}`}>
         <span>{title}</span>
-        <span className="text-muted-foreground text-sm font-normal">{list.length} MA</span>
+        <span className="text-muted-foreground text-base font-normal">{list.length} MA</span>
       </div>
 
       {list.length === 0 ? (
-        <div className="flex items-center justify-center rounded-xl bg-background/20 border border-white/5 text-muted-foreground text-[16px] py-4">
+        <div className="flex items-center justify-center rounded-xl bg-background/20 border border-white/5 text-muted-foreground text-xl py-4">
           Keine Mitarbeiter anwesend
         </div>
       ) : (
@@ -188,15 +188,15 @@ export function TvShiftplan({
       {/* HEADER */}
       <CardHeader className="pb-0 shrink-0">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-2xl font-black tracking-tight">Schichten Heute</CardTitle>
-          <div className="flex items-center gap-3 text-sm font-bold">
-            <span className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+          <CardTitle className="text-3xl font-black tracking-tight">Schichten Heute</CardTitle>
+          <div className="flex items-center gap-3 text-base font-bold">
+            <span className="px-4 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
               Früh {early.length}
             </span>
-            <span className="px-3 py-1 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            <span className="px-4 py-1.5 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
               Spät {late.length}
             </span>
-            <span className="px-3 py-1 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <span className="px-4 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
               Nacht {night.length}
             </span>
           </div>

@@ -182,4 +182,87 @@ router.get("/schedules/today", async (_req, res) => {
   }
 });
 
+/* ------------------------------------------------ */
+/* GET /api/tv/handover                             */
+/* Public read-only handover list for TV kiosk.    */
+/* Only non-completed items are returned.           */
+/* ------------------------------------------------ */
+router.get("/handover", async (_req, res) => {
+  try {
+    function _pad(n) { return String(n).padStart(2, "0"); }
+    function _buildCommitAt(commitDate, commitTime) {
+      if (!commitDate || !commitTime) return null;
+      try {
+        const d = new Date(commitDate);
+        const yyyy = d.getFullYear();
+        const mm = _pad(d.getMonth() + 1);
+        const dd = _pad(d.getDate());
+        let hh = "00", min = "00";
+        if (typeof commitTime === "string") [hh, min] = commitTime.split(":");
+        return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+      } catch { return null; }
+    }
+
+    const result = await query(`
+      SELECT
+        id,
+        ticketnumber  AS "ticketNumber",
+        customername  AS "customerName",
+        priority,
+        type,
+        ticket_type   AS "ticketType",
+        activity,
+        system_name   AS "systemName",
+        remaining_time AS "remainingTime",
+        start_datetime AS "startDatetime",
+        target_team   AS "targetTeam",
+        assignee_name AS "assigneeName",
+        due_datetime  AS "dueDatetime",
+        recurrence,
+        area,
+        description,
+        commitdate,
+        committime,
+        status,
+        createdby     AS "createdBy",
+        created_at    AS "createdAt",
+        takenby       AS "takenBy"
+      FROM handover
+      WHERE status != 'Erledigt'
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+
+    const rows = result.rows.map((h) => ({
+      id: h.id,
+      ticketNumber:  h.ticketNumber  || "",
+      customerName:  h.customerName  || "",
+      priority:      h.priority      || "Low",
+      type:          h.type          || "Workload",
+      ticketType:    h.ticketType    || "",
+      activity:      h.activity      || "",
+      systemName:    h.systemName    || "",
+      remainingTime: h.remainingTime || "",
+      startDatetime: h.startDatetime || null,
+      targetTeam:    h.targetTeam    || "",
+      assigneeName:  h.assigneeName  || "",
+      dueDatetime:   h.dueDatetime   || null,
+      recurrence:    h.recurrence    || "",
+      area:          h.area          || "",
+      description:   h.description   || "",
+      commitAt:      _buildCommitAt(h.commitdate, h.committime),
+      status:        h.status        || "Offen",
+      createdBy:     h.createdBy     || "",
+      createdAt:     h.createdAt,
+      takenBy:       h.takenBy       || null,
+      files:         [],
+    }));
+
+    res.json(rows);
+  } catch (err) {
+    console.error("[TV] /handover error:", err.message);
+    res.json([]); // never 500 for TV
+  }
+});
+
 export default router;

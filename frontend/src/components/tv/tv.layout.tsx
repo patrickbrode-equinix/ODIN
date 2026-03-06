@@ -17,7 +17,7 @@ import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTim
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
 const SLIDE_COUNT = 5;
-const AUTO_ROTATE_MS = 20_000;
+const AUTO_ROTATE_MS = 10_000; // 10 seconds – adjustable TV default
 const PAUSE_AFTER_MANUAL_MS = 60_000;
 
 /* ------------------------------------------------ */
@@ -87,11 +87,11 @@ function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; ico
         <img
           src="/app/ODIN_Logo.png"
           alt="ODIN"
-          className="w-14 h-14 object-contain drop-shadow-[0_0_20px_rgba(0,216,255,0.9)]"
+          className="w-16 h-16 object-contain drop-shadow-[0_0_20px_rgba(0,216,255,0.9)]"
         />
         <div>
           <div
-            className="text-2xl font-black tracking-[0.2em] uppercase"
+            className="text-3xl font-black tracking-[0.2em] uppercase"
             style={{
               color: "#00d8ff",
               textShadow: "0 0 16px rgba(0,216,255,0.8), 0 0 40px rgba(59,130,246,0.4)",
@@ -99,28 +99,28 @@ function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; ico
           >
             O.D.I.N
           </div>
-          <div className="text-[10px] font-semibold tracking-wider text-blue-300/70 uppercase">
+          <div className="text-xs font-semibold tracking-wider text-blue-300/70 uppercase">
             Operations Dispatching and Intelligence Node
           </div>
         </div>
         <div className="h-8 w-px bg-white/10 mx-2" />
         <div className="flex items-center gap-2.5 font-bold tracking-widest uppercase text-slate-300">
-          <Icon className="w-5 h-5 text-indigo-400" />
-          <span className="text-lg">{title}</span>
+          <Icon className="w-6 h-6 text-indigo-400" />
+          <span className="text-xl">{title}</span>
         </div>
       </div>
 
       {/* Shift timers */}
-      <div className="flex items-center gap-4 text-sm overflow-hidden">
+      <div className="flex items-center gap-4 text-base overflow-hidden">
         {shiftInfo.map((s, i) => (
           <span key={i} className={`font-semibold whitespace-nowrap ${s.color}`}>{s.label}</span>
         ))}
       </div>
 
-      <div className="flex items-center gap-3 text-base text-muted-foreground shrink-0">
+      <div className="flex items-center gap-3 text-lg text-muted-foreground shrink-0">
         <span className="text-slate-300">{formatDate(now)}</span>
         <span
-          className="font-mono font-black text-xl"
+          className="font-mono font-black text-2xl"
           style={{ color: "#00d8ff", textShadow: "0 0 8px rgba(0,216,255,0.5)" }}
         >
           {formatTime(now)}
@@ -374,26 +374,26 @@ export function TvLayout({
     return () => clearInterval(id);
   }, []);
 
-  /* All Tickets */
+  /* All Tickets – use public TV endpoints (no auth required) */
   useEffect(() => {
     const load = async () => {
       try {
-        const [commitRes, queueRes] = await Promise.all([
-          api.get("/commit/latest").catch(() => ({ data: [] })),
-          api.get("/queue/tickets").catch(() => ({ data: [] }))
+        // /api/tv/tickets is public (no auth), /api/commit/latest requires auth –
+        // fall back gracefully so TV works without login.
+        const [tvTicketsRes, commitRes] = await Promise.all([
+          fetch("/api/tv/tickets").then(r => r.ok ? r.json() : []).catch(() => []),
+          api.get("/commit/latest").then(r => r.data).catch(() => []),
         ]);
 
+        const tvRows: any[] = Array.isArray(tvTicketsRes) ? tvTicketsRes : [];
         let commitRows: any[] = [];
-        const commitPayload = commitRes.data;
-        if (Array.isArray(commitPayload)) commitRows = commitPayload;
-        else if (Array.isArray(commitPayload?.data)) commitRows = commitPayload.data;
-        else if (Array.isArray(commitPayload?.rows)) commitRows = commitPayload.rows;
-
-        const queueRows = Array.isArray(queueRes.data) ? queueRes.data : [];
+        if (Array.isArray(commitRes)) commitRows = commitRes;
+        else if (Array.isArray(commitRes?.data)) commitRows = commitRes.data;
+        else if (Array.isArray(commitRes?.rows)) commitRows = commitRes.rows;
 
         const map = new Map();
+        tvRows.forEach(t => map.set(t.external_id || t.id, t));
         commitRows.forEach(t => map.set(t.external_id || t.ticketNumber || t.id, t));
-        queueRows.forEach(t => map.set(t.external_id || t.id, t));
 
         setAllTickets(Array.from(map.values()));
       } catch (e) {
@@ -520,7 +520,7 @@ export function TvLayout({
   ];
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#030711]">
+    <div className="tv-mode flex flex-col h-full min-h-0 bg-[#030711]">
       {/* SLIDE HEADER */}
       <SlideHeader now={clock} title={slides[currentSlide].title} icon={slides[currentSlide].icon} />
 
@@ -620,14 +620,14 @@ export function TvLayout({
             className="p-2 rounded-lg hover:bg-accent transition text-muted-foreground hover:text-foreground"
             aria-label="Vorheriger Slide"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-6 h-6" />
           </button>
 
           {Array.from({ length: SLIDE_COUNT }, (_, i) => (
             <button
               key={i}
               onClick={() => goToSlide(i, true)}
-              className={`w-3 h-3 rounded-full transition-all ${i === currentSlide ? "bg-cyan-400 scale-125 shadow-[0_0_8px_rgba(0,216,255,0.8)]" : "bg-white/20 hover:bg-white/40"}`}
+              className={`w-4 h-4 rounded-full transition-all ${i === currentSlide ? "bg-cyan-400 scale-125 shadow-[0_0_8px_rgba(0,216,255,0.8)]" : "bg-white/20 hover:bg-white/40"}`}
               aria-label={`Slide ${i + 1}`}
             />
           ))}
@@ -637,10 +637,10 @@ export function TvLayout({
             className="p-2 rounded-lg hover:bg-accent transition text-muted-foreground hover:text-foreground"
             aria-label="Nächster Slide"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-6 h-6" />
           </button>
 
-          <span className="text-xs text-muted-foreground tabular-nums ml-2">
+          <span className="text-sm text-muted-foreground tabular-nums ml-2">
             {isPaused.current ? `Pausiert – weiter in ${countdown}s` : `Weiter in ${countdown}s`}
           </span>
         </div>

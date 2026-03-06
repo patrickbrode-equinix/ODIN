@@ -124,7 +124,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      log(`Sending snapshot to: ${url}`);
+      log(`Sending snapshot to: ${url} (key length: ${ingestKey.length})`);
       const method = "POST";
       try {
         const res = await fetch(url, {
@@ -153,7 +153,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         log("Upload OK (background):", json);
         sendResponse({ ok: true, result: json });
       } catch (e) {
-        err("Upload FAILED (background):", e.message, e.stack);
+        // Always include context: url, error name, message and stack
+        err(`Upload FAILED (background): url=${url} errName=${e?.name} msg=${e?.message}`);
+        if (e?.stack) err("Stack:", e.stack);
         sendResponse({ ok: false, error: String(e?.message || e) });
       }
     })();
