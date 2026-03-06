@@ -255,3 +255,23 @@ html {
 .tv-mode .rounded-md { border-radius: 10px !important; }
 .tv-mode .rounded-xl { border-radius: 16px !important; }
 .tv-mode .rounded-2xl { border-radius: 20px !important; }
+
+/* ---------------------------------------------------------------- */
+/* TV-MODE: red/critical ticket glow pulse (2.5 s, subtle)          */
+/* ---------------------------------------------------------------- */
+@keyframes tv-red-glow-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 20px 3px rgba(239, 68, 68, 0.28),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 36px 10px rgba(239, 68, 68, 0.55),
+      0 2px 12px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.tv-red-pulse {
+  animation: tv-red-glow-pulse 2.5s ease-in-out infinite;
+}

@@ -103,7 +103,7 @@ function createTvRouter(mockQuery) {
   router.get("/events/images", async (_req, res) => {
     try {
       const result = await mockQuery(
-        `SELECT id, filename, original_name, url_path, created_at FROM events_images ORDER BY created_at DESC`
+        `SELECT id, filename, original_name, url_path, created_at FROM events_images WHERE is_visible = TRUE ORDER BY created_at DESC`
       );
       res.json(result.rows);
     } catch (err) {
@@ -347,8 +347,8 @@ describe("GET /api/tv/* — public kiosk endpoints", () => {
 
   test("GET /api/tv/events/images → 200 + image rows", async () => {
     const fakeImages = [
-      { id: 1, filename: "img1.jpg", original_name: "party.jpg", url_path: "/uploads/events/img1.jpg", created_at: "2026-01-01T12:00:00Z" },
-      { id: 2, filename: "img2.png", original_name: "team.png",  url_path: "/uploads/events/img2.png",  created_at: "2026-01-02T12:00:00Z" },
+      { id: 1, filename: "img1.jpg", original_name: "party.jpg", url_path: "/uploads/events/img1.jpg", created_at: "2026-01-01T12:00:00Z", is_visible: true },
+      { id: 2, filename: "img2.png", original_name: "team.png",  url_path: "/uploads/events/img2.png",  created_at: "2026-01-02T12:00:00Z", is_visible: true },
     ];
     mockQuery = async () => ({ rows: fakeImages });
     const res = await fetch(`${baseUrl}/api/tv/events/images`);
@@ -358,6 +358,19 @@ describe("GET /api/tv/* — public kiosk endpoints", () => {
     assert.strictEqual(body.length, 2);
     assert.strictEqual(body[0].url_path, "/uploads/events/img1.jpg");
     assert.strictEqual(body[1].url_path, "/uploads/events/img2.png");
+  });
+
+  test("GET /api/tv/events/images → only returns visible images (is_visible filter)", async () => {
+    // The mock simulates DB already applying WHERE is_visible = TRUE – only visible rows come back
+    const visibleImages = [
+      { id: 3, filename: "vis.jpg", original_name: "visible.jpg", url_path: "/uploads/events/vis.jpg", created_at: "2026-01-03T12:00:00Z", is_visible: true },
+    ];
+    mockQuery = async () => ({ rows: visibleImages });
+    const res = await fetch(`${baseUrl}/api/tv/events/images`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.length, 1, "only the visible image should be returned");
+    assert.strictEqual(body[0].id, 3);
   });
 
   test("GET /api/tv/events/images → 200 (not 500) when DB throws", async () => {

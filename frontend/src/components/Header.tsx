@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload, Camera, Trash2 } from "lucide-react";
+import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload, Camera, Trash2, Eye, EyeOff } from "lucide-react";
 
 import { api } from "../api/api";
 import { useTheme } from "./ThemeProvider";
@@ -193,8 +193,7 @@ function EventsPanel() {
     url_path: string;
     original_name?: string;
     filename: string;
-    created_at: string;
-  }>>([]);
+    created_at: string;    is_visible: boolean;  }>>([]);
   const [uploading, setUploading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -235,6 +234,15 @@ function EventsPanel() {
       setImages(prev => prev.filter(i => i.id !== id));
     } catch {
       alert("Löschen fehlgeschlagen.");
+    }
+  };
+
+  const handleToggleVisibility = async (id: number, current: boolean) => {
+    try {
+      await api.patch(`/events/images/${id}/visibility`, { is_visible: !current });
+      setImages(prev => prev.map(i => i.id === id ? { ...i, is_visible: !current } : i));
+    } catch {
+      alert("Sichtbarkeit konnte nicht geändert werden.");
     }
   };
 
@@ -282,20 +290,38 @@ function EventsPanel() {
               <img
                 src={img.url_path}
                 alt={img.original_name ?? img.filename}
-                className="w-full h-28 object-cover"
+                className={`w-full h-28 object-cover transition-opacity ${img.is_visible ? '' : 'opacity-30 grayscale'}`}
                 loading="lazy"
               />
+              {!img.is_visible && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <EyeOff className="w-6 h-6 text-white/50" />
+                </div>
+              )}
               <div className="flex items-center justify-between px-2 py-1.5 gap-1">
                 <span className="text-[11px] text-slate-400 truncate">
                   {img.original_name ?? img.filename}
                 </span>
-                <button
-                  onClick={() => handleDelete(img.id)}
-                  className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition"
-                  title="Löschen"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => handleToggleVisibility(img.id, img.is_visible)}
+                    className={`shrink-0 p-1 rounded transition ${
+                      img.is_visible
+                        ? 'text-green-400 hover:text-slate-400 hover:bg-white/10'
+                        : 'text-slate-500 hover:text-green-400 hover:bg-white/10'
+                    }`}
+                    title={img.is_visible ? 'Sichtbar – klicken zum Ausblenden' : 'Ausgeblendet – klicken zum Einblenden'}
+                  >
+                    {img.is_visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(img.id)}
+                    className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition"
+                    title="Löschen"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

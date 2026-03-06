@@ -97,8 +97,8 @@ function TVDashboard() {
         }
       />
 
-      {/* CONTENT (darf wachsen!) */}
-      <div className="flex-1 min-h-0">
+      {/* CONTENT – explicit viewport-relative height so TvLayout h-full resolves correctly */}
+      <div style={{ height: 'calc(100vh - 180px)', minHeight: 0 }}>
         <TVContent />
       </div>
     </EnterprisePageShell>

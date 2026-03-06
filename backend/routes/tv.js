@@ -191,6 +191,7 @@ router.get("/events/images", async (_req, res) => {
     const result = await query(
       `SELECT id, filename, original_name, url_path, created_at
        FROM events_images
+       WHERE is_visible = TRUE
        ORDER BY created_at DESC`
     );
     res.json(result.rows);

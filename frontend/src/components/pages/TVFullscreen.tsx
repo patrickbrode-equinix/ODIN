@@ -10,10 +10,8 @@ import { TVContent } from "../tv/TVContent";
 
 function TVFullscreen() {
   return (
-    <div className="h-screen w-screen p-6 bg-background flex flex-col">
-      <div className="flex-1 min-h-0">
-        <TVContent isFullscreen />
-      </div>
+    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
+      <TVContent isFullscreen />
     </div>
   );
 }

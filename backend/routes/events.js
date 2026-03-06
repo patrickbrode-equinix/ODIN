@@ -62,7 +62,7 @@ const upload = multer({
 router.get("/images", requireAuth, async (_req, res) => {
   try {
     const result = await query(
-      "SELECT id, filename, original_name, url_path, created_at, created_by FROM events_images ORDER BY created_at DESC"
+      "SELECT id, filename, original_name, url_path, is_visible, created_at, created_by FROM events_images ORDER BY created_at DESC"
     );
     res.json(result.rows);
   } catch (err) {
@@ -145,6 +145,37 @@ router.delete("/images/:id", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("[Events] DELETE /images error:", err.message);
     res.status(500).json({ error: "Failed to delete events image" });
+  }
+});
+
+/* ------------------------------------------------ */
+/* PATCH /api/events/images/:id/visibility          */
+/* Toggle is_visible for a single image (auth req)  */
+/* ------------------------------------------------ */
+
+router.patch("/images/:id/visibility", requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const { is_visible } = req.body;
+  if (typeof is_visible !== "boolean") {
+    return res.status(400).json({ error: "is_visible must be a boolean" });
+  }
+
+  try {
+    const result = await query(
+      "UPDATE events_images SET is_visible = $1 WHERE id = $2 RETURNING id, filename, original_name, url_path, is_visible, created_at",
+      [is_visible, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("[Events] PATCH /images visibility error:", err.message);
+    res.status(500).json({ error: "Failed to update visibility" });
   }
 });
 

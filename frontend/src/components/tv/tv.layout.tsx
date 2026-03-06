@@ -16,9 +16,20 @@ import { api } from "../../api/api";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
-const SLIDE_COUNT = 6;
 const AUTO_ROTATE_MS = 10_000; // 10 seconds – adjustable TV default
 const PAUSE_AFTER_MANUAL_MS = 60_000;
+
+/* Static slide definitions – filtering happens at runtime */
+const ALL_SLIDES = [
+  { id: "shifts",   title: "Schichten Heute",           icon: Users         },
+  { id: "info",     title: "Informationen & Anweisungen", icon: Megaphone     },
+  { id: "72h",      title: "N\u00e4chste 72 Stunden",          icon: AlertTriangle },
+  { id: "handover", title: "Handover",                  icon: ArrowRightLeft },
+  { id: "projects", title: "Projekte",                  icon: FolderKanban  },
+  { id: "events",   title: "Events",                   icon: Camera        },
+] as const;
+
+type SlideId = typeof ALL_SLIDES[number]["id"];
 
 /* ------------------------------------------------ */
 /* SHIFT WINDOW CALCULATION                         */
@@ -347,28 +358,14 @@ interface EventImage {
   original_name?: string;
   url_path: string;
   created_at: string;
+  is_visible?: boolean;
 }
 
-function EventsSlide() {
-  const [images, setImages] = useState<EventImage[]>([]);
+function EventsSlide({ images }: { images: EventImage[] }) {
   const [currentIdx, setCurrentIdx] = useState(0);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch("/api/tv/events/images");
-        const data = res.ok ? await res.json() : [];
-        const imgs = Array.isArray(data) ? data : [];
-        setImages(imgs);
-        setCurrentIdx(0);
-      } catch {
-        setImages([]);
-      }
-    };
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Reset index when images list changes
+  useEffect(() => { setCurrentIdx(0); }, [images.length]);
 
   // Auto-advance within events slide (every 10 s)
   useEffect(() => {
@@ -386,7 +383,8 @@ function EventsSlide() {
     );
   }
 
-  const img = images[currentIdx];
+  const idx = Math.min(currentIdx, images.length - 1);
+  const img = images[idx];
 
   return (
     <div className="h-full relative flex items-center justify-center bg-black">
@@ -403,7 +401,7 @@ function EventsSlide() {
               key={i}
               onClick={() => setCurrentIdx(i)}
               className={`w-3 h-3 rounded-full transition-all ${
-                i === currentIdx
+                i === idx
                   ? "bg-cyan-400 scale-125 shadow-[0_0_6px_rgba(0,216,255,0.8)]"
                   : "bg-white/30 hover:bg-white/55"
               }`}
@@ -432,10 +430,13 @@ export function TvLayout({
   const [countdown, setCountdown] = useState(AUTO_ROTATE_MS / 1000);
   const pauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPaused = useRef(false);
+  const slidesCountRef = useRef(1);
 
-  const [infoEntries, setInfoEntries] = useState<DashboardInfoEntry[]>([]);
-  const [allTickets, setAllTickets] = useState<any[]>([]);
-  const [projects, setProjects] = useState<TvProject[]>([]);
+  const [infoEntries,   setInfoEntries]   = useState<DashboardInfoEntry[]>([]);
+  const [allTickets,    setAllTickets]    = useState<any[]>([]);
+  const [projects,      setProjects]      = useState<TvProject[]>([]);
+  const [handoverCount, setHandoverCount] = useState(0);
+  const [eventImages,   setEventImages]   = useState<EventImage[]>([]);
 
   /* Clock */
   const [clock, setClock] = useState(new Date());
@@ -464,6 +465,30 @@ export function TvLayout({
           setProjects(rows);
         })
         .catch(() => { });
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Handover count – for empty-slide logic */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/handover")
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setHandoverCount(Array.isArray(data) ? data.filter((h: any) => String(h.status ?? "").toLowerCase() !== "erledigt").length : 0))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Event images – for empty-slide logic and EventsSlide */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/events/images")
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setEventImages(Array.isArray(data) ? data : []))
+        .catch(() => {});
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
@@ -538,9 +563,11 @@ export function TvLayout({
     return map;
   }, [allTickets, early, late, night]);
 
-  /* Auto-rotate */
+  /* goToSlide – uses slidesCountRef for stale-closure safety */
   const goToSlide = useCallback((idx: number, manual = false) => {
-    setCurrentSlide((idx + SLIDE_COUNT) % SLIDE_COUNT);
+    const count = slidesCountRef.current;
+    if (count === 0) return;
+    setCurrentSlide(((idx % count) + count) % count);
     setCountdown(AUTO_ROTATE_MS / 1000);
     if (manual) {
       isPaused.current = true;
@@ -549,12 +576,16 @@ export function TvLayout({
     }
   }, []);
 
+  /* Auto-rotate */
   useEffect(() => {
     const tick = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
           if (!isPaused.current) {
-            setCurrentSlide(s => (s + 1) % SLIDE_COUNT);
+            setCurrentSlide(s => {
+              const count = slidesCountRef.current;
+              return count > 0 ? (s + 1) % count : 0;
+            });
           }
           return AUTO_ROTATE_MS / 1000;
         }
@@ -606,37 +637,54 @@ export function TvLayout({
     return combined;
   }, [allTickets, clock]);
 
-  const slides = [
-    { title: "Schichten Heute", icon: Users },
-    { title: "Informationen & Anweisungen", icon: Megaphone },
-    { title: "Nächste 72 Stunden", icon: AlertTriangle },
-    { title: "Handover", icon: ArrowRightLeft },
-    { title: "Projekte", icon: FolderKanban },
-    { title: "Events", icon: Camera },
-  ];
+  /* Active slides — skip empty ones */
+  const activeSlides = useMemo(() => {
+    const activeProjects = projects.filter(p => String(p.status ?? "").toLowerCase() !== "completed");
+    return ALL_SLIDES.filter(s => {
+      if (s.id === "shifts")   return true;
+      if (s.id === "info")     return infoEntries.length > 0;
+      if (s.id === "72h")      return next72hTickets.length > 0;
+      if (s.id === "handover") return handoverCount > 0;
+      if (s.id === "projects") return activeProjects.length > 0;
+      if (s.id === "events")   return eventImages.length > 0;
+      return true;
+    });
+  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages]);
+
+  /* Keep ref in sync for stale-closure-safe auto-rotate */
+  useEffect(() => { slidesCountRef.current = activeSlides.length; }, [activeSlides.length]);
+
+  /* Clamp current index when active slides shrink */
+  useEffect(() => {
+    if (activeSlides.length > 0 && currentSlide >= activeSlides.length) {
+      setCurrentSlide(0);
+    }
+  }, [activeSlides.length, currentSlide]);
+
+  const currentSlideId = activeSlides[currentSlide]?.id ?? "shifts";
 
   return (
     <div className="tv-mode flex flex-col h-full min-h-0 bg-[#030711]">
       {/* SLIDE HEADER */}
-      <SlideHeader now={clock} title={slides[currentSlide].title} icon={slides[currentSlide].icon} />
+      <SlideHeader now={clock} title={activeSlides[currentSlide]?.title ?? ""} icon={activeSlides[currentSlide]?.icon ?? Users} />
 
       {/* SLIDE CONTENT */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
 
-        {/* SLIDE 1: Schichten Heute */}
-        {currentSlide === 0 && (
+        {/* Schichten Heute */}
+        {currentSlideId === "shifts" && (
           <div className="h-full overflow-auto p-4">
             <TvShiftplan early={early} late={late} night={night} ticketsByOwner={ticketsByOwner} />
           </div>
         )}
 
-        {/* SLIDE 2: Informationen & Anweisungen */}
-        {currentSlide === 1 && (
+        {/* Informationen & Anweisungen */}
+        {currentSlideId === "info" && (
           <InfoAnweisungenSlide entries={infoEntries} />
         )}
 
-        {/* SLIDE 3: Next 72 Hours */}
-        {currentSlide === 2 && (
+        {/* Nächste 72 Stunden */}
+        {currentSlideId === "72h" && (
           <div className="h-full overflow-auto p-4 md:p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-full">
               {next72hTickets.length === 0 && (
@@ -665,9 +713,10 @@ export function TvLayout({
                 const isUrgent = msUntil !== null && msUntil < 24 * 3600 * 1000;
 
                 const cardGlow = isTT ? 'border-red-500/50 bg-red-950/20 shadow-[0_0_20px_3px_rgba(239,68,68,0.18)]' : `${tierClasses[tier]} ${tierGlow[tier]}`;
+                const pulseClass = (tier === "red" || isTT) ? "tv-red-pulse" : "";
 
                 return (
-                  <div key={`${id}-${i}`} className={`flex flex-col gap-1.5 px-4 py-3 rounded-xl border transition-all ${cardGlow}`}>
+                  <div key={`${id}-${i}`} className={`flex flex-col gap-1.5 px-4 py-3 rounded-xl border transition-all ${cardGlow} ${pulseClass}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono font-bold text-sm text-foreground">{id}</span>
                       <div className="flex items-center gap-1.5">
@@ -690,18 +739,18 @@ export function TvLayout({
           </div>
         )}
 
-        {/* SLIDE 4: Handover */}
-        {currentSlide === 3 && (
+        {/* Handover */}
+        {currentSlideId === "handover" && (
           <div className="h-full overflow-auto p-4">
             <TVHandoverMirror />
           </div>
         )}
 
-        {/* SLIDE 5: Projekte */}
-        {currentSlide === 4 && <ProjekteSlide projects={projects} />}
+        {/* Projekte */}
+        {currentSlideId === "projects" && <ProjekteSlide projects={projects} />}
 
-        {/* SLIDE 6: Events */}
-        {currentSlide === 5 && <EventsSlide />}
+        {/* Events */}
+        {currentSlideId === "events" && <EventsSlide images={eventImages} />}
       </div>
 
       {/* SLIDE NAVIGATION */}
@@ -722,7 +771,7 @@ export function TvLayout({
             <ChevronLeft className="w-6 h-6" />
           </button>
 
-          {Array.from({ length: SLIDE_COUNT }, (_, i) => (
+          {activeSlides.map((_, i) => (
             <button
               key={i}
               onClick={() => goToSlide(i, true)}
