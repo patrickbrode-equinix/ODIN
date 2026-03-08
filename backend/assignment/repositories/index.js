@@ -240,3 +240,49 @@ export const assignmentRotationRepository = {
     return rows[0];
   },
 };
+
+/* ---- assignment_exclusion_list ---- */
+
+export const assignmentExclusionRepository = {
+  async findAll({ activeOnly = true } = {}) {
+    const where = activeOnly ? 'WHERE active = true' : '';
+    const { rows } = await pool.query(
+      `SELECT * FROM assignment_exclusion_list ${where} ORDER BY system_name`
+    );
+    return rows;
+  },
+
+  async findActiveNames() {
+    const { rows } = await pool.query(
+      `SELECT system_name FROM assignment_exclusion_list WHERE active = true ORDER BY system_name`
+    );
+    return rows.map(r => r.system_name);
+  },
+
+  async create({ systemName, reason, createdBy }) {
+    const { rows } = await pool.query(
+      `INSERT INTO assignment_exclusion_list (system_name, reason, created_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (system_name) DO UPDATE SET active = true, reason = $2, created_by = $3
+       RETURNING *`,
+      [systemName, reason, createdBy]
+    );
+    return rows[0];
+  },
+
+  async deactivate(id) {
+    const { rows } = await pool.query(
+      `UPDATE assignment_exclusion_list SET active = false WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async remove(id) {
+    const { rows } = await pool.query(
+      `DELETE FROM assignment_exclusion_list WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+};

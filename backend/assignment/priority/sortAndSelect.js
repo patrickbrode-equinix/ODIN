@@ -3,70 +3,112 @@
 /*                     Selection (Deterministic)    */
 /* ================================================ */
 
-import { PRIORITY_ORDER, TYPE_SORT_ORDER } from '../constants.js';
+import { PRIORITY_ORDER, PRIORITY_TIERS } from '../constants.js';
+import { evaluateSystemGrouping } from '../rules/systemGrouping.js';
+import { checkQueuePurity } from '../rules/queuePurity.js';
 
 /**
- * Sort tickets by deterministic priority rules:
- * 1. Overdue first
- * 2. Critical tickets before others
- * 3. Earlier due/commit time first
- * 4. TroubleTicket > CrossConnect > SmartHands > Other > Unknown
- * 5. Older tickets (by createdAt) first at equal rank
+ * Compute the priority tier for a ticket according to the spec:
+ *
+ *   Tier 1: TroubleTicket High (and Critical)
+ *   Tier 2: TroubleTicket Medium
+ *   Tier 3: KPI queue tickets (SmartHands, CrossConnect) — sorted by remaining time
+ *   Tier 4: Scheduled tickets
+ *   Tier 5: TroubleTicket Low
+ *   Tier 6: Everything else
+ *
+ * @param {object} ticket - Normalized ticket
+ * @returns {number} Tier number (lower = higher priority)
  */
-export function sortTickets(tickets) {
-  const now = Date.now();
+export function getPriorityTier(ticket) {
+  const t = ticket.type;
+  const p = ticket.priority;
 
+  if (t === 'TroubleTicket' && (p === 'high' || p === 'critical')) return PRIORITY_TIERS.TT_HIGH;
+  if (t === 'TroubleTicket' && p === 'medium') return PRIORITY_TIERS.TT_MEDIUM;
+  if (t === 'SmartHands' || t === 'CrossConnect') return PRIORITY_TIERS.KPI_QUEUE;
+  if (t === 'Scheduled') return PRIORITY_TIERS.SCHEDULED;
+  if (t === 'TroubleTicket' && p === 'low') return PRIORITY_TIERS.TT_LOW;
+  if (t === 'TroubleTicket') return PRIORITY_TIERS.TT_LOW; // unknown priority TT defaults to low tier
+
+  return PRIORITY_TIERS.OTHER;
+}
+
+/**
+ * Sort tickets by the spec-defined deterministic priority rules:
+ *
+ *   Primary: Priority tier (1-6)
+ *   Within same tier:
+ *     - Lowest remaining commit time (dueAt - now)
+ *     - Earliest scheduled time (scheduledStart)
+ *     - Oldest ticket creation (createdAt)
+ *   Ultimate fallback: ticket ID (lexicographic)
+ *
+ * Within tier 1: critical before high
+ * Within tier 3 (KPI): lowest remaining time first
+ *
+ * @param {object[]} tickets - Array of normalized tickets
+ * @param {number}   [now]   - Current time ms (for testing)
+ * @returns {object[]} Sorted copy of the array
+ */
+export function sortTickets(tickets, now = Date.now()) {
   return [...tickets].sort((a, b) => {
-    // 1. Overdue first
-    const aOverdue = a.dueAt && new Date(a.dueAt).getTime() < now ? 1 : 0;
-    const bOverdue = b.dueAt && new Date(b.dueAt).getTime() < now ? 1 : 0;
-    if (bOverdue !== aOverdue) return bOverdue - aOverdue; // overdue first (1 before 0)
+    // 1. Primary: priority tier
+    const aTier = getPriorityTier(a);
+    const bTier = getPriorityTier(b);
+    if (aTier !== bTier) return aTier - bTier;
 
-    // 2. Critical tickets before others
-    const aPrio = PRIORITY_ORDER[a.priority] ?? 4;
-    const bPrio = PRIORITY_ORDER[b.priority] ?? 4;
-    if (aPrio !== bPrio) return aPrio - bPrio; // lower number = higher priority
-
-    // 3. Earlier due time first
-    if (a.dueAt && b.dueAt) {
-      const aDue = new Date(a.dueAt).getTime();
-      const bDue = new Date(b.dueAt).getTime();
-      if (aDue !== bDue) return aDue - bDue;
-    } else if (a.dueAt) {
-      return -1; // tickets with due dates come first
-    } else if (b.dueAt) {
-      return 1;
+    // 2. Within tier 1: critical before high
+    if (aTier === PRIORITY_TIERS.TT_HIGH) {
+      const aPrio = PRIORITY_ORDER[a.priority] ?? 4;
+      const bPrio = PRIORITY_ORDER[b.priority] ?? 4;
+      if (aPrio !== bPrio) return aPrio - bPrio;
     }
 
-    // 4. Type priority
-    const aType = TYPE_SORT_ORDER[a.type] ?? 4;
-    const bType = TYPE_SORT_ORDER[b.type] ?? 4;
-    if (aType !== bType) return aType - bType;
+    // 3. Lowest remaining commit time (due date closest to now first)
+    const aRemaining = a.dueAt ? new Date(a.dueAt).getTime() - now : Infinity;
+    const bRemaining = b.dueAt ? new Date(b.dueAt).getTime() - now : Infinity;
+    if (aRemaining !== bRemaining) return aRemaining - bRemaining;
 
-    // 5. Older tickets first (by createdAt)
+    // 4. Earliest scheduled time
+    const aSched = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity;
+    const bSched = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity;
+    if (aSched !== bSched) return aSched - bSched;
+
+    // 5. Oldest ticket creation
     if (a.createdAt && b.createdAt) {
       const aCreated = new Date(a.createdAt).getTime();
       const bCreated = new Date(b.createdAt).getTime();
       if (aCreated !== bCreated) return aCreated - bCreated;
+    } else if (a.createdAt) {
+      return -1;
+    } else if (b.createdAt) {
+      return 1;
     }
 
-    // 6. Stable fallback: by ID
+    // 6. Stable fallback: ticket ID (lexicographic)
     return String(a.id).localeCompare(String(b.id));
   });
 }
 
 /**
  * Select the best worker from eligible candidates deterministically.
- * Returns { worker, reason, tieBreaker }
  *
- * Priority:
- * 1. Same site preferred
- * 2. Matching responsibility preferred
- * 3. Matching default role preferred
- * 4. Rotation tie-breaker (if enabled)
- * 5. Stable ID tie-breaker
+ * Tie-breaker order (per spec):
+ *   1. Existing grouped system name (worker already has tickets for this system)
+ *   2. Queue purity (worker's queue matches ticket type)
+ *   3. Least active workload (fewest current tickets)
+ *   4. Worker ID (deterministic fallback)
+ *
+ * @param {object[]} candidates        - Eligible worker objects
+ * @param {object}   ticket            - Normalized ticket
+ * @param {object}   settings          - Engine settings
+ * @param {Map}      workerTicketsMap  - Map<workerId, ticket[]> of current assignments
+ * @param {boolean}  insufficientResources - Whether resources are insufficient
+ * @param {number}   [now]             - Current time ms
+ * @returns {{ worker: object|null, reason: string, tieBreaker: string|null }}
  */
-export function selectWorker(candidates, ticket, settings, rotationState = null) {
+export function selectWorker(candidates, ticket, settings, workerTicketsMap = new Map(), insufficientResources = false, now = Date.now()) {
   if (!candidates || candidates.length === 0) {
     return { worker: null, reason: 'No eligible candidates', tieBreaker: null };
   }
@@ -75,84 +117,78 @@ export function selectWorker(candidates, ticket, settings, rotationState = null)
     return { worker: candidates[0], reason: 'Only one eligible candidate', tieBreaker: null };
   }
 
-  // Score each candidate (not a "scoring model" — just deterministic preference ordering)
+  // Score each candidate on the 4-tier tie-breaking criteria
   const scored = candidates.map(c => {
-    let preference = 0;
+    const currentTickets = workerTicketsMap.get(c.id) || [];
 
-    // 1. Same site
-    if (ticket.site && c.site && c.site.toLowerCase().trim() === ticket.site.toLowerCase().trim()) {
-      preference += 100;
-    }
+    // 1. System name grouping score
+    const grouping = evaluateSystemGrouping(c, ticket, currentTickets, now);
 
-    // 2. Matching responsibility
-    if (ticket.responsibility && c.responsibility &&
-        c.responsibility.toLowerCase().trim() === ticket.responsibility.toLowerCase().trim()) {
-      preference += 50;
-    }
+    // 2. Queue purity score
+    const purity = checkQueuePurity(c, ticket, currentTickets, insufficientResources, now);
 
-    // 3. Matching group/role
-    if (ticket.queue && c.group &&
-        c.group.toLowerCase().trim() === ticket.queue.toLowerCase().trim()) {
-      preference += 25;
-    }
+    // 3. Workload (negative: fewer = better)
+    const workload = currentTickets.length;
 
-    return { candidate: c, preference };
+    return {
+      candidate: c,
+      groupingScore: grouping.score,
+      groupingGrouped: grouping.grouped,
+      groupingBlocked: grouping.blocked || false,
+      purityPure: purity.pure,
+      workload,
+      // For debugging
+      _groupingReason: grouping.reason,
+      _purityReason: purity.reason,
+    };
   });
 
-  // Sort by preference descending
-  scored.sort((a, b) => b.preference - a.preference);
+  // Remove candidates blocked by system grouping (e.g., SH max 3)
+  const unblocked = scored.filter(s => !s.groupingBlocked);
+  const pool = unblocked.length > 0 ? unblocked : scored; // fallback if all blocked
 
-  // Check if there's a clear winner
-  const topPreference = scored[0].preference;
-  const tied = scored.filter(s => s.preference === topPreference);
+  // Sort by tie-breaking criteria
+  pool.sort((a, b) => {
+    // 1. Existing grouped system name (higher score = better)
+    if (a.groupingScore !== b.groupingScore) return b.groupingScore - a.groupingScore;
 
-  if (tied.length === 1) {
-    const reasons = [];
-    if (topPreference >= 100) reasons.push('same site');
-    if (topPreference >= 50) reasons.push('matching responsibility');
-    if (topPreference >= 25) reasons.push('matching group');
-    return {
-      worker: tied[0].candidate,
-      reason: `Best match: ${reasons.join(', ') || 'highest preference'}`,
-      tieBreaker: null,
-    };
+    // 2. Queue purity (pure before impure)
+    if (a.purityPure !== b.purityPure) return a.purityPure ? -1 : 1;
+
+    // 3. Least active workload (fewer tickets = better)
+    if (a.workload !== b.workload) return a.workload - b.workload;
+
+    // 4. Worker ID (deterministic)
+    return a.candidate.id - b.candidate.id;
+  });
+
+  const winner = pool[0];
+  const reasons = [];
+  let tieBreaker = 'worker-id';
+
+  if (winner.groupingGrouped && winner.groupingScore > 0) {
+    reasons.push(`system grouping (score: ${winner.groupingScore})`);
+    tieBreaker = 'system-grouping';
   }
+  if (winner.purityPure) {
+    reasons.push('queue purity maintained');
+    if (tieBreaker === 'worker-id') tieBreaker = 'queue-purity';
+  }
+  reasons.push(`workload: ${winner.workload} tickets`);
+  reasons.push(`worker ID: ${winner.candidate.id}`);
 
-  // Tie-breaking needed
-  return resolveWorkerTie(
-    tied.map(t => t.candidate),
-    settings,
-    rotationState,
-    ticket
-  );
+  return {
+    worker: winner.candidate,
+    reason: `Selected by: ${reasons.join(', ')}`,
+    tieBreaker,
+  };
 }
 
 /**
- * Resolve a tie between equally-preferred workers.
+ * @deprecated Use selectWorker with workerTicketsMap instead.
+ * Kept for backward compatibility during migration.
  */
 export function resolveWorkerTie(tiedCandidates, settings, rotationState, ticket) {
-  const enableRotation = settings.enableRotationTieBreaker === 'true' || settings.enableRotationTieBreaker === true;
-
-  if (enableRotation && rotationState) {
-    // Round-robin: pick the worker who was least recently assigned
-    const lastId = rotationState.last_assigned_worker_id;
-    if (lastId != null) {
-      // Find the next one after the last assigned in the sorted list
-      const sorted = [...tiedCandidates].sort((a, b) => a.id - b.id);
-      const lastIdx = sorted.findIndex(c => c.id === lastId);
-      if (lastIdx >= 0 && lastIdx < sorted.length - 1) {
-        const next = sorted[lastIdx + 1];
-        return { worker: next, reason: 'Rotation tie-breaker: next in round-robin', tieBreaker: 'rotation' };
-      }
-      // Wrap around
-      return { worker: sorted[0], reason: 'Rotation tie-breaker: wrapped to first worker', tieBreaker: 'rotation' };
-    }
-    // No rotation state yet: pick first by stable ID
-    const sorted = [...tiedCandidates].sort((a, b) => a.id - b.id);
-    return { worker: sorted[0], reason: 'Rotation tie-breaker: first run, selected first by ID', tieBreaker: 'rotation-init' };
-  }
-
-  // Stable ID fallback
   const sorted = [...tiedCandidates].sort((a, b) => a.id - b.id);
-  return { worker: sorted[0], reason: 'Stable ID tie-breaker: lowest worker ID', tieBreaker: 'stable-id' };
+  return { worker: sorted[0], reason: 'Legacy stable ID tie-breaker: lowest worker ID', tieBreaker: 'stable-id' };
 }

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import {
   mapType, mapStatus, mapPriority, mapSite, mapDates,
   mapResponsibility, mapTicketId, normalizeTicket, validateNormalizedTicket,
+  mapHandoverType, mapScheduledStart, mapSystemName,
 } from '../assignment/normalization/normalizeTicket.js';
 
 // Relevance
@@ -18,13 +19,23 @@ import { checkRelevance } from '../assignment/relevance/checkRelevance.js';
 import {
   isWorkerAutoAssignable, isAvailable, isNotOnBreak, isNotAbsent,
   isShiftActive, matchesSite, matchesResponsibility, applyEligibilityRules,
+  checkRole, checkQueueClean,
 } from '../assignment/eligibility/rules.js';
 
 // Priority / Selection
-import { sortTickets, selectWorker, resolveWorkerTie } from '../assignment/priority/sortAndSelect.js';
+import { sortTickets, selectWorker, resolveWorkerTie, getPriorityTier } from '../assignment/priority/sortAndSelect.js';
 
 // Logging
 import { buildDecisionLog, buildRunSummary, buildTicketExplanation } from '../assignment/logging/decisionLog.js';
+
+// V2 Rules
+import { checkCrawlerFreshness } from '../assignment/rules/crawlerGuard.js';
+import { applyRoleFilter } from '../assignment/rules/roleFilter.js';
+import { checkExclusionList } from '../assignment/rules/exclusionList.js';
+import { routeHandover } from '../assignment/rules/handoverRouter.js';
+import { checkQueuePurity } from '../assignment/rules/queuePurity.js';
+import { evaluateSystemGrouping } from '../assignment/rules/systemGrouping.js';
+import { PRIORITY_TIERS, CRAWLER_MAX_AGE_MS } from '../assignment/constants.js';
 
 /* ================================================ */
 /* mapType                                          */
@@ -323,12 +334,14 @@ describe('sortTickets', () => {
     assert.equal(sorted[0].id, 'B'); // overdue first
   });
 
-  it('sorts critical before medium', () => {
+  it('sorts SmartHands in same KPI tier regardless of internal priority', () => {
+    // In V2, SmartHands are all tier 3 (KPI). Within tier, sort by remaining time then ID.
     const sorted = sortTickets([
       { id: 'A', priority: 'medium', type: 'SmartHands' },
       { id: 'B', priority: 'critical', type: 'SmartHands' },
     ]);
-    assert.equal(sorted[0].id, 'B');
+    // Without due dates, falls to ID comparison: 'A' < 'B'
+    assert.equal(sorted[0].id, 'A');
   });
 
   it('sorts TroubleTicket before SmartHands at same priority', () => {
@@ -339,12 +352,14 @@ describe('sortTickets', () => {
     assert.equal(sorted[0].id, 'B');
   });
 
-  it('sorts CrossConnect before SmartHands', () => {
+  it('sorts CC and SH in same KPI tier — break by ID', () => {
+    // In V2, both CrossConnect and SmartHands are tier 3 (KPI).
+    // Without due dates, falls to ID comparison: 'A' < 'B'
     const sorted = sortTickets([
       { id: 'A', priority: 'medium', type: 'SmartHands' },
       { id: 'B', priority: 'medium', type: 'CrossConnect' },
     ]);
-    assert.equal(sorted[0].id, 'B');
+    assert.equal(sorted[0].id, 'A');
   });
 
   it('sorts older tickets first at equal rank', () => {
@@ -370,56 +385,64 @@ describe('selectWorker', () => {
     assert.equal(r.worker.id, 1);
   });
 
-  it('prefers same-site worker', () => {
-    const r = selectWorker(
-      [
-        { id: 1, name: 'A', site: 'AM3' },
-        { id: 2, name: 'B', site: 'FR2' },
-      ],
-      { site: 'FR2' },
-      {}
-    );
-    assert.equal(r.worker.id, 2);
-  });
-
-  it('uses stable-id tie-breaker', () => {
+  it('uses lowest worker ID as final deterministic tie-breaker', () => {
+    // In V2 selectWorker, tie-breaking is: system grouping → purity → workload → worker ID
+    // With no current tickets, all scores equal → falls to lowest ID
     const r = selectWorker(
       [
         { id: 5, name: 'E' },
         { id: 3, name: 'C' },
       ],
-      {},
-      { enableRotationTieBreaker: 'false', fallbackTieBreaker: 'stable-id' }
+      { type: 'TroubleTicket', systemName: null },
+      {}
     );
     assert.equal(r.worker.id, 3); // lowest ID
+  });
+
+  it('prefers worker with lower workload', () => {
+    const workerTicketsMap = new Map([
+      [1, [{ type: 'SmartHands' }, { type: 'SmartHands' }]], // 2 tickets
+      [2, [{ type: 'SmartHands' }]],                          // 1 ticket
+    ]);
+    const r = selectWorker(
+      [
+        { id: 1, name: 'A' },
+        { id: 2, name: 'B' },
+      ],
+      { type: 'SmartHands', systemName: null },
+      {},
+      workerTicketsMap
+    );
+    assert.equal(r.worker.id, 2); // fewer tickets
   });
 });
 
 /* ================================================ */
 /* resolveWorkerTie                                 */
 /* ================================================ */
-describe('resolveWorkerTie', () => {
-  it('uses rotation tie-breaker', () => {
+describe('resolveWorkerTie (deprecated)', () => {
+  it('always uses stable-id (lowest ID) in V2', () => {
+    // resolveWorkerTie is now a deprecated legacy function that simply picks lowest ID
     const r = resolveWorkerTie(
       [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }],
       { enableRotationTieBreaker: 'true' },
       { last_assigned_worker_id: 1 },
       {}
     );
-    assert.equal(r.worker.id, 2); // next after 1
+    assert.equal(r.worker.id, 1); // lowest ID — rotation no longer applies
   });
 
-  it('wraps around in rotation', () => {
+  it('returns lowest ID regardless of rotation state', () => {
     const r = resolveWorkerTie(
       [{ id: 1, name: 'A' }, { id: 2, name: 'B' }],
       { enableRotationTieBreaker: 'true' },
       { last_assigned_worker_id: 2 },
       {}
     );
-    assert.equal(r.worker.id, 1); // wrap to first
+    assert.equal(r.worker.id, 1); // lowest ID
   });
 
-  it('falls back to stable-id', () => {
+  it('returns lowest ID with explicit stable-id setting', () => {
     const r = resolveWorkerTie(
       [{ id: 5, name: 'E' }, { id: 3, name: 'C' }],
       { enableRotationTieBreaker: 'false' },
@@ -497,5 +520,496 @@ describe('buildTicketExplanation', () => {
     assert.ok(exp.markdown.includes('Marco D.'));
     assert.equal(exp.structured.result, 'assigned');
     assert.equal(exp.structured.assignedWorkerName, 'Marco D.');
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — Crawler Guard                                         */
+/* ================================================================ */
+describe('Crawler Stale Protection', () => {
+  const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+
+  it('rejects missing timestamp', () => {
+    const r = checkCrawlerFreshness(null, NOW);
+    assert.equal(r.fresh, false);
+    assert.match(r.reason, /No crawler timestamp/);
+  });
+
+  it('rejects invalid timestamp', () => {
+    const r = checkCrawlerFreshness('not-a-date', NOW);
+    assert.equal(r.fresh, false);
+    assert.match(r.reason, /Invalid/);
+  });
+
+  it('accepts fresh data (< 10 min)', () => {
+    const fiveMin = new Date(NOW - 5 * 60 * 1000).toISOString();
+    const r = checkCrawlerFreshness(fiveMin, NOW);
+    assert.equal(r.fresh, true);
+  });
+
+  it('rejects stale data (> 10 min)', () => {
+    const fifteenMin = new Date(NOW - 15 * 60 * 1000).toISOString();
+    const r = checkCrawlerFreshness(fifteenMin, NOW);
+    assert.equal(r.fresh, false);
+    assert.match(r.reason, /15 minutes/);
+  });
+
+  it('rejects data exactly at boundary + 1s', () => {
+    const overLimit = new Date(NOW - CRAWLER_MAX_AGE_MS - 1000).toISOString();
+    const r = checkCrawlerFreshness(overLimit, NOW);
+    assert.equal(r.fresh, false);
+  });
+
+  it('accepts data just under 10 min', () => {
+    const justUnder = new Date(NOW - CRAWLER_MAX_AGE_MS + 1000).toISOString();
+    const r = checkCrawlerFreshness(justUnder, NOW);
+    assert.equal(r.fresh, true);
+  });
+
+  it('supports custom max age', () => {
+    const fiveMin = new Date(NOW - 5 * 60 * 1000).toISOString();
+    const r = checkCrawlerFreshness(fiveMin, NOW, 3 * 60 * 1000);
+    assert.equal(r.fresh, false);
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — Role Filter                                           */
+/* ================================================================ */
+describe('Role Exclusions', () => {
+  const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+  const ttTicket  = { type: 'TroubleTicket', priority: 'high', handoverType: null, dueAt: null };
+  const ccTicket  = { type: 'CrossConnect', priority: 'medium', handoverType: null, dueAt: '2026-03-10T12:00:00Z' };
+  const shTicket  = { type: 'SmartHands', priority: 'medium', handoverType: null };
+  const otTicket  = { type: 'TroubleTicket', priority: 'medium', handoverType: 'other_teams' };
+
+  it('excludes Dispatcher from normal tickets', () => {
+    const r = applyRoleFilter({ role: 'dispatcher' }, ttTicket, NOW);
+    assert.equal(r.eligible, false);
+    assert.match(r.reason, /Dispatcher.*does not receive normal/);
+  });
+
+  it('allows Dispatcher for OtherTeams handover', () => {
+    const r = applyRoleFilter({ role: 'dispatcher' }, otTicket, NOW);
+    assert.equal(r.eligible, true);
+  });
+
+  it('excludes OtherTeams handover from normal staff', () => {
+    const r = applyRoleFilter({ role: 'normal' }, otTicket, NOW);
+    assert.equal(r.eligible, false);
+    assert.match(r.reason, /OtherTeams.*Dispatcher/);
+  });
+
+  it('excludes Large Order', () => {
+    assert.equal(applyRoleFilter({ role: 'large_order' }, ttTicket, NOW).eligible, false);
+  });
+
+  it('excludes Project', () => {
+    assert.equal(applyRoleFilter({ role: 'project' }, ttTicket, NOW).eligible, false);
+  });
+
+  it('excludes Leads', () => {
+    assert.equal(applyRoleFilter({ role: 'leads' }, ttTicket, NOW).eligible, false);
+  });
+
+  it('allows Deutsche Börse for TroubleTickets', () => {
+    assert.equal(applyRoleFilter({ role: 'deutsche_boerse' }, ttTicket, NOW).eligible, true);
+  });
+
+  it('allows Deutsche Börse for CC > 24h', () => {
+    assert.equal(applyRoleFilter({ role: 'deutsche_boerse' }, ccTicket, NOW).eligible, true);
+  });
+
+  it('excludes Deutsche Börse for CC <= 24h', () => {
+    const shortCC = { ...ccTicket, dueAt: '2026-03-09T10:00:00Z' };
+    assert.equal(applyRoleFilter({ role: 'deutsche_boerse' }, shortCC, NOW).eligible, false);
+  });
+
+  it('excludes Deutsche Börse for SmartHands', () => {
+    assert.equal(applyRoleFilter({ role: 'deutsche_boerse' }, shTicket, NOW).eligible, false);
+  });
+
+  it('allows Cross Connect role only for CC tickets', () => {
+    assert.equal(applyRoleFilter({ role: 'cross_connect' }, ccTicket, NOW).eligible, true);
+    assert.equal(applyRoleFilter({ role: 'cross_connect' }, ttTicket, NOW).eligible, false);
+    assert.equal(applyRoleFilter({ role: 'cross_connect' }, shTicket, NOW).eligible, false);
+  });
+
+  it('excludes Support (secondary worker)', () => {
+    const r = applyRoleFilter({ role: 'support' }, ttTicket, NOW);
+    assert.equal(r.eligible, false);
+    assert.match(r.reason, /secondary/i);
+  });
+
+  it('allows Buddy and Neustarter', () => {
+    assert.equal(applyRoleFilter({ role: 'buddy' }, ttTicket, NOW).eligible, true);
+    assert.equal(applyRoleFilter({ role: 'neustarter' }, ttTicket, NOW).eligible, true);
+  });
+
+  it('allows Normal for all tickets', () => {
+    assert.equal(applyRoleFilter({ role: 'normal' }, ttTicket, NOW).eligible, true);
+  });
+
+  it('defaults to normal if role missing', () => {
+    assert.equal(applyRoleFilter({}, ttTicket, NOW).eligible, true);
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — Exclusion List                                        */
+/* ================================================================ */
+describe('Exclusion List', () => {
+  const list = ['SYS-ALPHA', 'sys-beta', 'GAMMA-PROD'];
+
+  it('excludes matching system name', () => {
+    assert.equal(checkExclusionList({ systemName: 'SYS-ALPHA' }, list).excluded, true);
+  });
+
+  it('is case-insensitive', () => {
+    assert.equal(checkExclusionList({ systemName: 'sys-alpha' }, list).excluded, true);
+  });
+
+  it('does not exclude non-matching name', () => {
+    assert.equal(checkExclusionList({ systemName: 'SYS-DELTA' }, list).excluded, false);
+  });
+
+  it('does not exclude ticket with no system name', () => {
+    assert.equal(checkExclusionList({ systemName: null }, list).excluded, false);
+  });
+
+  it('does not exclude when list is empty', () => {
+    assert.equal(checkExclusionList({ systemName: 'SYS-ALPHA' }, []).excluded, false);
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — Handover Routing                                      */
+/* ================================================================ */
+describe('Handover Routing', () => {
+  it('treats Workload as normal', () => {
+    const r = routeHandover({ type: 'TroubleTicket', handoverType: 'workload' });
+    assert.equal(r.action, 'normal');
+    assert.equal(r.effectiveType, 'TroubleTicket');
+  });
+
+  it('treats Terminated as Scheduled', () => {
+    const r = routeHandover({ type: 'TroubleTicket', handoverType: 'terminated' });
+    assert.equal(r.action, 'scheduled');
+    assert.equal(r.effectiveType, 'Scheduled');
+  });
+
+  it('routes OtherTeams to dispatcher_only', () => {
+    const r = routeHandover({ type: 'TroubleTicket', handoverType: 'other_teams' });
+    assert.equal(r.action, 'dispatcher_only');
+  });
+
+  it('treats unknown handover as manual_review', () => {
+    const r = routeHandover({ type: 'TroubleTicket', handoverType: 'something_new' });
+    assert.equal(r.action, 'manual_review');
+  });
+
+  it('treats missing handover as normal', () => {
+    const r = routeHandover({ type: 'TroubleTicket', handoverType: null });
+    assert.equal(r.action, 'normal');
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — Queue Purity                                          */
+/* ================================================================ */
+describe('Queue Purity', () => {
+  const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+
+  it('allows any type when worker has no current tickets', () => {
+    assert.equal(checkQueuePurity({}, { type: 'SmartHands' }, [], false, NOW).pure, true);
+  });
+
+  it('allows SH → SH', () => {
+    assert.equal(checkQueuePurity({}, { type: 'SmartHands' }, [{ type: 'SmartHands' }], false, NOW).pure, true);
+  });
+
+  it('blocks SH → CC', () => {
+    assert.equal(checkQueuePurity({}, { type: 'CrossConnect' }, [{ type: 'SmartHands' }], false, NOW).pure, false);
+  });
+
+  it('allows CC → CC', () => {
+    assert.equal(checkQueuePurity({}, { type: 'CrossConnect' }, [{ type: 'CrossConnect' }], false, NOW).pure, true);
+  });
+
+  it('blocks CC → SH', () => {
+    assert.equal(checkQueuePurity({}, { type: 'SmartHands' }, [{ type: 'CrossConnect' }], false, NOW).pure, false);
+  });
+
+  it('allows CC worker → TT when insufficient resources + CC > 24h', () => {
+    const existing = [{ type: 'CrossConnect', dueAt: '2026-03-10T12:00:00Z' }]; // 48h
+    assert.equal(checkQueuePurity({}, { type: 'TroubleTicket' }, existing, true, NOW).pure, true);
+  });
+
+  it('blocks CC worker → TT when insufficient resources but CC <= 24h', () => {
+    const existing = [{ type: 'CrossConnect', dueAt: '2026-03-09T10:00:00Z' }]; // 22h
+    assert.equal(checkQueuePurity({}, { type: 'TroubleTicket' }, existing, true, NOW).pure, false);
+  });
+
+  it('blocks CC worker → TT when resources are sufficient', () => {
+    const existing = [{ type: 'CrossConnect', dueAt: '2026-03-10T12:00:00Z' }]; // 48h
+    assert.equal(checkQueuePurity({}, { type: 'TroubleTicket' }, existing, false, NOW).pure, false);
+  });
+
+  it('allows TT → Scheduled', () => {
+    assert.equal(checkQueuePurity({}, { type: 'Scheduled' }, [{ type: 'TroubleTicket' }], false, NOW).pure, true);
+  });
+});
+
+/* ================================================================ */
+/* V2 Rules — System Name Grouping                                  */
+/* ================================================================ */
+describe('System Name Grouping', () => {
+  const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+
+  it('returns no grouping for ticket without system name', () => {
+    const r = evaluateSystemGrouping({}, { type: 'SmartHands' }, [], NOW);
+    assert.equal(r.grouped, false);
+    assert.equal(r.score, 0);
+  });
+
+  it('returns no grouping when worker has no tickets for that system', () => {
+    const r = evaluateSystemGrouping({}, { type: 'SmartHands', systemName: 'SYS-A' }, [], NOW);
+    assert.equal(r.grouped, false);
+  });
+
+  it('groups SmartHands up to max 3 per worker per system', () => {
+    const existing = [
+      { systemName: 'SYS-A', type: 'SmartHands' },
+      { systemName: 'SYS-A', type: 'SmartHands' },
+    ];
+    const r = evaluateSystemGrouping({}, { type: 'SmartHands', systemName: 'SYS-A' }, existing, NOW);
+    assert.equal(r.grouped, true);
+    assert.ok(r.score > 0);
+  });
+
+  it('blocks SmartHands at max 3 per worker per system', () => {
+    const existing = [
+      { systemName: 'SYS-A', type: 'SmartHands' },
+      { systemName: 'SYS-A', type: 'SmartHands' },
+      { systemName: 'SYS-A', type: 'SmartHands' },
+    ];
+    const r = evaluateSystemGrouping({}, { type: 'SmartHands', systemName: 'SYS-A' }, existing, NOW);
+    assert.equal(r.grouped, false);
+    assert.equal(r.blocked, true);
+    assert.equal(r.score, -1);
+  });
+
+  it('groups CrossConnect with similar remaining times (< 6h)', () => {
+    const existing = [
+      { systemName: 'SYS-B', type: 'CrossConnect', dueAt: '2026-03-08T16:00:00Z' },
+    ];
+    const ticket = { type: 'CrossConnect', systemName: 'SYS-B', dueAt: '2026-03-08T18:00:00Z' };
+    assert.equal(evaluateSystemGrouping({}, ticket, existing, NOW).grouped, true);
+  });
+
+  it('does not group CrossConnect with > 6h time difference', () => {
+    const existing = [
+      { systemName: 'SYS-B', type: 'CrossConnect', dueAt: '2026-03-08T14:00:00Z' },
+    ];
+    const ticket = { type: 'CrossConnect', systemName: 'SYS-B', dueAt: '2026-03-09T12:00:00Z' };
+    assert.equal(evaluateSystemGrouping({}, ticket, existing, NOW).grouped, false);
+  });
+
+  it('is case-insensitive on system name', () => {
+    const existing = [{ systemName: 'sys-a', type: 'SmartHands' }];
+    assert.equal(evaluateSystemGrouping({}, { type: 'SmartHands', systemName: 'SYS-A' }, existing, NOW).grouped, true);
+  });
+});
+
+/* ================================================================ */
+/* V2 — Priority Tiers                                              */
+/* ================================================================ */
+describe('Priority Tiers', () => {
+  it('returns correct tier for each ticket type/priority combination', () => {
+    assert.equal(getPriorityTier({ type: 'TroubleTicket', priority: 'critical' }), PRIORITY_TIERS.TT_HIGH);
+    assert.equal(getPriorityTier({ type: 'TroubleTicket', priority: 'high' }), PRIORITY_TIERS.TT_HIGH);
+    assert.equal(getPriorityTier({ type: 'TroubleTicket', priority: 'medium' }), PRIORITY_TIERS.TT_MEDIUM);
+    assert.equal(getPriorityTier({ type: 'SmartHands', priority: 'medium' }), PRIORITY_TIERS.KPI_QUEUE);
+    assert.equal(getPriorityTier({ type: 'CrossConnect', priority: 'low' }), PRIORITY_TIERS.KPI_QUEUE);
+    assert.equal(getPriorityTier({ type: 'Scheduled', priority: 'medium' }), PRIORITY_TIERS.SCHEDULED);
+    assert.equal(getPriorityTier({ type: 'TroubleTicket', priority: 'low' }), PRIORITY_TIERS.TT_LOW);
+    assert.equal(getPriorityTier({ type: 'Other', priority: 'medium' }), PRIORITY_TIERS.OTHER);
+  });
+
+  it('sorts TT-High > TT-Medium > KPI > Scheduled > TT-Low in correct order', () => {
+    const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+    const tickets = [
+      { id: 'low', type: 'TroubleTicket', priority: 'low' },
+      { id: 'sched', type: 'Scheduled', priority: 'medium' },
+      { id: 'sh', type: 'SmartHands', priority: 'medium', dueAt: '2026-03-08T14:00:00Z' },
+      { id: 'high', type: 'TroubleTicket', priority: 'high' },
+      { id: 'med', type: 'TroubleTicket', priority: 'medium' },
+    ];
+    const sorted = sortTickets(tickets, NOW);
+    assert.deepEqual(sorted.map(t => t.id), ['high', 'med', 'sh', 'sched', 'low']);
+  });
+
+  it('sorts KPI tickets by lowest remaining time', () => {
+    const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+    const tickets = [
+      { id: 'sh2', type: 'SmartHands', priority: 'medium', dueAt: '2026-03-08T20:00:00Z' },
+      { id: 'cc1', type: 'CrossConnect', priority: 'medium', dueAt: '2026-03-08T14:00:00Z' },
+      { id: 'sh1', type: 'SmartHands', priority: 'medium', dueAt: '2026-03-08T18:00:00Z' },
+    ];
+    const sorted = sortTickets(tickets, NOW);
+    assert.equal(sorted[0].id, 'cc1');
+    assert.equal(sorted[1].id, 'sh1');
+    assert.equal(sorted[2].id, 'sh2');
+  });
+
+  it('breaks final ties by ticket ID', () => {
+    const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+    const sorted = sortTickets([
+      { id: 'b', type: 'TroubleTicket', priority: 'high' },
+      { id: 'a', type: 'TroubleTicket', priority: 'high' },
+    ], NOW);
+    assert.equal(sorted[0].id, 'a');
+  });
+});
+
+/* ================================================================ */
+/* V2 — Normalization New Fields                                    */
+/* ================================================================ */
+describe('Normalization — V2 Fields', () => {
+  it('normalizes Scheduled ticket type', () => {
+    assert.equal(mapType('scheduled').value, 'Scheduled');
+    assert.equal(mapType('Scheduled').value, 'Scheduled');
+  });
+
+  it('normalizes handover types', () => {
+    assert.equal(mapHandoverType('workload').value, 'workload');
+    assert.equal(mapHandoverType('terminated').value, 'terminated');
+    assert.equal(mapHandoverType('other_teams').value, 'other_teams');
+    assert.equal(mapHandoverType('otherteams').value, 'other_teams');
+  });
+
+  it('preserves system name', () => {
+    assert.equal(mapSystemName('SYS-ALPHA').value, 'SYS-ALPHA');
+    assert.equal(mapSystemName(null).value, null);
+    assert.equal(mapSystemName('').value, null);
+  });
+
+  it('includes V2 fields in normalizeTicket output', () => {
+    const raw = {
+      id: 42,
+      queue_type: 'SmartHands',
+      status: 'open',
+      severity: 'medium',
+      system_name: 'PROD-DB-01',
+      handover_type: 'workload',
+      sched_start: '2026-03-09T08:00:00Z',
+      commit_date: '2026-03-10T12:00:00Z',
+      first_seen_at: '2026-03-07T10:00:00Z',
+      remaining_hours: 48,
+    };
+    const ticket = normalizeTicket(raw);
+    assert.equal(ticket.type, 'SmartHands');
+    assert.equal(ticket.systemName, 'PROD-DB-01');
+    assert.equal(ticket.handoverType, 'workload');
+    assert.equal(ticket.remainingHours, 48);
+  });
+});
+
+/* ================================================================ */
+/* V2 — Eligibility with Role + Queue Purity                        */
+/* ================================================================ */
+describe('Eligibility — V2 Role + Purity', () => {
+  const settings = { siteStrictness: 'false', responsibilityStrictness: 'false' };
+  const ttTicket = { type: 'TroubleTicket', priority: 'high', handoverType: null, site: null, responsibility: null };
+
+  it('excludes by role filter', () => {
+    const w = { name: 'Test', autoAssignable: true, blocked: false, onBreak: false, absent: false, shiftActive: true, role: 'project' };
+    const r = applyEligibilityRules(w, ttTicket, settings);
+    assert.equal(r.eligible, false);
+    assert.ok(r.exclusions.some(e => e.rule === 'roleFilter'));
+  });
+
+  it('excludes by queue purity', () => {
+    const w = { name: 'Test', autoAssignable: true, blocked: false, onBreak: false, absent: false, shiftActive: true, role: 'normal' };
+    const shTicket = { type: 'SmartHands', priority: 'medium', handoverType: null, site: null, responsibility: null };
+    const currentTickets = [{ type: 'CrossConnect' }];
+    const r = applyEligibilityRules(w, shTicket, settings, currentTickets);
+    assert.equal(r.eligible, false);
+    assert.ok(r.exclusions.some(e => e.rule === 'queuePurity'));
+  });
+
+  it('accepts normal worker with clean queue', () => {
+    const w = { name: 'Test', autoAssignable: true, blocked: false, onBreak: false, absent: false, shiftActive: true, role: 'normal' };
+    const r = applyEligibilityRules(w, ttTicket, settings, []);
+    assert.equal(r.eligible, true);
+    assert.equal(r.exclusions.length, 0);
+  });
+});
+
+/* ================================================================ */
+/* V2 — Worker Selection Tie-Breaking                               */
+/* ================================================================ */
+describe('V2 Worker Selection', () => {
+  const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+
+  it('prefers worker with existing system name grouping', () => {
+    const candidates = [
+      { id: 1, name: 'Worker A' },
+      { id: 2, name: 'Worker B' },
+    ];
+    const wMap = new Map([
+      [1, []],
+      [2, [{ systemName: 'SYS-A', type: 'SmartHands' }]],
+    ]);
+    const r = selectWorker(candidates, { type: 'SmartHands', systemName: 'SYS-A', dueAt: '2026-03-08T16:00:00Z' }, {}, wMap, false, NOW);
+    assert.equal(r.worker.id, 2);
+  });
+
+  it('prefers queue purity when no grouping difference', () => {
+    const candidates = [
+      { id: 1, name: 'Worker A' },
+      { id: 2, name: 'Worker B' },
+    ];
+    const wMap = new Map([
+      [1, [{ type: 'CrossConnect' }]],  // impure for SH
+      [2, [{ type: 'SmartHands' }]],     // pure for SH
+    ]);
+    const r = selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
+    assert.equal(r.worker.id, 2);
+  });
+
+  it('prefers least workload when grouping and purity equal', () => {
+    const candidates = [
+      { id: 1, name: 'Worker A' },
+      { id: 2, name: 'Worker B' },
+    ];
+    const wMap = new Map([
+      [1, [{ type: 'SmartHands' }, { type: 'SmartHands' }]],
+      [2, [{ type: 'SmartHands' }]],
+    ]);
+    const r = selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
+    assert.equal(r.worker.id, 2);
+  });
+
+  it('falls back to lowest worker ID', () => {
+    const r = selectWorker(
+      [{ id: 5, name: 'E' }, { id: 3, name: 'C' }],
+      { type: 'SmartHands', systemName: null },
+      {},
+      new Map([[5, []], [3, []]]),
+      false, NOW,
+    );
+    assert.equal(r.worker.id, 3);
+  });
+
+  it('returns the only candidate', () => {
+    const r = selectWorker([{ id: 42, name: 'Solo' }], { type: 'SmartHands' }, {}, new Map(), false, NOW);
+    assert.equal(r.worker.id, 42);
+    assert.match(r.reason, /Only one/);
+  });
+
+  it('returns null for no candidates', () => {
+    const r = selectWorker([], { type: 'SmartHands' }, {}, new Map(), false, NOW);
+    assert.equal(r.worker, null);
   });
 });

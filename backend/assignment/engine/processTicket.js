@@ -8,29 +8,37 @@ import { applyEligibilityRules } from '../eligibility/rules.js';
 import { selectWorker } from '../priority/sortAndSelect.js';
 import { buildDecisionLog } from '../logging/decisionLog.js';
 import { persistTicketDecision, persistWorkerRotation, applyLiveAssignment } from '../persistence/persist.js';
-import { assignmentOverrideRepository, assignmentRotationRepository } from '../repositories/index.js';
-import { AssignmentError } from '../errors.js';
+import { assignmentOverrideRepository } from '../repositories/index.js';
+import { checkExclusionList } from '../rules/exclusionList.js';
+import { routeHandover } from '../rules/handoverRouter.js';
+import { analyticsTracker } from '../analytics/tracker.js';
 
 /**
- * Process a single normalized ticket through the assignment pipeline.
+ * Process a single normalized ticket through the full assignment pipeline.
  *
  * Steps:
- * 1. Validate
- * 2. Check relevance
- * 3. Check overrides
- * 4. Load candidates (passed in)
- * 5. Apply eligibility rules
- * 6. Select worker
- * 7. Build decision log
- * 8. Persist
+ *   1. Validate normalized ticket
+ *   2. Check relevance
+ *   3. Check manual overrides
+ *   4. Check exclusion list (system name)
+ *   5. Route handover (Workload/Terminated/OtherTeams)
+ *   6. Apply eligibility rules (incl. role filter, queue purity)
+ *   7. Select worker (system grouping → purity → workload → ID)
+ *   8. Build decision log
+ *   9. Persist decision + analytics
  *
- * @param {object} ticket - NormalizedTicket
- * @param {object[]} candidatePool - Pre-loaded candidate workers
- * @param {object} settings - Engine config
- * @param {number} runId - Current run ID
+ * @param {object}  ticket           - NormalizedTicket
+ * @param {object[]} candidatePool   - Pre-loaded candidate workers
+ * @param {object}  settings         - Engine config
+ * @param {number}  runId            - Current run ID
+ * @param {Map}     workerTicketsMap - Map<workerId, ticket[]> of current assignments
+ * @param {string[]} exclusionList   - System names to exclude
  * @returns {object} Decision log
  */
-export async function processTicket(ticket, candidatePool, settings, runId) {
+export async function processTicket(ticket, candidatePool, settings, runId, workerTicketsMap = new Map(), exclusionList = []) {
+  const now = Date.now();
+  const insufficientResources = settings.insufficientResources === 'true' || settings.insufficientResources === true;
+
   try {
     // 1. Validate
     const validationIssues = validateNormalizedTicket(ticket);
@@ -66,7 +74,7 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       return log;
     }
 
-    // 3. Check overrides
+    // 3. Check manual overrides
     const overrides = await assignmentOverrideRepository.findActive(ticket.id);
     if (overrides.length > 0) {
       const override = overrides[0];
@@ -101,32 +109,15 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       // force_assign is handled below after eligibility
     }
 
-    // Unknown type => manual_review
-    if (ticket.type === 'Unknown') {
+    // 4. Check exclusion list (system name)
+    const exclusionResult = checkExclusionList(ticket, exclusionList);
+    if (exclusionResult.excluded) {
       const log = buildDecisionLog({
         ticket,
         result: 'manual_review',
         assignedWorker: null,
-        selectionReason: `Unknown ticket type "${ticket.rawType}" — cannot auto-assign`,
-        rulePath: ['relevance', 'type-check'],
-        initialCandidates: candidatePool.map(c => ({ id: c.id, name: c.name })),
-        excludedCandidates: [],
-        remainingCandidates: [],
-      });
-      await persistTicketDecision(runId, log);
-      return log;
-    }
-
-    // 4. Candidates already in candidatePool
-    const initialCandidates = [...candidatePool];
-
-    if (initialCandidates.length === 0) {
-      const log = buildDecisionLog({
-        ticket,
-        result: 'no_candidate',
-        assignedWorker: null,
-        selectionReason: 'No candidate workers available',
-        rulePath: ['relevance', 'candidates'],
+        selectionReason: exclusionResult.reason,
+        rulePath: ['relevance', 'override-check', 'exclusion-list'],
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
@@ -135,13 +126,70 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       return log;
     }
 
-    // 5. Apply eligibility rules
+    // 5. Route handover type
+    const handoverResult = routeHandover(ticket);
+    if (handoverResult.action === 'manual_review') {
+      const log = buildDecisionLog({
+        ticket,
+        result: 'manual_review',
+        assignedWorker: null,
+        selectionReason: handoverResult.reason,
+        rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing'],
+        initialCandidates: [],
+        excludedCandidates: [],
+        remainingCandidates: [],
+      });
+      await persistTicketDecision(runId, log);
+      return log;
+    }
+
+    // Apply handover effect: Terminated → treat as Scheduled
+    if (handoverResult.action === 'scheduled') {
+      ticket = { ...ticket, type: 'Scheduled', _handoverOverride: true };
+    }
+
+    // Unknown type => manual_review
+    if (ticket.type === 'Unknown') {
+      const log = buildDecisionLog({
+        ticket,
+        result: 'manual_review',
+        assignedWorker: null,
+        selectionReason: `Unknown ticket type "${ticket.rawType}" — cannot auto-assign`,
+        rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check'],
+        initialCandidates: candidatePool.map(c => ({ id: c.id, name: c.name })),
+        excludedCandidates: [],
+        remainingCandidates: [],
+      });
+      await persistTicketDecision(runId, log);
+      return log;
+    }
+
+    // 6. Candidates
+    const initialCandidates = [...candidatePool];
+
+    if (initialCandidates.length === 0) {
+      const log = buildDecisionLog({
+        ticket,
+        result: 'no_candidate',
+        assignedWorker: null,
+        selectionReason: 'No candidate workers available',
+        rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check', 'candidates'],
+        initialCandidates: [],
+        excludedCandidates: [],
+        remainingCandidates: [],
+      });
+      await persistTicketDecision(runId, log);
+      return log;
+    }
+
+    // 7. Apply eligibility rules (includes role filter + queue purity)
     const excludedCandidates = [];
     const eligibleCandidates = [];
     const allRulesChecked = [];
 
     for (const worker of initialCandidates) {
-      const result = applyEligibilityRules(worker, ticket, settings);
+      const workerTickets = workerTicketsMap.get(worker.id) || [];
+      const result = applyEligibilityRules(worker, ticket, settings, workerTickets, insufficientResources, now);
       allRulesChecked.push(...result.checkedRules);
       if (result.eligible) {
         eligibleCandidates.push(worker);
@@ -153,14 +201,17 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
     }
 
     // Deduplicate rule names
-    const rulePath = ['relevance', 'override-check', 'type-check', 'eligibility', ...new Set(allRulesChecked)];
+    const rulePath = [
+      'relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check',
+      'eligibility', ...new Set(allRulesChecked),
+    ];
 
     if (eligibleCandidates.length === 0) {
       const log = buildDecisionLog({
         ticket,
-        result: 'no_candidate',
+        result: 'manual_review',
         assignedWorker: null,
-        selectionReason: 'All candidates were excluded by eligibility rules',
+        selectionReason: 'All candidates were excluded by eligibility rules — manual review required',
         rulePath,
         initialCandidates,
         excludedCandidates,
@@ -170,11 +221,8 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       return log;
     }
 
-    // 6. Select worker
-    const rotationSite = ticket.site || '_global';
-    const rotationState = await assignmentRotationRepository.getForSite(rotationSite);
-
-    const selection = selectWorker(eligibleCandidates, ticket, settings, rotationState);
+    // 8. Select worker using spec tie-breaking
+    const selection = selectWorker(eligibleCandidates, ticket, settings, workerTicketsMap, insufficientResources, now);
 
     if (!selection.worker) {
       const log = buildDecisionLog({
@@ -191,7 +239,7 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       return log;
     }
 
-    // 7. Build decision
+    // 9. Build decision
     const finalRulePath = [...rulePath, 'worker-selection'];
     if (selection.tieBreaker) finalRulePath.push(`tie-breaker:${selection.tieBreaker}`);
 
@@ -206,14 +254,34 @@ export async function processTicket(ticket, candidatePool, settings, runId) {
       remainingCandidates: eligibleCandidates,
     });
 
-    // 8. Persist decision
+    // Persist decision
     await persistTicketDecision(runId, log);
 
-    // Update rotation state
-    await persistWorkerRotation(rotationSite, selection.worker.id);
+    // Update worker's ticket map (so subsequent tickets see this assignment)
+    const workerTickets = workerTicketsMap.get(selection.worker.id) || [];
+    workerTickets.push({
+      id: ticket.id,
+      externalId: ticket.externalId,
+      type: ticket.type,
+      systemName: ticket.systemName,
+      dueAt: ticket.dueAt,
+      scheduledStart: ticket.scheduledStart,
+    });
+    workerTicketsMap.set(selection.worker.id, workerTickets);
 
     // Apply live assignment (no-op in shadow mode)
     await applyLiveAssignment(ticket, selection.worker, settings.mode);
+
+    // Track analytics
+    try {
+      await analyticsTracker.trackAssignment({
+        ticketId: ticket.id,
+        workerId: selection.worker.id,
+        workerName: selection.worker.name,
+        ticketType: ticket.type,
+        result: 'assigned',
+      });
+    } catch (_) { /* best effort */ }
 
     return log;
 

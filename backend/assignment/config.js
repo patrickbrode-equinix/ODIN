@@ -25,6 +25,11 @@ export const TYPE_ALIASES = {
   'xconnect': 'CrossConnect',
   'xc': 'CrossConnect',
   'cc': 'CrossConnect',
+  // Scheduled
+  'scheduled': 'Scheduled',
+  'scheduled_ticket': 'Scheduled',
+  'scheduled ticket': 'Scheduled',
+  'sched': 'Scheduled',
   // Other
   'other': 'Other',
   'misc': 'Other',
@@ -82,4 +87,53 @@ export const PRIORITY_ALIASES = {
   '1': 'critical',
   'emergency': 'critical',
   'blocker': 'critical',
+};
+
+/**
+ * Handover type aliases — maps raw handover type strings
+ * to normalized handover types.
+ */
+export const HANDOVER_ALIASES = {
+  'workload': 'workload',
+  'workload_handover': 'workload',
+  'workload handover': 'workload',
+  'terminated': 'terminated',
+  'terminated_handover': 'terminated',
+  'terminated handover': 'terminated',
+  'other_teams': 'other_teams',
+  'otherteams': 'other_teams',
+  'other teams': 'other_teams',
+  'other_teams_handover': 'other_teams',
+  'otherteams handover': 'other_teams',
+};
+
+/**
+ * Staff role aliases — maps raw role strings
+ * to normalized role identifiers.
+ */
+export const ROLE_ALIASES = {
+  'dispatcher': 'dispatcher',
+  'dispatch': 'dispatcher',
+  'large_order': 'large_order',
+  'large order': 'large_order',
+  'largeorder': 'large_order',
+  'project': 'project',
+  'leads': 'leads',
+  'lead': 'leads',
+  'teamlead': 'leads',
+  'team_lead': 'leads',
+  'deutsche_boerse': 'deutsche_boerse',
+  'deutsche börse': 'deutsche_boerse',
+  'deutsche boerse': 'deutsche_boerse',
+  'db': 'deutsche_boerse',
+  'dbag': 'deutsche_boerse',
+  'cross_connect': 'cross_connect',
+  'crossconnect': 'cross_connect',
+  'buddy': 'buddy',
+  'neustarter': 'neustarter',
+  'newstarter': 'neustarter',
+  'support': 'support',
+  'normal': 'normal',
+  'c-ops': 'normal',
+  'cops': 'normal',
 };

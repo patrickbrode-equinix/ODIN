@@ -11,7 +11,7 @@ import { ACTIVE_STATUSES, CLOSED_STATUSES } from '../constants.js';
 export function checkRelevance(ticket, settings = {}) {
   const supportedTypes = settings.supportedTicketTypes
     ? settings.supportedTicketTypes.split(',').map(t => t.trim())
-    : ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Other'];
+    : ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
 
   // Closed tickets are not relevant
   if (CLOSED_STATUSES.includes(ticket.status)) {

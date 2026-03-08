@@ -2,6 +2,9 @@
 /* Assignment Engine — Eligibility Rules            */
 /* ================================================ */
 
+import { applyRoleFilter } from '../rules/roleFilter.js';
+import { checkQueuePurity } from '../rules/queuePurity.js';
+
 /**
  * Each rule function returns:
  *   { eligible: boolean, rule: string, reason: string }
@@ -36,12 +39,11 @@ export function isNotAbsent(worker) {
 }
 
 export function isShiftActive(worker) {
-  // In Phase 1, if shift data isn't available, we assume shift is active
-  // This is a conservative choice — we don't exclude anyone due to missing data
+  // Use the shift_active column from users table
   if (worker.shiftActive === false) {
-    return { eligible: false, rule: 'isShiftActive', reason: `${worker.name} is not in active shift` };
+    return { eligible: false, rule: 'isShiftActive', reason: `${worker.name} is not on active shift` };
   }
-  return { eligible: true, rule: 'isShiftActive', reason: 'Worker shift is active (or not tracked)' };
+  return { eligible: true, rule: 'isShiftActive', reason: 'Worker is on active shift' };
 }
 
 export function matchesSite(worker, ticket, settings) {
@@ -81,18 +83,48 @@ export function matchesResponsibility(worker, ticket, settings) {
 }
 
 /**
+ * Apply role-based filtering rules.
+ * Wraps the spec role filter into the eligibility framework.
+ */
+export function checkRole(worker, ticket, now = Date.now()) {
+  return applyRoleFilter(worker, ticket, now);
+}
+
+/**
+ * Apply queue purity rule.
+ * Wraps the queue purity check into the eligibility framework.
+ */
+export function checkQueueClean(worker, ticket, workerCurrentTickets = [], insufficientResources = false, now = Date.now()) {
+  const result = checkQueuePurity(worker, ticket, workerCurrentTickets, insufficientResources, now);
+  return {
+    eligible: result.pure,
+    rule: 'queuePurity',
+    reason: result.reason,
+  };
+}
+
+/**
  * Apply all eligibility rules to a single worker for a given ticket.
  * Returns { eligible, exclusions: [{rule, reason}] }
+ *
+ * @param {object} worker               - Worker object (with .role, .shiftActive, etc.)
+ * @param {object} ticket               - Normalized ticket
+ * @param {object} settings             - Engine config
+ * @param {object[]} workerCurrentTickets - Current tickets assigned to this worker
+ * @param {boolean} insufficientResources - Global insufficient resources flag
+ * @param {number} [now]                 - Current time ms
  */
-export function applyEligibilityRules(worker, ticket, settings) {
+export function applyEligibilityRules(worker, ticket, settings, workerCurrentTickets = [], insufficientResources = false, now = Date.now()) {
   const rules = [
     () => isWorkerAutoAssignable(worker),
     () => isAvailable(worker),
     () => isNotOnBreak(worker),
     () => isNotAbsent(worker),
     () => isShiftActive(worker),
+    () => checkRole(worker, ticket, now),
     () => matchesSite(worker, ticket, settings),
     () => matchesResponsibility(worker, ticket, settings),
+    () => checkQueueClean(worker, ticket, workerCurrentTickets, insufficientResources, now),
   ];
 
   const exclusions = [];

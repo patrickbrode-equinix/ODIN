@@ -73,17 +73,30 @@ export async function persistWorkerRotation(site, workerId) {
 }
 
 /**
- * In live mode: apply actual ticket assignment.
- * In Phase 1 (shadow): this is a no-op.
+ * In live mode: apply actual ticket assignment in the DB.
+ * In shadow mode: this is a no-op — only logs decisions.
  */
 export async function applyLiveAssignment(ticket, worker, mode) {
   if (mode !== 'live') {
-    // Shadow mode — no live side effect
-    return { applied: false, reason: 'Shadow mode — no live assignment' };
+    return { applied: false, reason: `${mode} mode — no live assignment written` };
   }
 
-  // Phase 1: Even in live mode, we do NOT write to the production ticket system.
-  // This placeholder ensures the architecture is ready for Phase 2.
-  console.warn(`[ASSIGNMENT] Live assignment requested for ticket ${ticket.id} -> worker ${worker.name}, but Phase 1 does not apply live assignments.`);
-  return { applied: false, reason: 'Phase 1 — live assignment not implemented yet' };
+  try {
+    // Import pool lazily to avoid circular deps
+    const { default: pool } = await import('../../db.js');
+
+    // Update the queue_items row to record the assignment
+    await pool.query(
+      `UPDATE queue_items
+       SET assigned_worker_id = $1, assigned_at = NOW(), owner = $2, updated_at = NOW()
+       WHERE id = $3 OR external_id = $3`,
+      [worker.id, worker.name, ticket.id]
+    );
+
+    console.log(`[ASSIGNMENT] LIVE: Ticket ${ticket.id} assigned to ${worker.name} (ID: ${worker.id})`);
+    return { applied: true, reason: `Live assignment: ${ticket.id} → ${worker.name}` };
+  } catch (err) {
+    console.error(`[ASSIGNMENT] LIVE assignment failed for ticket ${ticket.id}:`, err.message);
+    return { applied: false, reason: `Live assignment failed: ${err.message}` };
+  }
 }

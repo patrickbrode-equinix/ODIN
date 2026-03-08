@@ -8,10 +8,14 @@ import { requirePageAccess } from '../middleware/requirePageAccess.js';
 import {
   assignmentSettingsService,
   assignmentExplanationService,
+  assignmentExclusionService,
   runAssignmentCycle,
   assignmentRunRepository,
   assignmentDecisionRepository,
   assignmentOverrideRepository,
+  analyticsTracker,
+  checkCrawlerFreshness,
+  loadLastCrawlerTimestamp,
 } from '../assignment/index.js';
 
 const router = express.Router();
@@ -201,6 +205,136 @@ router.patch('/overrides/:id/deactivate', requirePageAccess('settings', 'write')
     );
     if (!result) return res.status(404).json({ ok: false, error: 'Override not found' });
     res.json({ ok: true, override: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* EXCLUSION LIST (system names)                    */
+/* ------------------------------------------------ */
+
+router.get('/exclusions', async (req, res) => {
+  try {
+    const activeOnly = req.query.active !== 'false';
+    const exclusions = await assignmentExclusionService.getAll(activeOnly);
+    res.json({ ok: true, exclusions });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/exclusions', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { systemName, reason } = req.body;
+    if (!systemName) {
+      return res.status(400).json({ ok: false, error: 'systemName is required' });
+    }
+    const entry = await assignmentExclusionService.add({
+      systemName,
+      reason: reason || null,
+      createdBy: req.user?.email || 'unknown',
+    });
+    res.json({ ok: true, entry });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+router.patch('/exclusions/:id/deactivate', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const result = await assignmentExclusionService.deactivate(parseInt(req.params.id));
+    if (!result) return res.status(404).json({ ok: false, error: 'Entry not found' });
+    res.json({ ok: true, entry: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.delete('/exclusions/:id', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const result = await assignmentExclusionService.remove(parseInt(req.params.id));
+    if (!result) return res.status(404).json({ ok: false, error: 'Entry not found' });
+    res.json({ ok: true, entry: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* CRAWLER STATUS                                   */
+/* ------------------------------------------------ */
+
+router.get('/crawler-status', async (req, res) => {
+  try {
+    const lastTimestamp = await loadLastCrawlerTimestamp();
+    const freshness = checkCrawlerFreshness(lastTimestamp);
+    res.json({
+      ok: true,
+      fresh: freshness.fresh,
+      lastCrawlerTimestamp: lastTimestamp,
+      reason: freshness.reason,
+      staleDurationMs: freshness.staleDurationMs,
+      // TV mode safety message
+      tvMessage: freshness.fresh ? null : 'No current crawler data',
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* ANALYTICS (restricted admin only)                */
+/* ------------------------------------------------ */
+
+router.get('/analytics/manual-pickups', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { from, to, limit } = req.query;
+    if (!from || !to) return res.status(400).json({ ok: false, error: 'from and to query params required' });
+    const results = await analyticsTracker.getManualPickups({ from, to, limit: parseInt(limit) || 200 });
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/analytics/single-ticket-workers', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) return res.status(400).json({ ok: false, error: 'from and to query params required' });
+    const results = await analyticsTracker.getSingleTicketWorkers({ from, to });
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/analytics/owner-ranking', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { from, to, limit } = req.query;
+    if (!from || !to) return res.status(400).json({ ok: false, error: 'from and to query params required' });
+    const results = await analyticsTracker.getOwnerRanking({ from, to, limit: parseInt(limit) || 50 });
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/analytics/expired-vs-active', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const results = await analyticsTracker.getExpiredVsActive();
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/analytics/manual-pickup', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { ticketId, workerId, workerName } = req.body;
+    if (!ticketId || !workerId) return res.status(400).json({ ok: false, error: 'ticketId and workerId required' });
+    await analyticsTracker.trackManualPickup({ ticketId, workerId, workerName });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

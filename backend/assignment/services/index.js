@@ -2,7 +2,7 @@
 /* Assignment Engine — Services                     */
 /* ================================================ */
 
-import { assignmentSettingsRepository, assignmentDecisionRepository } from '../repositories/index.js';
+import { assignmentSettingsRepository, assignmentDecisionRepository, assignmentExclusionRepository } from '../repositories/index.js';
 import { buildTicketExplanation } from '../logging/decisionLog.js';
 import { SETTINGS_KEYS } from '../constants.js';
 
@@ -40,9 +40,13 @@ export const assignmentSettingsService = {
       }
     }
 
-    // Special protection: changing mode to 'live' is not allowed in Phase 1
+    // Live mode safety: require enableLiveMode to be true before switching to live
     if (filtered[SETTINGS_KEYS.MODE] === 'live') {
-      throw new Error('Live mode is not available in Phase 1. Only shadow and dry-run modes are supported.');
+      const currentEnableLive = await this.get(SETTINGS_KEYS.ENABLE_LIVE);
+      const newEnableLive = filtered[SETTINGS_KEYS.ENABLE_LIVE];
+      if (currentEnableLive !== 'true' && newEnableLive !== 'true') {
+        throw new Error('Cannot switch to live mode: assignment.enableLiveMode must be set to "true" first.');
+      }
     }
 
     const results = await assignmentSettingsRepository.setMany(filtered, updatedBy);
@@ -63,8 +67,57 @@ export const assignmentSettingsService = {
       planningWindowHours: map[SETTINGS_KEYS.PLANNING_WINDOW] || '72',
       maxTicketsPerRun: map[SETTINGS_KEYS.MAX_TICKETS] || '500',
       stopOnCriticalError: map[SETTINGS_KEYS.STOP_ON_ERROR] || 'false',
-      supportedTicketTypes: map[SETTINGS_KEYS.SUPPORTED_TYPES] || 'TroubleTicket,SmartHands,CrossConnect,Other',
+      supportedTicketTypes: map[SETTINGS_KEYS.SUPPORTED_TYPES] || 'TroubleTicket,SmartHands,CrossConnect,Scheduled,Other',
+      crawlerMaxAgeMinutes: map[SETTINGS_KEYS.CRAWLER_MAX_AGE] || '10',
+      enableLiveMode: map[SETTINGS_KEYS.ENABLE_LIVE] || 'false',
+      insufficientResources: map[SETTINGS_KEYS.INSUFFICIENT_RESOURCES] || 'false',
     };
+  },
+};
+
+/* ---- Exclusion List Service ---- */
+
+export const assignmentExclusionService = {
+  /**
+   * Get the full exclusion list.
+   */
+  async getAll(activeOnly = true) {
+    return assignmentExclusionRepository.findAll({ activeOnly });
+  },
+
+  /**
+   * Get active system names only.
+   */
+  async getActiveNames() {
+    return assignmentExclusionRepository.findActiveNames();
+  },
+
+  /**
+   * Add a system name to the exclusion list.
+   */
+  async add({ systemName, reason, createdBy }) {
+    if (!systemName || !systemName.trim()) {
+      throw new Error('System name is required');
+    }
+    return assignmentExclusionRepository.create({
+      systemName: systemName.trim(),
+      reason: reason || null,
+      createdBy,
+    });
+  },
+
+  /**
+   * Deactivate an exclusion list entry.
+   */
+  async deactivate(id) {
+    return assignmentExclusionRepository.deactivate(id);
+  },
+
+  /**
+   * Remove an exclusion list entry permanently.
+   */
+  async remove(id) {
+    return assignmentExclusionRepository.remove(id);
   },
 };
 
