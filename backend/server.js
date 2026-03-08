@@ -197,6 +197,10 @@ app.use("/api/events", eventsRoutes);
 // Assignment Engine (ODIN-Logik, Phase 1 Shadow Mode)
 app.use("/api/assignment", assignmentRoutes);
 
+// Weekplan Roles (per-employee per-day role assignments)
+import weekplanRolesRoutes from "./routes/weekplanRoles.js";
+app.use("/api/weekplan-roles", weekplanRolesRoutes);
+
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */
 /* Catches express.json() SyntaxError (malformed    */

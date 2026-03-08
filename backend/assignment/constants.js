@@ -47,7 +47,7 @@ export const EXCLUDED_ROLES = new Set([
 ]);
 
 /* ---- Crawler staleness ---- */
-export const CRAWLER_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+export const CRAWLER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 /* ---- System grouping thresholds ---- */
 export const MAX_SH_PER_WORKER_PER_SYSTEM = 3;

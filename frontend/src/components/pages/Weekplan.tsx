@@ -2,17 +2,26 @@
 /* WEEKPLAN – PAGE (current KW)                      */
 /* ------------------------------------------------ */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useAuth } from "../../context/AuthContext";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../ui/context-menu";
 
 import { fetchSchedule, importSchedule } from "../shiftplan/shiftplan.api";
 import { formatMonthLabel } from "../../utils/dateFormat";
 import { getGermanHolidaysNationwide } from "../../utils/deHolidays";
 import { shiftTypes } from "../../store/shiftStore";
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees"; // [NEW] import
+import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
 
 type Schedule = Record<string, Record<number, string>>;
 
@@ -106,6 +115,12 @@ export default function Weekplan() {
   // Employee highlight (click name to highlight row, click again or ESC to clear)
   const [highlightedEmployee, setHighlightedEmployee] = useState<string | null>(null);
 
+  // Multi-day selection for role assignment (Shift+Click)
+  const [selectedCells, setSelectedCells] = useState<{ employee: string; dayIndices: Set<number> } | null>(null);
+
+  // Role store
+  const { fetchRoles, getRole, setRole, setBulkRoles, removeRole } = useWeekplanRoleStore();
+
   // Edit dialog (set code)
   const EMPTY = "__EMPTY__";
   const [editOpen, setEditOpen] = useState(false);
@@ -143,6 +158,14 @@ export default function Weekplan() {
   }, [monthLabels.join("|")]);
 
   const { isHidden } = useHiddenEmployees(); // [NEW] hook usage
+
+  // Fetch weekplan roles for the current week range
+  useEffect(() => {
+    if (weekDays.length < 7) return;
+    const from = dateKey(weekDays[0]);
+    const to = dateKey(weekDays[6]);
+    fetchRoles(from, to);
+  }, [weekDays, fetchRoles]);
 
   // Helper to check if code is "working"
   const isWorkingShift = (code: string) => {
@@ -221,10 +244,13 @@ export default function Weekplan() {
     setEditOpen(false);
   };
 
-  // ESC clears employee highlight
+  // ESC clears employee highlight + selection
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setHighlightedEmployee(null);
+      if (e.key === "Escape") {
+        setHighlightedEmployee(null);
+        setSelectedCells(null);
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -249,6 +275,57 @@ export default function Weekplan() {
   };
 
   const dateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+  // Toggle cell selection (Shift+Click)
+  const toggleCellSelect = useCallback((employeeName: string, dayIdx: number) => {
+    setSelectedCells((prev) => {
+      if (!prev || prev.employee !== employeeName) {
+        // Start new selection for this employee
+        return { employee: employeeName, dayIndices: new Set([dayIdx]) };
+      }
+      const next = new Set(prev.dayIndices);
+      if (next.has(dayIdx)) {
+        next.delete(dayIdx);
+      } else {
+        next.add(dayIdx);
+      }
+      // If empty, clear selection
+      if (next.size === 0) return null;
+      return { employee: employeeName, dayIndices: next };
+    });
+  }, []);
+
+  // Apply role to selected cells or a single cell
+  const applyRoleToSelection = useCallback(
+    async (employeeName: string, dayIndices: number[], roleKey: string) => {
+      const dates = dayIndices.map((i) => dateKey(weekDays[i]));
+      if (dates.length === 1) {
+        await setRole(employeeName, dates[0], roleKey as any);
+      } else {
+        await setBulkRoles(employeeName, dates, roleKey as any);
+      }
+      setSelectedCells(null);
+    },
+    [weekDays, setRole, setBulkRoles]
+  );
+
+  // Remove role from a cell
+  const removeRoleFromCell = useCallback(
+    async (employeeName: string, dayIdx: number) => {
+      const date = dateKey(weekDays[dayIdx]);
+      await removeRole(employeeName, date);
+      setSelectedCells(null);
+    },
+    [weekDays, removeRole]
+  );
+
+  // Check if a cell is selected
+  const isCellSelected = useCallback(
+    (employeeName: string, dayIdx: number) => {
+      return selectedCells?.employee === employeeName && selectedCells.dayIndices.has(dayIdx);
+    },
+    [selectedCells]
+  );
 
   // keyboard navigation (Shift + Arrows)
   const focusCell = (employeeIndex: number, dayIndex: number) => {
@@ -408,11 +485,40 @@ export default function Weekplan() {
                   >
                     {name}
                   </button>
+                  {/* Role badges for each day of the week */}
+                  {(() => {
+                    const dayRoles = weekDays
+                      .map((d, i) => ({ dayIdx: i, role: getRole(name, dateKey(d)) }))
+                      .filter((r) => r.role);
+                    if (dayRoles.length === 0) return null;
+                    // Deduplicate — if same role all week, just show one badge
+                    const uniqueRoles = [...new Set(dayRoles.map((r) => r.role!))];
+                    return (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {uniqueRoles.map((rk) => {
+                          const def = getRoleDef(rk);
+                          if (!def) return null;
+                          return (
+                            <span
+                              key={rk}
+                              className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${def.color}`}
+                            >
+                              {def.label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </td>
 
                 {weekDays.map((d, dayIdx) => {
                   const code = getShift(name, d);
                   const info = code ? shiftTypes[code] : null;
+                  const cellDateStr = dateKey(d);
+                  const cellRole = getRole(name, cellDateStr);
+                  const cellRoleDef = cellRole ? getRoleDef(cellRole) : null;
+                  const isSelected = isCellSelected(name, dayIdx);
 
                   // Shift Badge Colors matching ShiftBadge in ShiftplanTable
                   let colorClass = "bg-white/5 text-muted-foreground border-white/10";
@@ -426,13 +532,13 @@ export default function Weekplan() {
                     else if (c === "S" || c === "ABW" || c === "SEMINAR") colorClass = "bg-purple-500/15 text-purple-400 border-purple-500/20";
                   }
 
-                  return (
+                  const cellContent = (
                     <td
                       key={dayIdx}
                       tabIndex={canEdit ? 0 : -1}
                       data-week-emp-index={empIdx}
                       data-week-day-index={dayIdx}
-                      className={`border-r border-white/5 p-2 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-white/10" : ""}`}
+                      className={`border-r border-white/5 p-2 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-white/10" : ""} ${isSelected ? "ring-2 ring-indigo-500 bg-indigo-500/15" : ""}`}
                       onKeyDown={(e) => {
                         if (!canEdit) return;
                         if (!e.shiftKey) return;
@@ -461,23 +567,81 @@ export default function Weekplan() {
                             break;
                         }
                       }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Swap removed, right-click does nothing in read mode
-                        if (isEditMode && canEdit) openEditCell(name, d);
+                      onClick={(e) => {
+                        if (e.shiftKey && canEdit) {
+                          e.preventDefault();
+                          toggleCellSelect(name, dayIdx);
+                          return;
+                        }
+                        openEditCell(name, d);
                       }}
-                      onClick={() => openEditCell(name, d)}
                     >
-                      {code ? (
-                        <div className={`inline-flex items-center justify-center min-w-[32px] h-[22px] px-2 text-[11px] font-bold rounded-md border ${colorClass}`}>
-                          {code}
-                        </div>
-                      ) : (
-                        isEditMode ? <div className="text-[10px] text-muted-foreground/30">—</div> : null
-                      )}
+                      <div className="flex flex-col items-center gap-0.5">
+                        {code ? (
+                          <div className={`inline-flex items-center justify-center min-w-[32px] h-[22px] px-2 text-[11px] font-bold rounded-md border ${colorClass}`}>
+                            {code}
+                          </div>
+                        ) : (
+                          isEditMode ? <div className="text-[10px] text-muted-foreground/30">—</div> : null
+                        )}
+                        {cellRoleDef && (
+                          <span className={`text-[8px] font-bold px-1 py-px rounded border leading-tight ${cellRoleDef.color}`}>
+                            {cellRoleDef.label}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   );
+
+                  // Wrap cell in ContextMenu for role assignment if user can edit
+                  if (canEdit) {
+                    // Determine target days for the context menu action
+                    const targetDayIndices = (isSelected && selectedCells?.employee === name)
+                      ? Array.from(selectedCells.dayIndices)
+                      : [dayIdx];
+
+                    return (
+                      <ContextMenu key={dayIdx}>
+                        <ContextMenuTrigger asChild>
+                          {cellContent}
+                        </ContextMenuTrigger>
+                        <ContextMenuContent className="w-56">
+                          <ContextMenuLabel className="text-xs text-muted-foreground">
+                            {targetDayIndices.length > 1
+                              ? `Rolle für ${name} (${targetDayIndices.length} Tage)`
+                              : `Rolle für ${name} – ${weekdayAbbrev(d)} ${d.getDate()}.${pad2(d.getMonth() + 1)}`}
+                          </ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          {WEEKPLAN_ROLES.map((r) => (
+                            <ContextMenuItem
+                              key={r.key}
+                              onClick={() => applyRoleToSelection(name, targetDayIndices, r.key)}
+                              className="flex items-center gap-2"
+                            >
+                              <span className={`inline-block w-2.5 h-2.5 rounded-full border ${r.color}`} />
+                              <span className="font-medium">{r.label}</span>
+                              {targetDayIndices.length === 1 && cellRole === r.key && (
+                                <span className="ml-auto text-xs text-primary">✓</span>
+                              )}
+                            </ContextMenuItem>
+                          ))}
+                          {cellRole && targetDayIndices.length === 1 && (
+                            <>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => removeRoleFromCell(name, dayIdx)}
+                                className="text-red-400"
+                              >
+                                Rolle entfernen
+                              </ContextMenuItem>
+                            </>
+                          )}
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    );
+                  }
+
+                  return cellContent;
                 })}
               </tr>
             ))}

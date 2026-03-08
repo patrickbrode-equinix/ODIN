@@ -11,6 +11,7 @@ import { useShiftStore } from "../../store/shiftStore";
 import { TvLayout } from "./tv.layout";
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
 import { useEmployeeMetaStore } from "../../store/employeeMetaStore";
+import { computeCrawlerStaleness } from "../../hooks/useCrawlerStaleness";
 
 interface TVContentProps {
   isFullscreen?: boolean;
@@ -71,6 +72,30 @@ export function TVContent({ isFullscreen = false }: TVContentProps) {
     return () => clearInterval(timer);
   }, []);
 
+  /* CRAWLER STALENESS: poll public TV crawler-meta endpoint */
+  const [crawlerLastUpdate, setCrawlerLastUpdate] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch("/api/tv/crawler-meta");
+        if (!res.ok) return;
+        const data = await res.json();
+        setCrawlerLastUpdate(data?.lastUpdate ?? null);
+      } catch {
+        // silent
+      }
+    };
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const crawlerStaleness = useMemo(
+    () => computeCrawlerStaleness(crawlerLastUpdate),
+    [crawlerLastUpdate, now] // re-evaluate as clock ticks
+  );
+
   /* HIDDEN EMPLOYEES */
   const { isHidden } = useHiddenEmployees();
 
@@ -109,6 +134,7 @@ export function TVContent({ isFullscreen = false }: TVContentProps) {
       early={early}
       late={late}
       night={night}
+      crawlerStale={crawlerStaleness.isStale}
     />
   );
 }

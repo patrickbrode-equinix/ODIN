@@ -422,6 +422,7 @@ export function TvLayout({
   early = [],
   late = [],
   night = [],
+  crawlerStale = false,
 }: TvLayoutProps) {
 
   /* State */
@@ -673,7 +674,7 @@ export function TvLayout({
         {/* Schichten Heute */}
         {currentSlideId === "shifts" && (
           <div className="h-full overflow-auto p-4">
-            <TvShiftplan early={early} late={late} night={night} ticketsByOwner={ticketsByOwner} />
+            <TvShiftplan early={early} late={late} night={night} ticketsByOwner={ticketsByOwner} crawlerStale={crawlerStale} />
           </div>
         )}
 
@@ -685,6 +686,15 @@ export function TvLayout({
         {/* Nächste 72 Stunden */}
         {currentSlideId === "72h" && (
           <div className="h-full overflow-auto p-4 md:p-6">
+            {crawlerStale ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4">
+                <AlertTriangle className="w-20 h-20 text-red-500 animate-pulse" />
+                <span className="text-3xl font-black text-red-500 tracking-wide animate-pulse">
+                  NO RECENT CRAWLER DATA INPUT
+                </span>
+                <span className="text-lg text-muted-foreground">Ticket-Daten werden ausgeblendet, da der Crawler seit über 5 Minuten keine Daten liefert.</span>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-full">
               {next72hTickets.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center text-muted-foreground py-20 gap-4">
@@ -725,7 +735,7 @@ export function TvLayout({
                     </div>
                     <div className="font-semibold text-sm text-foreground/90 truncate">{activity}</div>
                     <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-                      {system && <span className="bg-white/5 border border-white/5 px-1.5 py-0.5 rounded truncate max-w-[120px]" title={system}>{system}</span>}
+                      {system && <span className="bg-white/5 border border-white/5 px-1.5 py-0.5 rounded break-words whitespace-normal" title={system}>{system}</span>}
                       {owner && owner !== "–" && <span>{owner}</span>}
                       {status && <span className="border border-border px-1 py-0.5 rounded">{status}</span>}
                       {schedStart && <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded flex items-center gap-1"><Clock className="w-2.5 h-2.5" />Start: {schedFormatted}</span>}
@@ -735,6 +745,7 @@ export function TvLayout({
                 );
               })}
             </div>
+            )}
           </div>
         )}
 

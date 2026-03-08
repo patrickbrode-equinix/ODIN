@@ -57,6 +57,7 @@ export interface TvShiftplanProps {
   night?: TvShiftEmployee[];
   counts?: { early: number; late: number; night: number };
   ticketsByOwner?: Map<string, any[]>;
+  crawlerStale?: boolean;
 }
 
 export interface TvHandoverListProps {
@@ -70,4 +71,5 @@ export interface TvLayoutProps {
   night?: TvShiftEmployee[];
   handovers?: TvHandover[];
   isFullscreen?: boolean;
+  crawlerStale?: boolean;
 }

@@ -11,6 +11,7 @@ import { useTheme } from "./ThemeProvider";
 import { useAuth } from "../context/AuthContext";
 import { useHealthStatus } from "../hooks/useHealthStatus";
 import { getUserDisplayName } from "../utils/userDisplay";
+import { useCrawlerStaleness } from "../hooks/useCrawlerStaleness";
 import { WeatherDisplay } from "./WeatherDisplay";
 import { DashboardInfoBar } from "./dashboard/DashboardInfoBar";
 import { DashboardToggles } from "./dashboard/DashboardToggles";
@@ -606,12 +607,21 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
   const displayName = getUserDisplayName(user);
 
-  // Format last update time
-  const formatTime = (iso: string | null) => {
-    if (!iso) return "—";
+  // Format last update as DD.MM.YYYY HH:mm
+  const formatDateTime = (iso: string | null | undefined) => {
+    if (!iso) return "No update available";
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (isNaN(d.getTime())) return "No update available";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
   };
+
+  // Crawler staleness detection (> 5 minutes = stale)
+  const crawlerStaleness = useCrawlerStaleness(crawlerMeta?.lastUpdate ?? null);
 
   return (
     <>
@@ -634,17 +644,28 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         <div className="flex-1 flex justify-center pointer-events-none hidden md:flex">
           <div className="bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl px-5 py-2 flex items-center gap-6 text-[13px] shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-blue-500/30 pointer-events-auto">
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">Last Update:</span>
-              <span className="font-bold text-slate-200">
-                {formatTime(crawlerMeta?.lastUpdate ?? null)}
+              <span className="text-slate-500 font-medium">Crawler Update:</span>
+              <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400" : "text-slate-200"}`}>
+                {formatDateTime(crawlerMeta?.lastUpdate ?? null)}
               </span>
             </div>
+
+            {/* Crawler staleness warning */}
+            {crawlerStaleness.isStale && (
+              <>
+                <div className="h-4 w-px bg-red-500/30" />
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                  <span className="text-red-400 font-bold text-[11px] uppercase tracking-wider">NO RECENT CRAWLER DATA INPUT</span>
+                </div>
+              </>
+            )}
 
             <div className="h-4 w-px bg-white/10" />
 
             <div className="flex items-center gap-2">
               <span className="text-slate-500 font-medium">Active Tickets:</span>
-              <span className="font-bold text-blue-400">
+              <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400/50" : "text-blue-400"}`}>
                 {crawlerMeta ? crawlerMeta.count : "—"}
               </span>
             </div>
@@ -677,7 +698,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               <Upload className="w-3.5 h-3.5 text-slate-500" />
               <span className="text-slate-500 font-medium">Shiftplan:</span>
               <span className="font-bold text-slate-200">
-                {lastShiftplanUpload ? formatTime(lastShiftplanUpload) : "—"}
+                {lastShiftplanUpload ? formatDateTime(lastShiftplanUpload) : "No update available"}
               </span>
             </div>
           </div>

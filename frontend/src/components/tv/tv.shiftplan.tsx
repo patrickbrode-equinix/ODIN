@@ -42,6 +42,7 @@ function EmployeeCard({
   category,
   tickets,
   shiftKind,
+  crawlerStale,
 }: {
   shift: string;
   name: string;
@@ -50,10 +51,11 @@ function EmployeeCard({
   category?: string;
   tickets?: any[];
   shiftKind: "early" | "late" | "night";
+  crawlerStale?: boolean;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
-  const displayedTickets = (tickets ?? []).slice(0, 3);
-  const extra = (tickets?.length ?? 0) - 3;
+  const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
+  const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
 
   return (
     <div className={`flex flex-col rounded-md bg-card border ${colors.header} overflow-hidden`}>
@@ -62,7 +64,7 @@ function EmployeeCard({
         <span className={`text-sm font-bold px-2 py-1 rounded uppercase tracking-wider shrink-0 ${colors.badge}`}>
           {shift}
         </span>
-        <span className="flex-1 font-bold text-base truncate leading-tight">{name}</span>
+        <span className="flex-1 font-bold text-base break-words whitespace-normal leading-tight">{name}</span>
         {category && (
           <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded uppercase font-bold border border-primary/20 shrink-0">
             {category}
@@ -121,6 +123,13 @@ function EmployeeCard({
           )}
         </div>
       ) : null}
+
+      {/* Crawler stale warning */}
+      {crawlerStale && (
+        <div className="px-3 py-2 text-center text-xs font-bold text-red-400 bg-red-500/10 border-t border-red-500/20 animate-pulse">
+          NO RECENT CRAWLER DATA INPUT
+        </div>
+      )}
     </div>
   );
 }
@@ -133,11 +142,13 @@ function ShiftBlock({
   list,
   shiftKind,
   ticketsByOwner,
+  crawlerStale,
 }: {
   title: string;
   list: TvShiftEmployee[];
   shiftKind: "early" | "late" | "night";
   ticketsByOwner?: Map<string, any[]>;
+  crawlerStale?: boolean;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
 
@@ -164,6 +175,7 @@ function ShiftBlock({
                 category={e.category}
                 tickets={ticketsByOwner?.get(e.name)}
                 shiftKind={shiftKind}
+                crawlerStale={crawlerStale}
               />
             </div>
           ))}
@@ -182,6 +194,7 @@ export function TvShiftplan({
   late = [],
   night = [],
   ticketsByOwner,
+  crawlerStale,
 }: TvShiftplanProps) {
   return (
     <Card className="flex flex-col h-full min-h-0 bg-transparent border-0 shadow-none">
@@ -211,18 +224,21 @@ export function TvShiftplan({
             list={early}
             shiftKind="early"
             ticketsByOwner={ticketsByOwner}
+            crawlerStale={crawlerStale}
           />
           <ShiftBlock
             title="Spätschicht"
             list={late}
             shiftKind="late"
             ticketsByOwner={ticketsByOwner}
+            crawlerStale={crawlerStale}
           />
           <ShiftBlock
             title="Nachtschicht"
             list={night}
             shiftKind="night"
             ticketsByOwner={ticketsByOwner}
+            crawlerStale={crawlerStale}
           />
         </div>
       </CardContent>

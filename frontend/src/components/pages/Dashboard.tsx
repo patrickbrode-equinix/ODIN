@@ -46,6 +46,8 @@ import { computeUnderstaffWarnings } from "../shiftplan/shiftplan.warnings";
 import { usePersistentToggle } from "../../hooks/usePersistentToggle";
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
 import { api } from "../../api/api"; // Added missing import
+import { useCrawlerStaleness } from "../../hooks/useCrawlerStaleness";
+import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
 
 /* UI */
 import { DateTimeBadge } from "../ui/DateTimeBadge";
@@ -129,19 +131,39 @@ function EmployeeItem({
   employee,
   ticketsByOwner,
   criticalTicketsByOwner,
-  showOnlyCritical
+  showOnlyCritical,
+  crawlerStale,
+  todayDateStr,
 }: {
   employee: Employee;
   ticketsByOwner: Map<string, any[]>;
   criticalTicketsByOwner: Map<string, any[]>;
   showOnlyCritical: boolean;
+  crawlerStale?: boolean;
+  todayDateStr?: string;
 }) {
   const { setCategory, getCategory } = useEmployeeMetaStore();
   const currentCategory = getCategory(employee.name);
   const [expanded, setExpanded] = useState(false);
 
+  // Weekplan role for this employee today
+  const { getRole, setRole: setWeekplanRole, removeRole } = useWeekplanRoleStore();
+  const currentRole = todayDateStr ? getRole(employee.name, todayDateStr) : undefined;
+  const roleDef = currentRole ? getRoleDef(currentRole) : undefined;
+
   // Render logic for tickets
   const renderOwnerTickets = () => {
+    // Crawler stale guard: hide tickets when crawler data is unreliable
+    if (crawlerStale) {
+      return (
+        <div className="mt-2 px-2 py-3 text-center">
+          <div className="text-red-400 font-bold text-[0.85em] uppercase tracking-wider">
+            NO RECENT CRAWLER DATA INPUT
+          </div>
+        </div>
+      );
+    }
+
     const list = showOnlyCritical
       ? (criticalTicketsByOwner.get(employee.name) ?? [])
       : (ticketsByOwner.get(employee.name) ?? []);
@@ -193,8 +215,8 @@ function EmployeeItem({
                   </span>
                   <CopyTicketButton ticketId={displayId} />
                 </div>
-                <div className="truncate text-muted-foreground text-[0.9em]" title={sysName}>{sysName}</div>
-                <div className="truncate text-muted-foreground text-[0.9em]" title={activity}>{activity}</div>
+                <div className="text-muted-foreground text-[0.9em] break-words whitespace-normal leading-snug" title={sysName}>{sysName}</div>
+                <div className="text-muted-foreground text-[0.9em] break-words whitespace-normal leading-snug" title={activity}>{activity}</div>
                 <div className={`text-right font-bold font-mono text-[0.9em] ${ms !== null && ms < 0 ? "text-red-400" : "text-white/90"}`}>
                   {time}
                 </div>
@@ -234,11 +256,16 @@ function EmployeeItem({
       <ContextMenu.Trigger>
         <div className="group rounded-xl bg-[#0a1228]/80 backdrop-blur-md border border-indigo-500/20 px-4 py-3 select-none hover:border-indigo-500/50 hover:bg-[#0f172a] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] hover:shadow-[0_8px_24px_rgba(59,130,246,0.15)] transition-all">
           <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="text-[1.05em] font-bold text-slate-100 group-hover:text-white transition-colors tracking-wide">{employee.name}</div>
               {currentCategory && (
                 <div className="bg-indigo-500/20 text-indigo-300 text-[0.65em] px-1.5 py-0.5 rounded-sm uppercase tracking-wider font-extrabold border border-indigo-500/30">
                   {currentCategory}
+                </div>
+              )}
+              {roleDef && (
+                <div className={`text-[0.6em] px-1.5 py-0.5 rounded-sm uppercase tracking-wider font-extrabold border ${roleDef.color}`}>
+                  {roleDef.label}
                 </div>
               )}
             </div>
@@ -284,6 +311,53 @@ function EmployeeItem({
             ) : null}
             ZURÜCKSETZEN
           </ContextMenu.Item>
+
+          {/* ROLLE ZUWEISEN */}
+          {todayDateStr && (
+            <>
+              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+              <ContextMenu.Label className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                ROLLE ZUWEISEN
+              </ContextMenu.Label>
+              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+
+              {WEEKPLAN_ROLES.map((role) => (
+                <ContextMenu.Item
+                  key={role.key}
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+                  onSelect={() => {
+                    if (currentRole === role.key) {
+                      removeRole(employee.name, todayDateStr);
+                    } else {
+                      setWeekplanRole(employee.name, todayDateStr, role.key);
+                    }
+                  }}
+                >
+                  {currentRole === role.key && (
+                    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  )}
+                  {role.label}
+                </ContextMenu.Item>
+              ))}
+
+              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+              <ContextMenu.Item
+                className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+                onSelect={() => {
+                  if (currentRole) removeRole(employee.name, todayDateStr);
+                }}
+              >
+                {!currentRole ? (
+                  <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                    <Check className="h-4 w-4" />
+                  </span>
+                ) : null}
+                ROLLE ENTFERNEN
+              </ContextMenu.Item>
+            </>
+          )}
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
@@ -297,7 +371,9 @@ function ShiftCodeGroup({
   showOnlyActiveShifts,
   ticketsByOwner,
   criticalTicketsByOwner,
-  showOnlyCritical
+  showOnlyCritical,
+  crawlerStale,
+  todayDateStr,
 }: {
   code: string;
   item: any;
@@ -306,6 +382,8 @@ function ShiftCodeGroup({
   ticketsByOwner: Map<string, any[]>;
   criticalTicketsByOwner: Map<string, any[]>;
   showOnlyCritical: boolean;
+  crawlerStale?: boolean;
+  todayDateStr?: string;
 }) {
   const { employees, range, active, ownersWithTickets, topOwners } = item;
   const info = shiftTypes[code];
@@ -349,6 +427,8 @@ function ShiftCodeGroup({
               ticketsByOwner={ticketsByOwner}
               criticalTicketsByOwner={criticalTicketsByOwner}
               showOnlyCritical={showOnlyCritical}
+              crawlerStale={crawlerStale}
+              todayDateStr={todayDateStr}
             />
           ))
         )}
@@ -363,7 +443,9 @@ function ShiftGroup({
   criticalTicketsByOwner,
   now,
   showOnlyActiveShifts,
-  showOnlyCritical
+  showOnlyCritical,
+  crawlerStale,
+  todayDateStr,
 }: {
   group: any;
   ticketsByOwner: Map<string, any[]>;
@@ -371,6 +453,8 @@ function ShiftGroup({
   now: Date;
   showOnlyActiveShifts: boolean;
   showOnlyCritical: boolean;
+  crawlerStale?: boolean;
+  todayDateStr?: string;
 }) {
   const groupEmployees = group.items.reduce((acc: number, it: any) => acc + (it.employees?.length ?? 0), 0);
   const groupTickets = group.items.reduce(
@@ -402,6 +486,8 @@ function ShiftGroup({
             ticketsByOwner={ticketsByOwner}
             criticalTicketsByOwner={criticalTicketsByOwner}
             showOnlyCritical={showOnlyCritical}
+            crawlerStale={crawlerStale}
+            todayDateStr={todayDateStr}
           />
         ))}
       </div>
@@ -716,6 +802,22 @@ export default function Dashboard() {
     refreshCommit,
     dismissKioskMessage: dismissMsg,
   } = useDashboardData();
+
+  /* ---- Crawler staleness detection (> 5 min = stale) ---- */
+  const crawlerStaleness = useCrawlerStaleness(crawlerStatus.lastUpdate || null);
+
+  /* ---- Weekplan roles for today (for role badges) ---- */
+  const { fetchTodayRoles, getRole, setRole: setWeekplanRole, removeRole } = useWeekplanRoleStore();
+  const todayDateStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  useEffect(() => {
+    fetchTodayRoles();
+    const interval = setInterval(fetchTodayRoles, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchTodayRoles]);
 
   /* ---- Realtime SSE: refresh when data changes server-side ---- */
   useRealtimeUpdates({
@@ -1271,7 +1373,12 @@ export default function Dashboard() {
           </div>
 
           <div className="flex-1 overflow-auto rounded-b-2xl scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-            {urgentTickets.length === 0 ? (
+            {crawlerStaleness.isStale ? (
+              <div className="p-8 flex flex-col items-center justify-center gap-2">
+                <div className="text-red-400 font-bold text-sm uppercase tracking-wider">NO RECENT CRAWLER DATA INPUT</div>
+                <div className="text-[13px] text-muted-foreground">Ticket-Daten werden ausgeblendet, da keine aktuellen Crawler-Daten vorliegen.</div>
+              </div>
+            ) : urgentTickets.length === 0 ? (
               <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">Keine Daten</div>
             ) : (
               <div className="min-w-[1100px] w-full flex flex-col h-full relative">
@@ -1339,7 +1446,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* 2) Systemname */}
-                        <div className="text-[12px] text-slate-300 truncate pr-2 font-mono" title={sysName}>
+                        <div className="text-[12px] text-slate-300 break-words whitespace-normal leading-snug pr-2 font-mono" title={sysName}>
                           {sysName}
                         </div>
 
@@ -1429,6 +1536,8 @@ export default function Dashboard() {
                   now={now}
                   showOnlyActiveShifts={showOnlyActiveShifts}
                   showOnlyCritical={showOnlyCritical}
+                  crawlerStale={crawlerStaleness.isStale}
+                  todayDateStr={todayDateStr}
                 />
               ))}
             </div>

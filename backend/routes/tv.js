@@ -284,4 +284,32 @@ router.get("/handover", async (_req, res) => {
   }
 });
 
+/* ------------------------------------------------ */
+/* GET /api/tv/crawler-meta                         */
+/* Public read-only crawler status for TV staleness */
+/* check — mirrors /api/commit/meta.               */
+/* ------------------------------------------------ */
+router.get("/crawler-meta", async (_req, res) => {
+  try {
+    const runRes = await query(`
+      SELECT snapshot_at
+      FROM crawler_runs
+      WHERE success = true
+      ORDER BY snapshot_at DESC
+      LIMIT 1
+    `);
+    const lastUpdate = runRes.rows[0]?.snapshot_at || null;
+
+    const countRes = await query(`
+      SELECT COUNT(*) as cnt FROM queue_items WHERE active = true
+    `);
+    const count = parseInt(countRes.rows[0]?.cnt, 10) || 0;
+
+    res.json({ lastUpdate, count });
+  } catch (err) {
+    console.error("[TV] /crawler-meta error:", err.message);
+    res.json({ lastUpdate: null, count: 0 });
+  }
+});
+
 export default router;
