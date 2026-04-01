@@ -43,15 +43,21 @@ export function normalizePlansByMonth(
   /* YEAR BASIS                                       */
   /* ------------------------------------------------ */
 
-  // Wenn das Excel-File ein Jahr vorgibt (z. B. aus dem Dateinamen),
-  // müssen alle Monate genau in dieses Jahr fallen.
-  // Kein Fallback auf aktuelles Jahr.
   let currentYear = Number.isFinite(baseYear as any)
     ? (baseYear as number)
     : new Date().getFullYear();
   let lastMonthIndex: number | null = null;
 
   for (const [key, plan] of entries) {
+    // New format: plan.meta.label already has correct label
+    if (plan.meta?.label && plan.meta?.month && plan.meta?.year) {
+      result.push({ label: plan.meta.label, plan });
+      lastMonthIndex = plan.meta.month;
+      currentYear = plan.meta.year;
+      continue;
+    }
+
+    // Legacy format fallback
     const rawLabel = plan.meta?.label || key || "";
     const firstToken = rawLabel.trim().split(/\s+/)[0].toLowerCase();
     const monthIndex = MONTH_MAP[firstToken];

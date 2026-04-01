@@ -36,6 +36,7 @@ const DEFAULT_POLICY = {
   commit_dashboard: "none",
   dispatcher_console: "none",
   tv_dashboard: "view",
+  odin_logic: "none",
   settings: "view",
   user_management: "none",
   odin_logic: "view",
@@ -265,6 +266,18 @@ export async function initSchema() {
   );
   CREATE INDEX IF NOT EXISTS idx_shifts_month ON shifts(month);
   CREATE INDEX IF NOT EXISTS idx_shifts_employee ON shifts(employee_name);
+
+  /* EMPLOYEE CONTACTS – E-Mail-Pflege für Teams-Bot und Benachrichtigungen */
+  CREATE TABLE IF NOT EXISTS employee_contacts (
+    id SERIAL PRIMARY KEY,
+    employee_name VARCHAR(120) NOT NULL UNIQUE,
+    email VARCHAR(255),
+    email_source VARCHAR(20) NOT NULL DEFAULT 'generated',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_employee_contacts_name ON employee_contacts(employee_name);
 
   /* HANDOVER */
   CREATE TABLE IF NOT EXISTS handover (
@@ -806,6 +819,97 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
   /* ------------------------------------------------ */
   await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
+  `);
+
+  /* ------------------------------------------------ */
+  /* ODIN ASSIGNMENT ENGINE – SCHEMA                  */
+  /* ------------------------------------------------ */
+
+  await db.query(`
+    /* ── Employee Shift Roles ─────────────────────── */
+    /* Maps employee + date + shift to an operational role */
+    CREATE TABLE IF NOT EXISTS employee_shift_roles (
+      id SERIAL PRIMARY KEY,
+      employee_name VARCHAR(120) NOT NULL,
+      date DATE NOT NULL,
+      shift_code VARCHAR(16) NOT NULL,
+      role_code VARCHAR(32) NOT NULL,
+      comment TEXT,
+      created_by VARCHAR(120),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(employee_name, date, role_code)
+    );
+    CREATE INDEX IF NOT EXISTS idx_esr_emp_date ON employee_shift_roles(employee_name, date);
+    CREATE INDEX IF NOT EXISTS idx_esr_role ON employee_shift_roles(role_code);
+
+    /* ── Manual Exclusions (System Names) ─────────── */
+    /* Tickets with these system_names are blocked from auto-assignment */
+    CREATE TABLE IF NOT EXISTS manual_exclusions (
+      id SERIAL PRIMARY KEY,
+      system_name VARCHAR(255) NOT NULL UNIQUE,
+      reason TEXT,
+      created_by VARCHAR(120) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_manual_excl_sysname ON manual_exclusions(system_name);
+
+    /* ── Assignment Runs (Shadow + Live) ──────────── */
+    CREATE TABLE IF NOT EXISTS assignment_runs (
+      id SERIAL PRIMARY KEY,
+      mode VARCHAR(16) NOT NULL DEFAULT 'shadow',
+      status VARCHAR(16) NOT NULL DEFAULT 'running',
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ,
+      trigger_type VARCHAR(32) NOT NULL DEFAULT 'manual',
+      crawler_snapshot_at TIMESTAMPTZ,
+      total_tickets INT NOT NULL DEFAULT 0,
+      assigned_count INT NOT NULL DEFAULT 0,
+      skipped_count INT NOT NULL DEFAULT 0,
+      error_count INT NOT NULL DEFAULT 0,
+      config_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+      error_message TEXT,
+      created_by VARCHAR(120)
+    );
+    CREATE INDEX IF NOT EXISTS idx_arun_started ON assignment_runs(started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_arun_mode ON assignment_runs(mode);
+
+    /* ── Assignment Decisions (per ticket per run) ── */
+    CREATE TABLE IF NOT EXISTS assignment_decisions (
+      id SERIAL PRIMARY KEY,
+      run_id INT NOT NULL REFERENCES assignment_runs(id) ON DELETE CASCADE,
+      ticket_external_id TEXT NOT NULL,
+      queue_type TEXT NOT NULL,
+      system_name TEXT,
+      priority_score INT NOT NULL DEFAULT 0,
+      priority_reason TEXT NOT NULL DEFAULT '',
+      assigned_to VARCHAR(120),
+      decision_type VARCHAR(32) NOT NULL,
+      candidates_evaluated JSONB NOT NULL DEFAULT '[]'::jsonb,
+      exclusion_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+      deciding_rule TEXT,
+      explanation TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_adec_run ON assignment_decisions(run_id);
+    CREATE INDEX IF NOT EXISTS idx_adec_ticket ON assignment_decisions(ticket_external_id);
+    CREATE INDEX IF NOT EXISTS idx_adec_assigned ON assignment_decisions(assigned_to);
+
+    /* ── Assignment Engine Config ─────────────────── */
+    CREATE TABLE IF NOT EXISTS assignment_config (
+      key VARCHAR(64) PRIMARY KEY,
+      value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by VARCHAR(120)
+    );
+    -- Seed defaults
+    INSERT INTO assignment_config (key, value) VALUES
+      ('engine_mode', '"shadow"'),
+      ('stale_threshold_minutes', '10'),
+      ('max_tickets_per_person_sh', '3'),
+      ('similar_remaining_hours_threshold', '6'),
+      ('enabled', 'false')
+    ON CONFLICT (key) DO NOTHING;
   `);
 }
 

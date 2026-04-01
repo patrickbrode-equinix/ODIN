@@ -605,4 +605,21 @@ router.get(
   }
 );
 
+/* ------------------------------------------------ */
+/* GET /api/schedules/last-import                   */
+/* Returns the timestamp of the most recent shift   */
+/* import (MAX created_at from shifts table).        */
+/* ------------------------------------------------ */
+router.get("/last-import", requireAuth, async (_req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT MAX(created_at) AS last_import FROM shifts"
+    );
+    res.json({ lastImport: rows[0]?.last_import ?? null });
+  } catch (err) {
+    console.error("LAST-IMPORT ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch last import timestamp" });
+  }
+});
+
 export default router;
