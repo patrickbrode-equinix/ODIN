@@ -4,8 +4,11 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, RefreshCw, ShieldBan } from "lucide-react";
-import { fetchExclusions, addExclusion, deleteExclusion, type ManualExclusion } from "../../api/engine";
+import { Plus, Trash2, RefreshCw, ShieldBan, Tag } from "lucide-react";
+import {
+  fetchExclusions, addExclusion, deleteExclusion, type ManualExclusion,
+  fetchSubtypeExclusions, fetchAvailableSubtypes, addSubtypeExclusion, deleteSubtypeExclusion, type SubtypeExclusion,
+} from "../../api/engine";
 
 export default function OdinExclusions() {
   const [exclusions, setExclusions] = useState<ManualExclusion[]>([]);
@@ -15,6 +18,15 @@ export default function OdinExclusions() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Subtype Exclusions state
+  const [subtypeExclusions, setSubtypeExclusions] = useState<SubtypeExclusion[]>([]);
+  const [subtypeLoading, setSubtypeLoading] = useState(true);
+  const [availableSubtypes, setAvailableSubtypes] = useState<string[]>([]);
+  const [selectedSubtype, setSelectedSubtype] = useState("");
+  const [subtypeReason, setSubtypeReason] = useState("");
+  const [addingSubtype, setAddingSubtype] = useState(false);
+  const [subtypeError, setSubtypeError] = useState<string | null>(null);
+
   const load = () => {
     setLoading(true);
     fetchExclusions()
@@ -23,7 +35,7 @@ export default function OdinExclusions() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadSubtypes(); }, []);
 
   const handleAdd = async () => {
     if (!newSystemName.trim()) return;
@@ -48,6 +60,47 @@ export default function OdinExclusions() {
       load();
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // --- Subtype exclusion handlers ---
+  const loadSubtypes = () => {
+    setSubtypeLoading(true);
+    Promise.all([
+      fetchSubtypeExclusions(),
+      fetchAvailableSubtypes(),
+    ])
+      .then(([excl, avail]) => {
+        setSubtypeExclusions(excl);
+        setAvailableSubtypes(avail);
+      })
+      .catch(() => {})
+      .finally(() => setSubtypeLoading(false));
+  };
+
+  const handleAddSubtype = async () => {
+    if (!selectedSubtype.trim()) return;
+    setAddingSubtype(true);
+    setSubtypeError(null);
+    try {
+      await addSubtypeExclusion(selectedSubtype.trim(), subtypeReason.trim() || undefined);
+      setSelectedSubtype("");
+      setSubtypeReason("");
+      loadSubtypes();
+    } catch (e: any) {
+      setSubtypeError(e?.response?.data?.error || e.message);
+    } finally {
+      setAddingSubtype(false);
+    }
+  };
+
+  const handleDeleteSubtype = async (id: number, subtype: string) => {
+    if (!confirm(`Subtype "${subtype}" von der Ausnahmeliste entfernen?`)) return;
+    try {
+      await deleteSubtypeExclusion(id);
+      loadSubtypes();
+    } catch (e: any) {
+      setSubtypeError(e?.response?.data?.error || e.message);
     }
   };
 
@@ -141,6 +194,112 @@ export default function OdinExclusions() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* ── SUBTYPE EXCLUSIONS ───────────────────── */}
+      <div className="border-t border-white/10 pt-6 mt-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Tag className="w-5 h-5 text-orange-400" />
+          <div>
+            <h3 className="font-semibold text-sm">Subtype-Ausnahmen</h3>
+            <p className="text-xs text-muted-foreground">Tickets mit diesen Subtypes (customer_trouble_type) werden nicht automatisch zugewiesen.</p>
+          </div>
+        </div>
+
+        {/* ADD SUBTYPE FORM */}
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">Subtype</label>
+            <div className="flex gap-2">
+              <select
+                value={selectedSubtype}
+                onChange={(e) => setSelectedSubtype(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
+              >
+                <option value="">— Subtype wählen —</option>
+                {availableSubtypes
+                  .filter((s) => !subtypeExclusions.some((e) => e.subtype === s))
+                  .map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+              </select>
+              <input
+                type="text"
+                value={selectedSubtype}
+                onChange={(e) => setSelectedSubtype(e.target.value)}
+                placeholder="oder manuell eingeben"
+                className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">Grund (optional)</label>
+            <input
+              type="text"
+              value={subtypeReason}
+              onChange={(e) => setSubtypeReason(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddSubtype()}
+              placeholder="z.B. Sonderprozess"
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={handleAddSubtype}
+            disabled={addingSubtype || !selectedSubtype.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-500 disabled:opacity-50 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Hinzufügen
+          </button>
+        </div>
+
+        {subtypeError && (
+          <div className="text-sm text-red-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20 mt-2">
+            {subtypeError}
+          </div>
+        )}
+
+        {/* SUBTYPE TABLE */}
+        <div className="rounded-xl border border-white/10 overflow-hidden mt-4">
+          <table className="w-full text-sm">
+            <thead className="bg-white/5 text-muted-foreground text-xs uppercase tracking-wider">
+              <tr>
+                <th className="text-left px-4 py-2">Subtype</th>
+                <th className="text-left px-4 py-2">Grund</th>
+                <th className="text-left px-4 py-2">Erstellt von</th>
+                <th className="text-left px-4 py-2">Erstellt am</th>
+                <th className="w-16 px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {subtypeLoading && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Laden...</td></tr>
+              )}
+              {!subtypeLoading && subtypeExclusions.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Keine Subtype-Ausnahmen definiert</td></tr>
+              )}
+              {subtypeExclusions.map((ex) => (
+                <tr key={ex.id} className="hover:bg-white/5 transition">
+                  <td className="px-4 py-2 font-mono font-medium">{ex.subtype}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{ex.reason || "—"}</td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground">{ex.created_by}</td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground">
+                    {new Date(ex.created_at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button
+                      onClick={() => handleDeleteSubtype(ex.id, ex.subtype)}
+                      className="p-1.5 hover:bg-red-500/10 rounded-lg text-muted-foreground hover:text-red-400 transition"
+                      title="Entfernen"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

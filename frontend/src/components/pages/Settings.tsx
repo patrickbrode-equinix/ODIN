@@ -19,6 +19,7 @@ import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITL
 import { useTheme } from "../ThemeProvider";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
+import PreferredColleagues from "../settings/PreferredColleagues";
 import {
   Dialog,
   DialogContent,
@@ -284,6 +285,11 @@ export default function Settings() {
             onChange={(v) => update({ notify_shift_reminder: v })}
           />
         </div>
+      </EnterpriseCard>
+
+      {/* PREFERRED COLLEAGUES (Wunschkollegen) */}
+      <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+        <PreferredColleagues />
       </EnterpriseCard>
 
       {/* SYSTEM THRESHOLDS */}

@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, Zap, X, Link2, Upload, Camera, Trash2, Eye, EyeOff } from "lucide-react";
+import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, X, Link2, Upload, Camera, Trash2, Eye, EyeOff } from "lucide-react";
 
 import { api } from "../api/api";
 import { useTheme } from "./ThemeProvider";
@@ -14,9 +14,10 @@ import { getUserDisplayName } from "../utils/userDisplay";
 import { useCrawlerStaleness } from "../hooks/useCrawlerStaleness";
 import { WeatherDisplay } from "./WeatherDisplay";
 import { DashboardInfoBar } from "./dashboard/DashboardInfoBar";
-import { DashboardToggles } from "./dashboard/DashboardToggles";
 import { getFeatureToggles } from "../api/dashboard";
 import { ProjectsPanel } from "./dashboard/ProjectsPanel";
+import { FeedbackButton } from "./FeedbackButton";
+import { Brain, MessageSquareMore } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -404,36 +405,6 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 /* ---------------------------------------------------- */
-/* AUTOMATIONEN MODAL                                  */
-/* ---------------------------------------------------- */
-
-function AutomationenModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-[9999] bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl w-[90vw] max-w-xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-none">
-          <div className="flex items-center gap-2 font-semibold">
-            <Zap className="w-4 h-4 text-green-400" />
-            Einstellungen & Automationen
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-white transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-auto p-4 min-h-0">
-          <DashboardToggles noHeader />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------- */
 /* QUICK LINKS MENU                                    */
 /* ---------------------------------------------------- */
 
@@ -491,24 +462,30 @@ export function Header({ onToggleSidebar }: HeaderProps) {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
 
-  /* Infos / Automationen modals */
+  /* Infos modal */
   const [infosOpen, setInfosOpen] = useState(false);
-  const [automationOpen, setAutomationOpen] = useState(false);
 
-  /* Automationen badge state: green if any toggle active */
-  const [anyAutomationActive, setAnyAutomationActive] = useState(false);
+  /* Status indicators: Teams + ODIN-Logik */
+  const [teamsActive, setTeamsActive] = useState(false);
+  const [odinLogicActive, setOdinLogicActive] = useState(false);
 
   /* Last shiftplan upload */
   const [lastShiftplanUpload, setLastShiftplanUpload] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchToggles = () => {
-      getFeatureToggles().then(t => {
-        setAnyAutomationActive(Object.values(t).some(v => !!v));
-      }).catch(() => { });
+    const fetchStatus = async () => {
+      try {
+        const toggles = await getFeatureToggles();
+        const teamsKeys = ['teams_tt','teams_update','teams_expedite','teams_assign','teams_info'];
+        setTeamsActive(teamsKeys.some(k => !!(toggles as any)[k]));
+      } catch { /* non-fatal */ }
+      try {
+        const res = await api.get('/assignment/health');
+        setOdinLogicActive(res.data?.enabled === true);
+      } catch { /* non-fatal */ }
     };
-    fetchToggles();
-    const interval = setInterval(fetchToggles, 30000);
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -627,7 +604,6 @@ export function Header({ onToggleSidebar }: HeaderProps) {
     <>
       {/* MODALS (rendered outside header flow) */}
       <InfosModal open={infosOpen} onClose={() => setInfosOpen(false)} />
-      <AutomationenModal open={automationOpen} onClose={() => setAutomationOpen(false)} />
 
       <header className="sticky top-0 z-40 w-full px-4 md:px-6 pt-4 pb-2 flex items-center justify-between gap-4 bg-transparent pointer-events-none">
         {/* LEFT */}
@@ -656,7 +632,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
                 <div className="h-4 w-px bg-red-500/30" />
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                  <span className="text-red-400 font-bold text-[11px] uppercase tracking-wider">NO RECENT CRAWLER DATA INPUT</span>
+                  <span className="text-red-400 font-bold text-[11px] uppercase tracking-wider">Keine aktuellen Crawler-Daten</span>
                 </div>
               </>
             )}
@@ -726,18 +702,34 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <span className="hidden xl:inline">Infos</span>
           </button>
 
-          {/* AUTOMATIONEN BADGE */}
-          <button
-            onClick={() => setAutomationOpen(true)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border transition-colors ${anyAutomationActive
-              ? "border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 shadow-[0_0_8px_rgba(34,197,94,0.3)]"
-              : "border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+          {/* STATUS: TEAMS BENACHRICHTIGUNGEN */}
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border transition-colors cursor-default ${teamsActive
+              ? "border-green-500/40 bg-green-500/10 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.25)]"
+              : "border-rose-500/40 bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.25)]"
               }`}
-            title="Einstellungen & Automationen"
+            title={teamsActive ? "Teams Benachrichtigungen sind aktiv – Benachrichtigungsfunktion ist eingeschaltet" : "Teams Benachrichtigungen sind inaktiv – Keine automatischen Benachrichtigungen"}
           >
-            <Zap className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">Automationen</span>
-          </button>
+            <span className={`w-2 h-2 rounded-full ${teamsActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
+            <MessageSquareMore className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">{teamsActive ? "Teams aktiv" : "Teams inaktiv"}</span>
+          </div>
+
+          {/* STATUS: ODIN-LOGIK */}
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border transition-colors cursor-default ${odinLogicActive
+              ? "border-green-500/40 bg-green-500/10 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.25)]"
+              : "border-rose-500/40 bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.25)]"
+              }`}
+            title={odinLogicActive ? "ODIN-Logik ist aktiv – Automatische Zuweisungslogik ist eingeschaltet" : "ODIN-Logik ist inaktiv – Keine automatische Ticketzuweisung"}
+          >
+            <span className={`w-2 h-2 rounded-full ${odinLogicActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
+            <Brain className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">{odinLogicActive ? "ODIN-Logik aktiv" : "ODIN-Logik inaktiv"}</span>
+          </div>
+
+          {/* FEEDBACK */}
+          <FeedbackButton variant="header" />
 
           {/* QUICK LINKS */}
           <QuickLinksMenu />

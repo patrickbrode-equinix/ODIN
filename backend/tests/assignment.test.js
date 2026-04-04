@@ -375,20 +375,20 @@ describe('sortTickets', () => {
 /* selectWorker                                     */
 /* ================================================ */
 describe('selectWorker', () => {
-  it('returns null for empty candidates', () => {
-    const r = selectWorker([], { site: 'FR2' }, {});
+  it('returns null for empty candidates', async () => {
+    const r = await selectWorker([], { site: 'FR2' }, {});
     assert.equal(r.worker, null);
   });
 
-  it('returns only candidate when one', () => {
-    const r = selectWorker([{ id: 1, name: 'A', site: 'FR2' }], { site: 'FR2' }, {});
+  it('returns only candidate when one', async () => {
+    const r = await selectWorker([{ id: 1, name: 'A', site: 'FR2' }], { site: 'FR2' }, {});
     assert.equal(r.worker.id, 1);
   });
 
-  it('uses lowest worker ID as final deterministic tie-breaker', () => {
+  it('uses lowest worker ID as final deterministic tie-breaker', async () => {
     // In V2 selectWorker, tie-breaking is: system grouping → purity → workload → worker ID
     // With no current tickets, all scores equal → falls to lowest ID
-    const r = selectWorker(
+    const r = await selectWorker(
       [
         { id: 5, name: 'E' },
         { id: 3, name: 'C' },
@@ -399,12 +399,12 @@ describe('selectWorker', () => {
     assert.equal(r.worker.id, 3); // lowest ID
   });
 
-  it('prefers worker with lower workload', () => {
+  it('prefers worker with lower workload', async () => {
     const workerTicketsMap = new Map([
       [1, [{ type: 'SmartHands' }, { type: 'SmartHands' }]], // 2 tickets
       [2, [{ type: 'SmartHands' }]],                          // 1 ticket
     ]);
-    const r = selectWorker(
+    const r = await selectWorker(
       [
         { id: 1, name: 'A' },
         { id: 2, name: 'B' },
@@ -952,7 +952,7 @@ describe('Eligibility — V2 Role + Purity', () => {
 describe('V2 Worker Selection', () => {
   const NOW = new Date('2026-03-08T12:00:00Z').getTime();
 
-  it('prefers worker with existing system name grouping', () => {
+  it('prefers worker with existing system name grouping', async () => {
     const candidates = [
       { id: 1, name: 'Worker A' },
       { id: 2, name: 'Worker B' },
@@ -961,11 +961,11 @@ describe('V2 Worker Selection', () => {
       [1, []],
       [2, [{ systemName: 'SYS-A', type: 'SmartHands' }]],
     ]);
-    const r = selectWorker(candidates, { type: 'SmartHands', systemName: 'SYS-A', dueAt: '2026-03-08T16:00:00Z' }, {}, wMap, false, NOW);
+    const r = await selectWorker(candidates, { type: 'SmartHands', systemName: 'SYS-A', dueAt: '2026-03-08T16:00:00Z' }, {}, wMap, false, NOW);
     assert.equal(r.worker.id, 2);
   });
 
-  it('prefers queue purity when no grouping difference', () => {
+  it('prefers queue purity when no grouping difference', async () => {
     const candidates = [
       { id: 1, name: 'Worker A' },
       { id: 2, name: 'Worker B' },
@@ -974,11 +974,11 @@ describe('V2 Worker Selection', () => {
       [1, [{ type: 'CrossConnect' }]],  // impure for SH
       [2, [{ type: 'SmartHands' }]],     // pure for SH
     ]);
-    const r = selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
+    const r = await selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
     assert.equal(r.worker.id, 2);
   });
 
-  it('prefers least workload when grouping and purity equal', () => {
+  it('prefers least workload when grouping and purity equal', async () => {
     const candidates = [
       { id: 1, name: 'Worker A' },
       { id: 2, name: 'Worker B' },
@@ -987,12 +987,12 @@ describe('V2 Worker Selection', () => {
       [1, [{ type: 'SmartHands' }, { type: 'SmartHands' }]],
       [2, [{ type: 'SmartHands' }]],
     ]);
-    const r = selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
+    const r = await selectWorker(candidates, { type: 'SmartHands', systemName: null }, {}, wMap, false, NOW);
     assert.equal(r.worker.id, 2);
   });
 
-  it('falls back to lowest worker ID', () => {
-    const r = selectWorker(
+  it('falls back to lowest worker ID', async () => {
+    const r = await selectWorker(
       [{ id: 5, name: 'E' }, { id: 3, name: 'C' }],
       { type: 'SmartHands', systemName: null },
       {},
@@ -1002,14 +1002,14 @@ describe('V2 Worker Selection', () => {
     assert.equal(r.worker.id, 3);
   });
 
-  it('returns the only candidate', () => {
-    const r = selectWorker([{ id: 42, name: 'Solo' }], { type: 'SmartHands' }, {}, new Map(), false, NOW);
+  it('returns the only candidate', async () => {
+    const r = await selectWorker([{ id: 42, name: 'Solo' }], { type: 'SmartHands' }, {}, new Map(), false, NOW);
     assert.equal(r.worker.id, 42);
     assert.match(r.reason, /Only one/);
   });
 
-  it('returns null for no candidates', () => {
-    const r = selectWorker([], { type: 'SmartHands' }, {}, new Map(), false, NOW);
+  it('returns null for no candidates', async () => {
+    const r = await selectWorker([], { type: 'SmartHands' }, {}, new Map(), false, NOW);
     assert.equal(r.worker, null);
   });
 });

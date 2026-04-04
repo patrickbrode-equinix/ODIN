@@ -4,7 +4,16 @@
 
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { AssignmentExplanationCard } from './AssignmentExplanationCard';
-import { X } from 'lucide-react';
+import { X, AlertCircle, CheckCircle2, HelpCircle, Ban, AlertTriangle, XCircle } from 'lucide-react';
+
+const RESULT_INFO: Record<string, { label: string; color: string; icon: React.ReactNode; description: string }> = {
+  assigned: { label: 'Zugewiesen', color: 'text-green-400', icon: <CheckCircle2 className="w-4 h-4 text-green-400" />, description: 'Ticket wurde erfolgreich einem Mitarbeiter zugewiesen.' },
+  manual_review: { label: 'Manual Review', color: 'text-amber-400', icon: <HelpCircle className="w-4 h-4 text-amber-400" />, description: 'Kein automatisch geeigneter Kandidat. Dispatcher muss manuell entscheiden.' },
+  no_candidate: { label: 'Kein Kandidat', color: 'text-orange-400', icon: <AlertTriangle className="w-4 h-4 text-orange-400" />, description: 'Nach Anwendung aller Regeln blieb kein zulässiger Mitarbeiter übrig.' },
+  not_relevant: { label: 'Nicht relevant', color: 'text-zinc-400', icon: <Ban className="w-4 h-4 text-zinc-400" />, description: 'Ticket hat die Vorprüfung nicht bestanden.' },
+  blocked: { label: 'Gesperrt', color: 'text-red-300', icon: <Ban className="w-4 h-4 text-red-300" />, description: 'Ticket durch manuellen Override blockiert.' },
+  error: { label: 'Fehler', color: 'text-red-400', icon: <XCircle className="w-4 h-4 text-red-400" />, description: 'Technischer Fehler bei der Verarbeitung.' },
+};
 
 export function AssignmentDecisionDrawer() {
   const {
@@ -16,6 +25,8 @@ export function AssignmentDecisionDrawer() {
   } = useAssignmentStore();
 
   if (!drawerOpen) return null;
+
+  const ri = selectedDecision ? (RESULT_INFO[selectedDecision.result] || RESULT_INFO.error) : null;
 
   return (
     <>
@@ -45,6 +56,46 @@ export function AssignmentDecisionDrawer() {
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Result Summary Bar */}
+        {selectedDecision && ri && (
+          <div className="px-4 py-3 border-b border-border/30 bg-background/40">
+            <div className="flex items-center gap-2 mb-2">
+              {ri.icon}
+              <span className={`text-sm font-semibold ${ri.color}`}>{ri.label}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">{ri.description}</p>
+            {selectedDecision.short_reason && (
+              <div className="mt-2 rounded-md bg-background/60 border border-border/30 px-3 py-2">
+                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Hauptgrund</div>
+                <p className="text-xs text-foreground">{selectedDecision.short_reason}</p>
+              </div>
+            )}
+            {selectedDecision.error_message && (
+              <div className="mt-2 rounded-md bg-red-500/5 border border-red-500/20 px-3 py-2">
+                <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-0.5">Fehlermeldung</div>
+                <p className="text-xs text-red-300">{selectedDecision.error_message}</p>
+              </div>
+            )}
+            {selectedDecision.selection_reason && (
+              <div className="mt-2 rounded-md bg-background/60 border border-border/30 px-3 py-2">
+                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Auswahlgrund</div>
+                <p className="text-xs text-foreground">{selectedDecision.selection_reason}</p>
+              </div>
+            )}
+            {selectedDecision.rule_path && selectedDecision.rule_path.length > 0 && (
+              <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider mr-1">Regelpfad:</span>
+                {selectedDecision.rule_path.map((step, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-muted-foreground/50">→</span>}
+                    <span className="px-1.5 py-0.5 rounded bg-background/60 border border-border/30 text-[10px]">{step}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4">

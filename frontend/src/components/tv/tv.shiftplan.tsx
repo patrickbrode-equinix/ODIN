@@ -8,6 +8,47 @@ import type { TvShiftEmployee, TvShiftplanProps } from "./tv.types";
 import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "../../utils/ticketColors";
 
 /* ------------------------------------------------ */
+/* SHIFT REMAINING TIME                             */
+/* ------------------------------------------------ */
+const SHIFT_WINDOWS: Record<string, { startH: number; startM: number; endH: number; endM: number; overnight?: boolean }> = {
+  E1: { startH: 6, startM: 30, endH: 15, endM: 30 },
+  E2: { startH: 7, startM: 0, endH: 16, endM: 0 },
+  L1: { startH: 13, startM: 0, endH: 22, endM: 0 },
+  L2: { startH: 15, startM: 0, endH: 0, endM: 0, overnight: true },
+  N:  { startH: 21, startM: 15, endH: 6, endM: 45, overnight: true },
+};
+
+function getShiftRemainingLabel(shiftCode: string): string | null {
+  const w = SHIFT_WINDOWS[shiftCode];
+  if (!w) return null;
+
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(w.startH, w.startM, 0, 0);
+
+  const end = new Date(now);
+  end.setHours(w.endH, w.endM, 0, 0);
+  if (w.overnight && end <= start) {
+    // If we're past midnight and end is "tomorrow morning"
+    if (now.getHours() < 12) {
+      // We're in the overnight portion — start was yesterday
+      start.setDate(start.getDate() - 1);
+    } else {
+      // end is tomorrow
+      end.setDate(end.getDate() + 1);
+    }
+  }
+
+  const nowMs = now.getTime();
+  if (nowMs < start.getTime() || nowMs >= end.getTime()) return null;
+
+  const remainMs = end.getTime() - nowMs;
+  const h = Math.floor(remainMs / 3600000);
+  const m = Math.floor((remainMs % 3600000) / 60000);
+  return `Restzeit: ${h}h ${m}m`;
+}
+
+/* ------------------------------------------------ */
 /* SHIFT COLORS                                     */
 /* ------------------------------------------------ */
 const SHIFT_COLORS = {
@@ -56,6 +97,7 @@ function EmployeeCard({
   const colors = SHIFT_COLORS[shiftKind];
   const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
   const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
+  const shiftRemaining = getShiftRemainingLabel(shift);
 
   return (
     <div className={`flex flex-col rounded-md bg-card border ${colors.header} overflow-hidden`}>
@@ -65,6 +107,11 @@ function EmployeeCard({
           {shift}
         </span>
         <span className="flex-1 font-bold text-base break-words whitespace-normal leading-tight">{name}</span>
+        {shiftRemaining && (
+          <span className="text-[11px] font-semibold text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded shrink-0">
+            {shiftRemaining}
+          </span>
+        )}
         {category && (
           <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded uppercase font-bold border border-primary/20 shrink-0">
             {category}
@@ -124,10 +171,10 @@ function EmployeeCard({
         </div>
       ) : null}
 
-      {/* Crawler stale warning */}
+      {/* Crawler stale: show German message instead of tickets */}
       {crawlerStale && (
         <div className="px-3 py-2 text-center text-xs font-bold text-red-400 bg-red-500/10 border-t border-red-500/20 animate-pulse">
-          NO RECENT CRAWLER DATA INPUT
+          Keine aktuellen Crawler-Daten
         </div>
       )}
     </div>

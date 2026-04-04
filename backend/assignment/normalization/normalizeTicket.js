@@ -179,6 +179,7 @@ export function normalizeTicket(raw) {
     systemName: sysResult.value,
     remainingHours: raw.remaining_hours != null ? Number(raw.remaining_hours) : null,
     soNumber: raw.so_number ?? raw.soNumber ?? null,
+    customerTroubleType: raw.customer_trouble_type ?? raw.customerTroubleType ?? null,
     // Raw values for audit
     rawType: raw.type ?? raw.ticket_type ?? raw.queue_type ?? raw.subtype ?? null,
     rawStatus: raw.status ?? raw.ticket_status ?? null,

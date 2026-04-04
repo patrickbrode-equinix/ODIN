@@ -10,8 +10,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-/** Crawler staleness threshold: 5 minutes */
-const CRAWLER_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+/** Crawler staleness threshold: 10 minutes (matches spec + DB setting) */
+const CRAWLER_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 export interface CrawlerStalenessResult {
   /** Whether crawler data is stale (> 5 min old or no timestamp available) */
@@ -32,7 +32,7 @@ export function computeCrawlerStaleness(lastUpdate: string | null | undefined): 
   if (!lastUpdate) {
     return {
       isStale: true,
-      staleMessage: "NO RECENT CRAWLER DATA INPUT",
+      staleMessage: "Keine aktuellen Crawler-Daten",
       staleDurationMs: null,
     };
   }
@@ -41,7 +41,7 @@ export function computeCrawlerStaleness(lastUpdate: string | null | undefined): 
   if (isNaN(lastUpdateMs)) {
     return {
       isStale: true,
-      staleMessage: "NO RECENT CRAWLER DATA INPUT",
+      staleMessage: "Keine aktuellen Crawler-Daten",
       staleDurationMs: null,
     };
   }
@@ -52,7 +52,7 @@ export function computeCrawlerStaleness(lastUpdate: string | null | undefined): 
   if (durationMs > CRAWLER_STALE_THRESHOLD_MS) {
     return {
       isStale: true,
-      staleMessage: "NO RECENT CRAWLER DATA INPUT",
+      staleMessage: "Keine aktuellen Crawler-Daten",
       staleDurationMs: durationMs,
     };
   }

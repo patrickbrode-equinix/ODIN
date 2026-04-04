@@ -1,6 +1,6 @@
 /* ------------------------------------------------ */
-/* FEEDBACK ROUTE – E-MAIL VERSAND (KEIN DB)        */
-/* Empfänger: patrick.brode / marco.dessi            */
+/* FEEDBACK ROUTE – E-MAIL VERSAND + DB FALLBACK    */
+/* Empfänger: konfigurierbar via app_settings        */
 /* ------------------------------------------------ */
 
 import express from "express";
@@ -9,6 +9,7 @@ import nodemailer from "nodemailer";
 import path from "path";
 import { fileURLToPath } from "url";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import db from "../db.js";
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +49,8 @@ function createTransporter() {
     return null;
   }
 
+  console.log(`[FEEDBACK] SMTP Transport: host=${host}, port=${port}, secure=${secure}, user=${user ? "(set)" : "(none)"}`);
+
   const transportConfig = {
     host,
     port,
@@ -67,13 +70,50 @@ function createTransporter() {
 }
 
 /* ------------------------------------------------ */
-/* EMPFÄNGER                                        */
+/* EMPFÄNGER (aus app_settings, Fallback hardcoded) */
 /* ------------------------------------------------ */
 
-const FEEDBACK_RECIPIENTS = [
-  "patrick.brode@eu.equinix.com",
-  "marco.dessi@eu.equinix.com",
-];
+// Fallback: env-basiert, dann leer (= Fehler, wenn auch DB leer)
+const DEFAULT_RECIPIENTS = (process.env.FEEDBACK_TO || "")
+  .split(",")
+  .map(e => e.trim())
+  .filter(Boolean);
+
+async function getRecipients() {
+  try {
+    const { rows } = await db.query("SELECT value FROM app_settings WHERE key = 'feedback.recipients'");
+    if (rows.length > 0 && rows[0].value) {
+      const parsed = rows[0].value.split(",").map(e => e.trim()).filter(Boolean);
+      if (parsed.length > 0) return parsed;
+    }
+  } catch (err) {
+    console.warn("[FEEDBACK] Could not load recipients from DB, using defaults");
+  }
+  if (DEFAULT_RECIPIENTS.length > 0) return DEFAULT_RECIPIENTS;
+  console.warn("[FEEDBACK] Keine Empfänger konfiguriert (weder DB noch FEEDBACK_TO env)");
+  return [];
+}
+
+async function getFeedbackSettings() {
+  try {
+    const { rows } = await db.query("SELECT key, value FROM app_settings WHERE key LIKE 'feedback.%'");
+    return Object.fromEntries(rows.map(r => [r.key.replace('feedback.', ''), r.value]));
+  } catch {
+    return {};
+  }
+}
+
+async function saveFeedbackToDb(data) {
+  try {
+    await db.query(
+      `INSERT INTO feedback_entries (type, title, description, sender_name, sender_email, screenshot_name, email_sent, email_error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [data.type, data.title, data.description, data.senderName, data.senderEmail, data.screenshotName, data.emailSent, data.emailError]
+    );
+  } catch (err) {
+    console.error("[FEEDBACK] Failed to save feedback to DB:", err.message);
+  }
+}
 
 /* ------------------------------------------------ */
 /* POST /api/feedback                               */
@@ -160,30 +200,87 @@ router.post(
         });
       }
 
+      // Check if feedback is enabled
+      const settings = await getFeedbackSettings();
+      if (settings.enabled === 'false') {
+        return res.status(403).json({ error: "Feedback-Funktion ist aktuell deaktiviert." });
+      }
+
       // E-Mail versenden
       const smtp = createTransporter();
+      const recipients = await getRecipients();
+      const cc = settings.cc ? settings.cc.split(',').map(e => e.trim()).filter(Boolean) : [];
+      const subjectPrefix = settings.subject_prefix || '[ODIN Feedback]';
+      const fullSubject = `${subjectPrefix} ${subject}`;
+
+      let emailSent = false;
+      let emailError = null;
+
       if (!smtp) {
+        emailError = "SMTP nicht konfiguriert";
         console.error("[FEEDBACK] SMTP nicht konfiguriert. Feedback-Daten:", { type, title: title.trim(), sender: senderName, timestamp });
-        return res.status(503).json({
+      } else if (recipients.length === 0) {
+        emailError = "Keine Empfänger konfiguriert";
+        console.error("[FEEDBACK] Keine Empfänger konfiguriert – E-Mail kann nicht gesendet werden.");
+      } else {
+        try {
+          const mailOpts = {
+            from: smtp.fromAddress,
+            to: recipients.join(", "),
+            subject: fullSubject,
+            text: body,
+            html: htmlBody,
+            attachments,
+          };
+          if (cc.length > 0) mailOpts.cc = cc.join(", ");
+
+          await smtp.transporter.sendMail(mailOpts);
+          emailSent = true;
+          console.log(`[FEEDBACK] E-Mail gesendet: [${type}] ${title.trim()} von ${senderName}`);
+        } catch (sendErr) {
+          emailError = sendErr.message;
+          console.error("[FEEDBACK] Sendefehler:", sendErr.message);
+        }
+      }
+
+      // Always save to DB if configured or if email failed
+      const shouldSaveToDb = settings.save_to_db_on_failure !== 'false';
+      if (!emailSent && shouldSaveToDb) {
+        await saveFeedbackToDb({
+          type, title: title.trim(), description: description.trim(),
+          senderName, senderEmail, screenshotName: req.file?.originalname || null,
+          emailSent, emailError,
+        });
+      } else if (emailSent) {
+        // Also save to DB for record-keeping
+        await saveFeedbackToDb({
+          type, title: title.trim(), description: description.trim(),
+          senderName, senderEmail, screenshotName: req.file?.originalname || null,
+          emailSent: true, emailError: null,
+        });
+      }
+
+      if (emailSent) {
+        res.json({ success: true, message: "Feedback wurde erfolgreich gesendet." });
+      } else if (shouldSaveToDb) {
+        res.json({ success: true, message: "Feedback wurde gespeichert. E-Mail-Versand fehlgeschlagen, wird manuell geprüft.", saved_to_db: true });
+      } else {
+        res.status(503).json({
           error: "E-Mail-Versand ist aktuell nicht konfiguriert. Bitte IT kontaktieren.",
           logged: true,
         });
       }
 
-      await smtp.transporter.sendMail({
-        from: smtp.fromAddress,
-        to: FEEDBACK_RECIPIENTS.join(", "),
-        subject,
-        text: body,
-        html: htmlBody,
-        attachments,
-      });
-
-      console.log(`[FEEDBACK] E-Mail gesendet: [${type}] ${title.trim()} von ${senderName}`);
-      res.json({ success: true, message: "Feedback wurde erfolgreich gesendet." });
-
     } catch (err) {
       console.error("[FEEDBACK] Fehler beim Versand:", err);
+      // Last resort: try saving to DB
+      try {
+        await saveFeedbackToDb({
+          type: req.body?.type, title: req.body?.title, description: req.body?.description,
+          senderName: req.user?.email || 'unknown', senderEmail: req.user?.email,
+          screenshotName: null, emailSent: false, emailError: err.message,
+        });
+      } catch { /* ignore */ }
       res.status(500).json({
         error: "Feedback konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.",
       });
@@ -203,6 +300,13 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// Log SMTP config status on module load
+if (process.env.SMTP_HOST) {
+  console.log(`[FEEDBACK] SMTP konfiguriert: host=${process.env.SMTP_HOST}, port=${process.env.SMTP_PORT || "587"}`);
+} else {
+  console.warn("[FEEDBACK] SMTP_HOST nicht gesetzt. Feedback-E-Mails werden nicht versendet. Setze SMTP_HOST, SMTP_PORT (opt.), SMTP_USER (opt.), SMTP_PASS (opt.), SMTP_FROM (opt.) in der .env-Datei.");
 }
 
 export default router;

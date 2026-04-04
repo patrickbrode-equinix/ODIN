@@ -35,7 +35,7 @@ function TicketTile({ ticket, onHandover }: { ticket: Ticket; onHandover: (t: Ti
           className={`rounded-xl border-2 p-4 select-none transition-all hover:scale-[1.01] cursor-default ${tierCss}`}
         >
           {/* Grid row matching the header */}
-          <div className="grid grid-cols-7 gap-4 items-center">
+          <div className="grid grid-cols-8 gap-4 items-center">
             {/* Activity */}
             <div className="font-semibold text-sm truncate" title={ticket.external_id}>
               {ticket.external_id}
@@ -49,6 +49,11 @@ function TicketTile({ ticket, onHandover }: { ticket: Ticket; onHandover: (t: Ti
             {/* System Name */}
             <div className="text-sm truncate" title={ticket.system_name || "—"}>
               {ticket.system_name || "—"}
+            </div>
+
+            {/* Subtype */}
+            <div className="text-sm truncate" title={ticket.customer_trouble_type || "—"}>
+              {ticket.customer_trouble_type || "—"}
             </div>
 
             {/* Revised Commit Date */}
@@ -183,7 +188,7 @@ const Tickets: React.FC = () => {
 
   // Render Sidebar
   const renderSidebar = () => {
-    const queueTypes = ["SmartHands", "TroubleTickets", "CCInstalls"];
+    const queueTypes = ["SmartHands", "TroubleTickets", "CCInstalls", "Deinstall"];
 
     return (
       <EnterpriseCard className="w-[250px] min-w-[250px] overflow-y-auto mr-4">
@@ -245,10 +250,11 @@ const Tickets: React.FC = () => {
         {/* Main Content Area */}
         <EnterpriseCard noPadding className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Fixed Header Row */}
-          <div className="grid grid-cols-7 gap-4 px-6 py-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 bg-white/[0.02]">
+          <div className="grid grid-cols-8 gap-4 px-6 py-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 bg-white/[0.02]">
             <div>Activity</div>
             <div>Owner</div>
             <div>System Name</div>
+            <div>Subtype</div>
             <div>Revised Commit Date</div>
             <div>Remaining Time</div>
             <div>Sched. Start</div>

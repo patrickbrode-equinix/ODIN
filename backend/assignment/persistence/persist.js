@@ -11,7 +11,7 @@ import {
 /**
  * Persist a complete assignment run (header).
  */
-export async function persistAssignmentRun(runId, decisions, status = 'completed') {
+export async function persistAssignmentRun(runId, decisions, status = 'completed', { failureReason, failureStep, errorCategory } = {}) {
   const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0 };
   for (const d of decisions) {
     if (counts[d.result] !== undefined) counts[d.result]++;
@@ -34,6 +34,9 @@ export async function persistAssignmentRun(runId, decisions, status = 'completed
     blocked: counts.blocked,
     errors: counts.error,
     summary,
+    failureReason: failureReason || null,
+    failureStep: failureStep || null,
+    errorCategory: errorCategory || null,
   });
 }
 

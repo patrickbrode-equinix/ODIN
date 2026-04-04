@@ -8,7 +8,7 @@ import { assignmentSettingsService } from '../services/index.js';
 import { normalizeTicket } from '../normalization/normalizeTicket.js';
 import { checkRelevance } from '../relevance/checkRelevance.js';
 import { sortTickets } from '../priority/sortAndSelect.js';
-import { loadCandidateWorkers, buildCandidatePool, loadWorkerCurrentTickets, loadLastCrawlerTimestamp, loadExclusionList } from '../candidates/loadCandidates.js';
+import { loadCandidateWorkers, buildCandidatePool, loadWorkerCurrentTickets, loadLastCrawlerTimestamp, loadExclusionList, loadSubtypeExclusionList } from '../candidates/loadCandidates.js';
 import { processTicket } from './processTicket.js';
 import { persistAssignmentRun } from '../persistence/persist.js';
 import { buildRunSummary } from '../logging/decisionLog.js';
@@ -74,7 +74,11 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
         result: 'crawler_stale',
         shortReason: freshness.reason,
       });
-      await persistAssignmentRun(run.id, decisions, 'failed');
+      await persistAssignmentRun(run.id, decisions, 'failed', {
+        failureReason: 'Crawler-Daten zu alt – die zuletzt empfangenen Ticketdaten überschreiten das erlaubte Maximalalter.',
+        failureStep: 'crawler_freshness_check',
+        errorCategory: 'controlled_stop',
+      });
       return {
         runId: run.id,
         mode,
@@ -147,6 +151,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
 
     // 10. Load exclusion list
     const exclusionList = await loadExclusionList();
+    const subtypeExclusionList = await loadSubtypeExclusionList();
 
     // 11. Process each ticket
     // First, log not-relevant tickets
@@ -162,14 +167,28 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     const stopOnError = settings.stopOnCriticalError === 'true';
     for (const ticket of sorted) {
       try {
-        const decision = await processTicket(ticket, candidatePool, settings, run.id, workerTicketsMap, exclusionList);
+        const decision = await processTicket(ticket, candidatePool, settings, run.id, workerTicketsMap, exclusionList, subtypeExclusionList);
         decisions.push(decision);
       } catch (err) {
         console.error(`[ASSIGNMENT] Critical error processing ticket ${ticket.id}:`, err.message);
         decisions.push({ ticketId: ticket.id, result: 'error', errorMessage: err.message });
         if (stopOnError) {
           console.warn(`[ASSIGNMENT] Stopping run due to stopOnCriticalError`);
-          break;
+          const summary = buildRunSummary(decisions);
+          await persistAssignmentRun(run.id, decisions, 'failed', {
+            failureReason: `Run wegen kritischem Fehler gestoppt: ${err.message}`,
+            failureStep: 'ticket_processing',
+            errorCategory: 'critical_error_stop',
+          });
+          return {
+            runId: run.id,
+            mode,
+            status: 'failed',
+            totalTickets: rawTickets.length,
+            relevantTickets: relevant.length,
+            decisions,
+            summary,
+          };
         }
       }
     }
@@ -194,7 +213,11 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     console.error(`[ASSIGNMENT] Run failed:`, err.message);
     if (run) {
       try {
-        await persistAssignmentRun(run.id, decisions, 'failed');
+        await persistAssignmentRun(run.id, decisions, 'failed', {
+          failureReason: err.message,
+          failureStep: 'engine_execution',
+          errorCategory: 'technical_error',
+        });
       } catch (_) { /* best effort */ }
     }
     throw err;

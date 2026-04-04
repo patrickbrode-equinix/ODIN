@@ -20,6 +20,7 @@ export const WEEKPLAN_ROLES = [
   { key: "buddy", label: "Buddy", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" },
   { key: "neueinsteiger", label: "Neueinsteiger", color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
   { key: "cc", label: "CC", color: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
+  { key: "support", label: "Support", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
 ] as const;
 
 export type WeekplanRoleKey = typeof WEEKPLAN_ROLES[number]["key"];

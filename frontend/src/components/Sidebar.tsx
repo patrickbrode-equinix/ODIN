@@ -8,6 +8,11 @@ import { useAuth } from "../context/AuthContext";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useHandoverStore } from "../store/handoverStore";
 
+/* Icon glow class – consistent subtle glow on all nav icons */
+const ICON_GLOW = "drop-shadow-[0_0_4px_rgba(59,130,246,0.3)]";
+const ICON_ACTIVE_GLOW = "drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]";
+
+
 /* NAV CONFIG */
 import {
   NAV_TOP,
@@ -28,7 +33,6 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
   const { user, canAccess } = useAuth();
   const location = useLocation();
   const [shiftplanOpen, setShiftplanOpen] = useState(true);
-  const [dbsOpen, setDbsOpen] = useState(false);
   const [dashOpen, setDashOpen] = useState(false);
   const [protokollOpen, setProtokollOpen] = useState(false);
 
@@ -59,7 +63,6 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
   };
   const currentKW = isoWeek(new Date());
   const isShiftplanActive = location.pathname.startsWith("/shiftplan");
-  const isDbsActive = location.pathname.startsWith("/dbs");
   const isDashActive = location.pathname.startsWith("/dashboard");
   const isProtokollActive = location.pathname.startsWith("/protokoll");
 
@@ -114,7 +117,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} end className={(props) => baseClass(props)}>
-                    <item.icon className="w-6 h-6 flex-shrink-0" />
+                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isDashActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
                     {!isCollapsed && <span className="flex-1">{item.label}</span>}
                   </NavLink>
 
@@ -147,6 +150,19 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                     >
                       Statistiken
                     </NavLink>
+                    {user?.isRoot && (
+                      <NavLink
+                        to="/dashboard/ticket-audit"
+                        className={({ isActive }) =>
+                          `block px-4 py-2 rounded-lg text-sm transition ${isActive
+                            ? "bg-indigo-500/20 border border-indigo-400/20 text-indigo-100"
+                            : "bg-indigo-500/10 border border-indigo-400/10 text-sidebar-foreground/65 hover:bg-indigo-500/20 hover:border-indigo-400/20 hover:text-indigo-100 transition-all duration-200 ease-out"
+                          }`
+                        }
+                      >
+                        Ticket-Audit
+                      </NavLink>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -165,7 +181,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} className={(props) => baseClass(props)}>
-                    <item.icon className="w-6 h-6 flex-shrink-0" />
+                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isShiftplanActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
                     {!isCollapsed && <span className="flex-1">{item.label}</span>}
                   </NavLink>
 
@@ -204,82 +220,6 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
             );
           }
 
-          // Special: expandable DBS
-          if (item.to === "/dbs") {
-            const baseClass = ({ isActive }: { isActive: boolean }) =>
-              `flex items-center rounded-xl transition-all duration-200 ${isActive || isDbsActive
-                ? "bg-blue-500/20 border border-blue-400/20 shadow-[0_0_20px_rgba(59,130,246,0.35)] text-blue-100"
-                : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/70 hover:bg-blue-500/20 hover:border-blue-400/20 hover:shadow-[0_0_18px_rgba(59,130,246,0.25)] hover:text-blue-100 hover:scale-[1.01] transition-all duration-200 ease-out"
-              } ${isCollapsed ? "justify-center h-11 w-11 mx-auto" : "gap-4 px-5 py-4 w-full"}`;
-
-            return (
-              <div key={item.to} className="space-y-2">
-                <div className="flex items-center relative">
-                  <NavLink to={item.to} className={(props) => baseClass(props)}>
-                    <item.icon className="w-6 h-6 flex-shrink-0" />
-                    {!isCollapsed && <span className="flex-1">{item.label}</span>}
-                  </NavLink>
-
-                  {!isCollapsed ? (
-                    <button
-                      type="button"
-                      className={`absolute right-3 p-2 rounded-lg hover:bg-sidebar-accent/50 transition ${isDbsActive ? "text-sidebar-primary" : "text-sidebar-foreground"}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDbsOpen((v) => !v);
-                      }}
-                      aria-label={dbsOpen ? "Colo 2.0 einklappen" : "Colo 2.0 ausklappen"}
-                    >
-                      {dbsOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                    </button>
-                  ) : null}
-                </div>
-
-                {!isCollapsed && dbsOpen ? (
-                  <div className="ml-10 space-y-1">
-                    <NavLink
-                      to="/dbs"
-                      end
-                      className={({ isActive }) =>
-                        `block px-4 py-2 rounded-lg text-sm transition ${isActive
-                          ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
-                          : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/65 hover:bg-blue-500/20 hover:border-blue-400/20 hover:text-blue-100 transition-all duration-200 ease-out"
-                        }`
-                      }
-                    >
-                      Dashboard
-                    </NavLink>
-
-                    <NavLink
-                      to="/dbs/fulllist"
-                      className={({ isActive }) =>
-                        `block px-4 py-2 rounded-lg text-sm transition ${isActive
-                          ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
-                          : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/65 hover:bg-blue-500/20 hover:border-blue-400/20 hover:text-blue-100 transition-all duration-200 ease-out"
-                        }`
-                      }
-                    >
-                      Vollständige Liste
-                    </NavLink>
-
-                    <NavLink
-                      to="/dbs/network"
-                      className={({ isActive }) =>
-                        `block px-4 py-2 rounded-lg text-sm transition ${isActive
-                          ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
-                          : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/65 hover:bg-blue-500/20 hover:border-blue-400/20 hover:text-blue-100 transition-all duration-200 ease-out"
-                        }`
-                      }
-                    >
-                      Network View
-                    </NavLink>
-                  </div>
-                ) : null}
-              </div>
-            );
-          }
-
           // Special: expandable Protokoll
           if (item.to === "/protokoll") {
             const baseClass = ({ isActive }: { isActive: boolean }) =>
@@ -292,7 +232,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} end className={(props) => baseClass(props)}>
-                    <item.icon className="w-6 h-6 flex-shrink-0" />
+                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isProtokollActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
                     {!isCollapsed && <span className="flex-1">{item.label}</span>}
                   </NavLink>
 
@@ -359,7 +299,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                 }
               >
                 <div className="relative">
-                  <item.icon className="w-6 h-6 flex-shrink-0" />
+                  <item.icon className={`w-6 h-6 flex-shrink-0 ${ICON_GLOW}`} />
                   {count > 0 && isCollapsed && (
                     <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
                       {count > 9 ? "9+" : count}
@@ -392,8 +332,12 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                 } ${isCollapsed ? "justify-center h-11 w-11 mx-auto" : "gap-4 px-5 py-4 w-full"}`
               }
             >
-              <item.icon className="w-6 h-6 flex-shrink-0" />
-              {!isCollapsed && <span>{item.label}</span>}
+              {({ isActive }) => (
+                <>
+                  <item.icon className={`w-6 h-6 flex-shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                  {!isCollapsed && <span>{item.label}</span>}
+                </>
+              )}
             </NavLink>
           );
         })}
@@ -412,10 +356,15 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               } ${isCollapsed ? "justify-center h-11 w-11 mx-auto" : "gap-4 px-5 py-4 w-full"}`
             }
           >
-            <item.icon className="w-6 h-6 flex-shrink-0" />
-            {!isCollapsed && <span>{item.label}</span>}
+            {({ isActive }) => (
+              <>
+                <item.icon className={`w-6 h-6 flex-shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                {!isCollapsed && <span>{item.label}</span>}
+              </>
+            )}
           </NavLink>
         ))}
+
       </div>
 
       {/* FOOTER */}

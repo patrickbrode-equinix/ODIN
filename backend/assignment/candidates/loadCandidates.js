@@ -5,13 +5,33 @@
 import pool from '../../db.js';
 
 /**
+ * Weekplan role ↔ engine role mapping.
+ * The weekplan uses slightly different key names than the engine constants.
+ */
+const WEEKPLAN_TO_ENGINE_ROLE = {
+  dispatcher: 'dispatcher',
+  dbs_project: 'deutsche_boerse',
+  colo: 'normal',          // Kolo has no special assignment restriction (informational)
+  largeorder: 'large_order',
+  projekt: 'project',
+  lead: 'leads',
+  buddy: 'buddy',
+  neueinsteiger: 'neustarter',
+  cc: 'cross_connect',
+  support: 'support',
+};
+
+/**
  * Load candidate workers from the user/shift system.
  * Includes assignment_role, shift_active, and current workload.
+ * Weekplan role for today takes priority over static assignment_role.
  *
  * Returns an array of worker objects:
- * { id, name, email, group, site, responsibility, role, shiftActive, onBreak, absent, autoAssignable, blocked }
+ * { id, name, email, group, site, responsibility, role, weekplanRole, shiftActive, onBreak, absent, autoAssignable, blocked }
  */
 export async function loadCandidateWorkers() {
+  const today = new Date().toISOString().split('T')[0];
+
   const { rows } = await pool.query(`
     SELECT
       u.id,
@@ -25,27 +45,40 @@ export async function loadCandidateWorkers() {
       COALESCE(u.auto_assignable, true) AS auto_assignable,
       COALESCE(u.blocked, false) AS blocked,
       COALESCE(u.on_break, false) AS on_break,
-      COALESCE(u.absent, false) AS absent
+      COALESCE(u.absent, false) AS absent,
+      wr.role_key AS weekplan_role
     FROM users u
+    LEFT JOIN weekplan_roles wr
+      ON LOWER(TRIM(COALESCE(u.first_name || ' ' || u.last_name, u.email))) = LOWER(TRIM(wr.employee_name))
+      AND wr.date = $1
     WHERE u.approved = true
       AND u.is_root = false
     ORDER BY u.id
-  `);
+  `, [today]);
 
-  return rows.map(r => ({
-    id: r.id,
-    name: r.name || r.email,
-    email: r.email,
-    group: r.group,
-    site: r.site || null,
-    responsibility: r.responsibility || null,
-    role: r.assignment_role || 'normal',
-    shiftActive: r.shift_active !== false,
-    onBreak: !!r.on_break,
-    absent: !!r.absent,
-    autoAssignable: r.auto_assignable !== false,
-    blocked: !!r.blocked,
-  }));
+  return rows.map(r => {
+    // Weekplan role for today takes priority over static assignment_role
+    const weekplanRole = r.weekplan_role || null;
+    const engineRole = weekplanRole
+      ? (WEEKPLAN_TO_ENGINE_ROLE[weekplanRole] || 'normal')
+      : (r.assignment_role || 'normal');
+
+    return {
+      id: r.id,
+      name: r.name || r.email,
+      email: r.email,
+      group: r.group,
+      site: r.site || null,
+      responsibility: r.responsibility || null,
+      role: engineRole,
+      weekplanRole: weekplanRole,
+      shiftActive: r.shift_active !== false,
+      onBreak: !!r.on_break,
+      absent: !!r.absent,
+      autoAssignable: r.auto_assignable !== false,
+      blocked: !!r.blocked,
+    };
+  });
 }
 
 /**
@@ -161,6 +194,23 @@ export async function loadExclusionList() {
     return rows.map(r => r.system_name);
   } catch (err) {
     console.warn('[ASSIGNMENT] Could not load exclusion list:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Load the subtype exclusion list from subtype_exclusions.
+ */
+export async function loadSubtypeExclusionList() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT subtype
+      FROM subtype_exclusions
+      ORDER BY subtype
+    `);
+    return rows.map(r => r.subtype);
+  } catch (err) {
+    console.warn('[ASSIGNMENT] Could not load subtype exclusion list:', err.message);
     return [];
   }
 }

@@ -319,6 +319,18 @@ export default function Weekplan() {
     [weekDays, removeRole]
   );
 
+  // Remove role from multiple cells
+  const removeRolesFromSelection = useCallback(
+    async (employeeName: string, dayIndices: number[]) => {
+      for (const idx of dayIndices) {
+        const date = dateKey(weekDays[idx]);
+        await removeRole(employeeName, date);
+      }
+      setSelectedCells(null);
+    },
+    [weekDays, removeRole]
+  );
+
   // Check if a cell is selected
   const isCellSelected = useCallback(
     (employeeName: string, dayIdx: number) => {
@@ -633,6 +645,17 @@ export default function Weekplan() {
                                 className="text-red-400"
                               >
                                 Rolle entfernen
+                              </ContextMenuItem>
+                            </>
+                          )}
+                          {targetDayIndices.length > 1 && (
+                            <>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => removeRolesFromSelection(name, targetDayIndices)}
+                                className="text-red-400"
+                              >
+                                Rollen entfernen ({targetDayIndices.length} Tage)
                               </ContextMenuItem>
                             </>
                           )}

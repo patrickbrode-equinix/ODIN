@@ -186,6 +186,70 @@ router.delete("/exclusions/:id", requireAuth, async (req, res) => {
 });
 
 /* ================================================ */
+/* 6b. SUBTYPE EXCLUSIONS                           */
+/* ================================================ */
+
+router.get("/exclusions/subtypes", requireAuth, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM subtype_exclusions ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/exclusions/subtypes/available", requireAuth, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT DISTINCT customer_trouble_type FROM queue_items
+       WHERE customer_trouble_type IS NOT NULL AND customer_trouble_type != ''
+       ORDER BY customer_trouble_type`
+    );
+    res.json(result.rows.map((r) => r.customer_trouble_type));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/exclusions/subtypes", requireAuth, async (req, res) => {
+  try {
+    const { subtype, reason } = req.body;
+    if (!subtype || !subtype.trim()) {
+      return res.status(400).json({ error: "subtype ist erforderlich" });
+    }
+
+    const actor = req.user?.email || req.user?.username || "unknown";
+    const result = await db.query(
+      `INSERT INTO subtype_exclusions (subtype, reason, created_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (subtype) DO NOTHING
+       RETURNING *`,
+      [subtype.trim(), reason || null, actor]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(409).json({ error: "Subtype bereits auf der Ausnahmeliste" });
+    }
+
+    res.status(201).json({ ok: true, exclusion: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/exclusions/subtypes/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query(`DELETE FROM subtype_exclusions WHERE id = $1`, [parseInt(id, 10)]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================================================ */
 /* 7. CRAWLER STATUS                                */
 /* ================================================ */
 

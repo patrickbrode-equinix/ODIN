@@ -7,15 +7,18 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Calendar,
+  CalendarClock,
   FileText,
   Settings,
   Tv,
   Users as UsersIcon,
   Ticket,
-  Database,
+  Lock,
   ScrollText,
   FileCheck,
   Brain,
+  MessageSquare,
+  Shield,
 } from "lucide-react";
 
 /* ———————————————————————————————— */
@@ -63,11 +66,14 @@ export const NAV_ITEMS: NavItem[] = [
 
   { to: "/tv-dashboard", icon: Tv, label: "TV Dashboard", section: "top", pageKey: "tv_dashboard" },
 
-  { to: "/dbs", icon: Database, label: "Colo 2.0", section: "top", pageKey: "dbs" },
+  { to: "/car-liste", icon: Lock, label: "Car Liste", section: "top", pageKey: "car_liste" },
 
   { to: "/protokoll", icon: ScrollText, label: "Protokoll", section: "top", pageKey: "protokoll" },
   { to: "/commit-compliance", icon: FileCheck, label: "Commit Compliance", section: "top", pageKey: "commit_compliance" },
   { to: "/odin-logic", icon: Brain, label: "ODIN-Logik", section: "top", pageKey: "odin_logic" },
+  { to: "/shiftplan-control", icon: CalendarClock, label: "Schichtplaner", section: "top", pageKey: "shiftplan_control" },
+  { to: "/teams-center", icon: MessageSquare, label: "Teams Center", section: "top", pageKey: "teams_center" },
+  { to: "/admin-settings", icon: Shield, label: "Admin Settings", section: "top", pageKey: "admin_settings" },
   { to: "/users", icon: UsersIcon, label: "User Management", section: "top", pageKey: "user_management" },
   // Settings hidden from sidebar (still accessible via /settings directly)
 ];
@@ -86,12 +92,16 @@ export const PAGE_DEFS = [
   { key: "tickets", label: "Tickets" },
 
   { key: "tv_dashboard", label: "TV Dashboard" },
-  { key: "dbs", label: "Colo 2.0" },
+  { key: "car_liste", label: "Car Liste" },
   { key: "protokoll", label: "Protokoll" },
   { key: "commit_compliance", label: "Commit Compliance" },
   { key: "settings", label: "Settings" },
   { key: "odin_logic", label: "ODIN-Logik" },
+  { key: "shiftplan_control", label: "Schichtplaner" },
+  { key: "teams_center", label: "Teams Center" },
+  { key: "admin_settings", label: "Admin Settings" },
   { key: "user_management", label: "User Management" },
+  { key: "ticket_audit", label: "Ticket-Audit" },
 ] as const;
 
 export type PageKey = (typeof PAGE_DEFS)[number]["key"];

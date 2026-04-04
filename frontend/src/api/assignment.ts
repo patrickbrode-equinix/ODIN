@@ -21,6 +21,17 @@ export const AssignmentApi = {
     return asObject(res.data, 'AssignmentApi.getHealth') as AssignmentHealth;
   },
 
+  /* ---- Engine Start / Stop ---- */
+  async startEngine(mode?: AssignmentMode): Promise<{ enabled: boolean; mode: string; lastStartedAt: string; lastStartedBy: string }> {
+    const res = await api.post('/assignment/engine/start', mode ? { mode } : {});
+    return asObject(res.data, 'AssignmentApi.startEngine') as any;
+  },
+
+  async stopEngine(): Promise<{ enabled: boolean; mode: string; lastStoppedAt: string; lastStoppedBy: string }> {
+    const res = await api.post('/assignment/engine/stop');
+    return asObject(res.data, 'AssignmentApi.stopEngine') as any;
+  },
+
   /* ---- Settings ---- */
   async getSettings(): Promise<{ settings: AssignmentSettings; raw: AssignmentSettingRow[] }> {
     const res = await api.get('/assignment/settings');

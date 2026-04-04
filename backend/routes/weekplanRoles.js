@@ -22,6 +22,7 @@ const VALID_ROLES = [
   "buddy",
   "neueinsteiger",
   "cc",
+  "support",
 ];
 
 /* ---- Role display labels (for frontend reference) ---- */
@@ -35,6 +36,7 @@ export const ROLE_LABELS = {
   buddy: "Buddy",
   neueinsteiger: "Neueinsteiger",
   cc: "CC",
+  support: "Support",
 };
 
 /* ------------------------------------------------ */

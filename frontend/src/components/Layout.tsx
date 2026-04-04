@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { FeedbackButton } from "./FeedbackButton";
 
 export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -18,8 +17,6 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
-
-      <FeedbackButton />
     </div>
   );
 }

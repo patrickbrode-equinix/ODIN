@@ -24,6 +24,8 @@ export interface AssignmentSettings {
   'assignment.maxTicketsPerRun': string;
   'assignment.stopOnCriticalError': string;
   'assignment.supportedTicketTypes': string;
+  'assignment.enabled': string;
+  'assignment.insufficientResources': string;
   [key: string]: string;
 }
 
@@ -53,6 +55,9 @@ export interface AssignmentRun {
   errors: number;
   triggered_by: string | null;
   summary: Record<string, unknown> | null;
+  failure_reason: string | null;
+  failure_step: string | null;
+  error_category: string | null;
   created_at: string;
 }
 
@@ -149,7 +154,12 @@ export interface AssignmentHealth {
   module: string;
   phase: number;
   mode: AssignmentMode;
+  enabled?: boolean;
   settingsCount: number;
+  lastStartedAt?: string | null;
+  lastStartedBy?: string | null;
+  lastStoppedAt?: string | null;
+  lastStoppedBy?: string | null;
 }
 
 /* ---- Filters ---- */

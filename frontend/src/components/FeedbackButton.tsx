@@ -1,5 +1,5 @@
 /* ------------------------------------------------ */
-/* FEEDBACK BUTTON – FIXED BOTTOM-LEFT              */
+/* FEEDBACK BUTTON – HEADER-INTEGRATED              */
 /* Modal: Typ, Titel, Beschreibung, Screenshot      */
 /* Sendet E-Mail über /api/feedback                  */
 /* ------------------------------------------------ */
@@ -17,7 +17,7 @@ import { useAuth } from "../context/AuthContext";
 
 type FeedbackType = "Bug" | "Verbesserung";
 
-export function FeedbackButton() {
+export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "header" }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>("Bug");
   const [title, setTitle] = useState("");
@@ -82,15 +82,26 @@ export function FeedbackButton() {
 
   return (
     <>
-      {/* Fixed Feedback Button */}
-      <button
-        onClick={() => { setOpen(true); setResult(null); }}
-        className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-lg shadow-indigo-500/25 transition-all hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-105 active:scale-100"
-        title="Feedback senden"
-      >
-        <MessageSquare className="w-4 h-4" />
-        <span>Feedback</span>
-      </button>
+      {/* Feedback Trigger Button */}
+      {variant === "header" ? (
+        <button
+          onClick={() => { setOpen(true); setResult(null); }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+          title="Feedback senden"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          <span className="hidden xl:inline">Feedback</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => { setOpen(true); setResult(null); }}
+          className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-lg shadow-indigo-500/25 transition-all hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-105 active:scale-100"
+          title="Feedback senden"
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Feedback</span>
+        </button>
+      )}
 
       {/* Modal */}
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>

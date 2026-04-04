@@ -33,6 +33,7 @@ export const STAFF_ROLES = {
   LEADS: 'leads',
   DEUTSCHE_BOERSE: 'deutsche_boerse',
   CROSS_CONNECT: 'cross_connect',
+  KOLO: 'kolo',
   BUDDY: 'buddy',
   NEUSTARTER: 'neustarter',
   SUPPORT: 'support',
@@ -96,4 +97,10 @@ export const SETTINGS_KEYS = {
   CRAWLER_MAX_AGE: 'assignment.crawlerMaxAgeMinutes',
   ENABLE_LIVE: 'assignment.enableLiveMode',
   INSUFFICIENT_RESOURCES: 'assignment.insufficientResources',
+  /* Engine status keys */
+  ENABLED: 'assignment.enabled',
+  LAST_STARTED_AT: 'assignment.lastStartedAt',
+  LAST_STARTED_BY: 'assignment.lastStartedBy',
+  LAST_STOPPED_AT: 'assignment.lastStoppedAt',
+  LAST_STOPPED_BY: 'assignment.lastStoppedBy',
 };

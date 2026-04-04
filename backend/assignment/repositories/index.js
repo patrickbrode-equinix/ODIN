@@ -17,16 +17,17 @@ export const assignmentRunRepository = {
     return rows[0];
   },
 
-  async finish(id, { status, totalTickets, relevant, assigned, manualReview, noCandidate, notRelevant, blocked, errors, summary }) {
+  async finish(id, { status, totalTickets, relevant, assigned, manualReview, noCandidate, notRelevant, blocked, errors, summary, failureReason, failureStep, errorCategory }) {
     const { rows } = await pool.query(
       `UPDATE assignment_runs
        SET status = $2, finished_at = NOW(),
            total_tickets = $3, relevant = $4, assigned = $5,
            manual_review = $6, no_candidate = $7, not_relevant = $8,
-           blocked = $9, errors = $10, summary = $11
+           blocked = $9, errors = $10, summary = $11,
+           failure_reason = $12, failure_step = $13, error_category = $14
        WHERE id = $1
        RETURNING *`,
-      [id, status, totalTickets, relevant, assigned, manualReview, noCandidate, notRelevant, blocked, errors, JSON.stringify(summary)]
+      [id, status, totalTickets, relevant, assigned, manualReview, noCandidate, notRelevant, blocked, errors, JSON.stringify(summary), failureReason || null, failureStep || null, errorCategory || null]
     );
     return rows[0];
   },

@@ -8,7 +8,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
-import { DispatcherEmployee, ShiftCode, RoleCode } from "./dispatcher.types";
+import { DispatcherEmployee, ShiftCode, RoleCode, ROLE_LABELS } from "./dispatcher.types";
 
 /* ------------------------------------------------ */
 /* CONSTANTS                                        */
@@ -19,13 +19,6 @@ const SHIFT_LABELS: Record<ShiftCode, string> = {
   S: "Spätschicht",
   N: "Nachtschicht",
   ABW: "Abwesend / Freischicht",
-};
-
-const ROLE_LABELS: Record<RoleCode, string> = {
-  dispatcher: "Dispatcher",
-  crossconnect: "Crossconnect",
-  smarthands: "Smart Hands",
-  project: "Projekt",
 };
 
 /* ------------------------------------------------ */

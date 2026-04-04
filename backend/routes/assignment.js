@@ -5,6 +5,7 @@
 import express from 'express';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { requirePageAccess } from '../middleware/requirePageAccess.js';
+import pool from '../db.js';
 import {
   assignmentSettingsService,
   assignmentExplanationService,
@@ -30,12 +31,19 @@ router.use(requireAuth);
 router.get('/health', async (req, res) => {
   try {
     const settings = await assignmentSettingsService.getAll();
+    const enabled = settings.settings['assignment.enabled'] === 'true';
+    const mode = settings.settings['assignment.mode'] || 'shadow';
     res.json({
       ok: true,
       module: 'assignment-engine',
       phase: 1,
-      mode: settings.settings['assignment.mode'] || 'shadow',
+      mode,
+      enabled,
       settingsCount: settings.raw.length,
+      lastStartedAt: settings.settings['assignment.lastStartedAt'] || null,
+      lastStartedBy: settings.settings['assignment.lastStartedBy'] || null,
+      lastStoppedAt: settings.settings['assignment.lastStoppedAt'] || null,
+      lastStoppedBy: settings.settings['assignment.lastStoppedBy'] || null,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -64,6 +72,65 @@ router.put('/settings', requirePageAccess('settings', 'write'), async (req, res)
     res.json({ ok: true, updated, rejected });
   } catch (err) {
     res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* ENGINE START / STOP                              */
+/* ------------------------------------------------ */
+
+router.post('/engine/start', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { mode } = req.body;
+    const user = req.user?.email || 'unknown';
+    const validModes = ['shadow', 'live', 'dry-run'];
+    if (mode && !validModes.includes(mode)) {
+      return res.status(400).json({ ok: false, error: `Invalid mode: ${mode}. Allowed: ${validModes.join(', ')}` });
+    }
+
+    const updates = {
+      'assignment.enabled': 'true',
+      'assignment.lastStartedAt': new Date().toISOString(),
+      'assignment.lastStartedBy': user,
+    };
+    if (mode) {
+      updates['assignment.mode'] = mode;
+    }
+
+    await assignmentSettingsService.update(updates, user);
+    const { settings } = await assignmentSettingsService.getAll();
+
+    res.json({
+      ok: true,
+      enabled: true,
+      mode: settings['assignment.mode'],
+      lastStartedAt: settings['assignment.lastStartedAt'],
+      lastStartedBy: settings['assignment.lastStartedBy'],
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/engine/stop', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const user = req.user?.email || 'unknown';
+    await assignmentSettingsService.update({
+      'assignment.enabled': 'false',
+      'assignment.lastStoppedAt': new Date().toISOString(),
+      'assignment.lastStoppedBy': user,
+    }, user);
+
+    const { settings } = await assignmentSettingsService.getAll();
+    res.json({
+      ok: true,
+      enabled: false,
+      mode: settings['assignment.mode'],
+      lastStoppedAt: settings['assignment.lastStoppedAt'],
+      lastStoppedBy: settings['assignment.lastStoppedBy'],
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -335,6 +402,67 @@ router.post('/analytics/manual-pickup', requirePageAccess('settings', 'write'), 
     if (!ticketId || !workerId) return res.status(400).json({ ok: false, error: 'ticketId and workerId required' });
     await analyticsTracker.trackManualPickup({ ticketId, workerId, workerName });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* EMPLOYEE EXCLUSIONS (permanent / temporary)      */
+/* ------------------------------------------------ */
+
+router.get('/employee-exclusions', async (req, res) => {
+  try {
+    const activeOnly = req.query.active !== 'false';
+    let sql = 'SELECT * FROM assignment_employee_exclusions';
+    if (activeOnly) sql += ' WHERE is_active = TRUE';
+    sql += ' ORDER BY created_at DESC';
+    const { rows } = await pool.query(sql);
+    res.json({ ok: true, exclusions: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/employee-exclusions', requirePageAccess('odin_logic', 'write'), async (req, res) => {
+  try {
+    const { employee_name, reason, reason_text, valid_from, valid_to } = req.body;
+    if (!employee_name) return res.status(400).json({ ok: false, error: 'employee_name is required' });
+    if (!reason) return res.status(400).json({ ok: false, error: 'reason is required' });
+    const createdBy = req.user?.email || req.user?.username || 'unknown';
+    const { rows } = await pool.query(
+      `INSERT INTO assignment_employee_exclusions (employee_name, reason, reason_text, valid_from, valid_to, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [employee_name.trim(), reason, reason_text || null, valid_from || null, valid_to || null, createdBy]
+    );
+    res.json({ ok: true, exclusion: rows[0] });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+router.patch('/employee-exclusions/:id/deactivate', requirePageAccess('odin_logic', 'write'), async (req, res) => {
+  try {
+    const deactivatedBy = req.user?.email || req.user?.username || 'unknown';
+    const { rows } = await pool.query(
+      `UPDATE assignment_employee_exclusions SET is_active = FALSE, deactivated_by = $2, deactivated_at = NOW() WHERE id = $1 RETURNING *`,
+      [parseInt(req.params.id), deactivatedBy]
+    );
+    if (!rows.length) return res.status(404).json({ ok: false, error: 'Not found' });
+    res.json({ ok: true, exclusion: rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.delete('/employee-exclusions/:id', requirePageAccess('odin_logic', 'write'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM assignment_employee_exclusions WHERE id = $1 RETURNING *`,
+      [parseInt(req.params.id)]
+    );
+    if (!rows.length) return res.status(404).json({ ok: false, error: 'Not found' });
+    res.json({ ok: true, exclusion: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

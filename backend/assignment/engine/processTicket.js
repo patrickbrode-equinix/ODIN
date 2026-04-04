@@ -33,9 +33,10 @@ import { analyticsTracker } from '../analytics/tracker.js';
  * @param {number}  runId            - Current run ID
  * @param {Map}     workerTicketsMap - Map<workerId, ticket[]> of current assignments
  * @param {string[]} exclusionList   - System names to exclude
+ * @param {string[]} subtypeExclusionList - Subtypes (customer_trouble_type) to exclude
  * @returns {object} Decision log
  */
-export async function processTicket(ticket, candidatePool, settings, runId, workerTicketsMap = new Map(), exclusionList = []) {
+export async function processTicket(ticket, candidatePool, settings, runId, workerTicketsMap = new Map(), exclusionList = [], subtypeExclusionList = []) {
   const now = Date.now();
   const insufficientResources = settings.insufficientResources === 'true' || settings.insufficientResources === true;
 
@@ -124,6 +125,26 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
       });
       await persistTicketDecision(runId, log);
       return log;
+    }
+
+    // 4b. Check subtype exclusion list (customer_trouble_type)
+    if (subtypeExclusionList.length > 0 && ticket.customerTroubleType) {
+      const normalizedSubtype = ticket.customerTroubleType.toLowerCase().trim();
+      const subtypeMatch = subtypeExclusionList.find(s => s.toLowerCase().trim() === normalizedSubtype);
+      if (subtypeMatch) {
+        const log = buildDecisionLog({
+          ticket,
+          result: 'manual_review',
+          assignedWorker: null,
+          selectionReason: `Subtype "${ticket.customerTroubleType}" is on the subtype exclusion list → manual review`,
+          rulePath: ['relevance', 'override-check', 'exclusion-list', 'subtype-exclusion'],
+          initialCandidates: [],
+          excludedCandidates: [],
+          remainingCandidates: [],
+        });
+        await persistTicketDecision(runId, log);
+        return log;
+      }
     }
 
     // 5. Route handover type
@@ -222,7 +243,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
     }
 
     // 8. Select worker using spec tie-breaking
-    const selection = selectWorker(eligibleCandidates, ticket, settings, workerTicketsMap, insufficientResources, now);
+    const selection = await selectWorker(eligibleCandidates, ticket, settings, workerTicketsMap, insufficientResources, now);
 
     if (!selection.worker) {
       const log = buildDecisionLog({

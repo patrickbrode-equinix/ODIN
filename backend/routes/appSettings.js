@@ -8,6 +8,8 @@
 import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
+import { logSettingsChange } from "../services/settingsAudit.js";
 
 const router = express.Router();
 
@@ -25,7 +27,7 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 /* PUT /api/app-settings — bulk update */
-router.put("/", requireAuth, async (req, res) => {
+router.put("/", requireAuth, requirePageAccess("admin_settings", "write"), async (req, res) => {
   try {
     const updates = req.body; // { key: value, ... }
     if (!updates || typeof updates !== "object") {
@@ -35,12 +37,21 @@ router.put("/", requireAuth, async (req, res) => {
     const actor = req.user?.name || req.user?.email || "system";
 
     for (const [key, val] of Object.entries(updates)) {
+      // Get old value for audit
+      const { rows: old } = await db.query("SELECT value FROM app_settings WHERE key = $1", [key]);
+      const oldVal = old.length > 0 ? old[0].value : null;
+
       await db.query(
         `INSERT INTO app_settings (key, value, updated_by, updated_at)
          VALUES ($1, $2, $3, NOW())
          ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = NOW()`,
         [key, String(val), actor]
       );
+
+      if (oldVal !== String(val)) {
+        const domain = key.split('.')[0] || 'app';
+        await logSettingsChange(domain, key, oldVal, String(val), actor);
+      }
     }
 
     const { rows } = await db.query("SELECT key, value FROM app_settings ORDER BY key");
@@ -52,7 +63,7 @@ router.put("/", requireAuth, async (req, res) => {
 });
 
 /* PATCH /api/app-settings/:key — single value */
-router.patch("/:key", requireAuth, async (req, res) => {
+router.patch("/:key", requireAuth, requirePageAccess("admin_settings", "write"), async (req, res) => {
   try {
     const { key } = req.params;
     const { value } = req.body;
@@ -61,6 +72,11 @@ router.patch("/:key", requireAuth, async (req, res) => {
     }
 
     const actor = req.user?.name || req.user?.email || "system";
+
+    // Get old value for audit
+    const { rows: old } = await db.query("SELECT value FROM app_settings WHERE key = $1", [key]);
+    const oldVal = old.length > 0 ? old[0].value : null;
+
     const { rows } = await db.query(
       `INSERT INTO app_settings (key, value, updated_by, updated_at)
        VALUES ($1, $2, $3, NOW())
@@ -68,6 +84,11 @@ router.patch("/:key", requireAuth, async (req, res) => {
        RETURNING *`,
       [key, String(value), actor]
     );
+
+    if (oldVal !== String(value)) {
+      const domain = key.split('.')[0] || 'app';
+      await logSettingsChange(domain, key, oldVal, String(value), actor);
+    }
 
     res.json(rows[0]);
   } catch (err) {

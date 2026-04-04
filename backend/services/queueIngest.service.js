@@ -182,7 +182,7 @@ export function normalizePayload(body) {
       }
     }
   } else if (typeof queuesInput === "object" && queuesInput) {
-    const typeMap = { smartHands: "SmartHands", ccInstalls: "CCInstalls", troubleTickets: "TroubleTickets" };
+    const typeMap = { smartHands: "SmartHands", ccInstalls: "CCInstalls", troubleTickets: "TroubleTickets", deinstalls: "Deinstall" };
     for (const [k, qType] of Object.entries(typeMap)) {
       if (Array.isArray(queuesInput[k])) {
         completeTypesSet.add(qType);

@@ -9,6 +9,7 @@ import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { recomputeConstraintsInternal } from "./constraints.js"; // [NEW]
 import { parseMonthLabel } from "../lib/monthParser.js";
+import { syncEmployeeContacts } from "./employeeContacts.js";
 
 const router = express.Router();
 
@@ -414,6 +415,9 @@ router.post(
       } catch (logErr) {
         console.warn("shiftplan_upload_log insert failed (non-fatal):", logErr.message);
       }
+
+      // Sync employee contacts (fire-and-forget, non-blocking)
+      syncEmployeeContacts().catch(err => console.warn("[SCHEDULES] Employee contacts sync failed (non-fatal):", err.message));
 
       res.json({ success: true, updatedMonths: monthsToUpdate });
     } catch (err) {

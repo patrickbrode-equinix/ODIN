@@ -464,6 +464,409 @@ function isCompleteRun(expectedCount, actualCount) {
   return expectedCount === actualCount;
 }
 
+// ==============================================================
+// DEINSTALL QUEUE SUPPORT — separate nav section with pagination
+// ==============================================================
+
+/**
+ * Navigate to the Deinstalls section in Jarvis.
+ * Deinstalls has its own navigation button/link (not a .card-ticket).
+ */
+async function navigateToDeinstalls() {
+  log("[Deinstall] Navigating to Deinstalls section...");
+
+  // Strategy 1: buttons, links, tabs with "Deinstall" text
+  const clickableSelectors = [
+    'button', 'a', '[role="button"]', '[role="tab"]', '[role="menuitem"]',
+    '.nav-item', '.nav-link', '.menu-item',
+  ];
+
+  for (const selector of clickableSelectors) {
+    const elements = Array.from(document.querySelectorAll(selector));
+    const match = elements.find((el) => {
+      const text = (el.innerText || el.textContent || "").trim();
+      return /\bdeinstalls?\b/i.test(text);
+    });
+    if (match) {
+      log(`[Deinstall] Found nav element via "${selector}":`, match.tagName, match.className,
+        `"${(match.innerText || "").trim().substring(0, 60)}"`);
+      match.click();
+      await sleep(1200);
+      try { await waitForAgGridRoot(25000); } catch (e) {
+        warn("[Deinstall] ag-grid not found after nav click:", e?.message);
+        return false;
+      }
+      await sleep(500);
+      return true;
+    }
+  }
+
+  // Strategy 2: broader search — short text elements containing "Deinstall"
+  const allElements = Array.from(document.querySelectorAll("div, span, li, td, label"));
+  const match2 = allElements.find((el) => {
+    const text = (el.innerText || el.textContent || "").trim();
+    return /^\s*deinstalls?\s*(\(\d+\))?\s*$/i.test(text);
+  });
+
+  if (match2) {
+    log("[Deinstall] Found nav element via broad search:", match2.tagName, match2.className);
+    match2.click();
+    await sleep(1200);
+    try { await waitForAgGridRoot(25000); } catch (e) {
+      warn("[Deinstall] ag-grid not found after nav click:", e?.message);
+      return false;
+    }
+    await sleep(500);
+    return true;
+  }
+
+  // Diagnostics: log available clickable elements for debugging
+  const allClickable = Array.from(document.querySelectorAll("button, a, [role='button'], [role='tab']"));
+  const preview = allClickable.slice(0, 40).map((e) => (e.innerText || "").trim().substring(0, 60)).filter(Boolean);
+  warn("[Deinstall] Navigation element not found. Available elements:", JSON.stringify(preview));
+  return false;
+}
+
+/**
+ * Read "Total X records" counter from the Deinstall section header.
+ * This is the authoritative expected count (NOT the badge on the nav button).
+ */
+function readDeinstallTotalCounter() {
+  const textPatterns = [
+    /Total\s+(\d[\d,]*)\s+records?/i,
+    /(\d[\d,]*)\s+records?\s+total/i,
+    /showing\s+\d+\s+to\s+\d+\s+of\s+(\d[\d,]*)/i,
+  ];
+
+  // Search common container types near the top of the grid area
+  const containerSelectors = [
+    ".ag-paging-row-summary-panel",
+    '[class*="total"]', '[class*="count"]', '[class*="summary"]',
+    '[class*="header"]', '[class*="status"]', '[class*="info"]',
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "p", "span", "div", "label",
+  ];
+
+  for (const sel of containerSelectors) {
+    const elements = document.querySelectorAll(sel);
+    for (const el of elements) {
+      const text = (el.innerText || "").trim();
+      if (!text || text.length > 200) continue;
+      for (const pattern of textPatterns) {
+        const m = text.match(pattern);
+        if (m) {
+          const count = parseInt(m[1].replace(/,/g, ""), 10);
+          if (Number.isFinite(count) && count >= 0) {
+            log(`[Deinstall] Total counter found: "${text}" → ${count}`);
+            return count;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: ag-grid paging panel "X to Y of Z"
+  const pagingPanels = document.querySelectorAll(".ag-paging-panel, .ag-status-bar");
+  for (const panel of pagingPanels) {
+    const text = (panel.innerText || "").trim();
+    const m = text.match(/of\s+(\d[\d,]*)/i);
+    if (m) {
+      const count = parseInt(m[1].replace(/,/g, ""), 10);
+      if (Number.isFinite(count) && count >= 0) {
+        log(`[Deinstall] Total from paging panel: "${text}" → ${count}`);
+        return count;
+      }
+    }
+  }
+
+  warn("[Deinstall] Could not find 'Total X records' counter.");
+  return null;
+}
+
+/**
+ * Try to ensure Deinstall grid is in unfiltered/full state.
+ * Clears any active ag-grid filters.
+ */
+async function clearDeinstallFilters() {
+  try {
+    const root = await getAgGridRootAsync();
+    const apiBundle = tryGetAgGridApi(root);
+    if (apiBundle?.api && typeof apiBundle.api.setFilterModel === "function") {
+      apiBundle.api.setFilterModel(null);
+      log("[Deinstall] Cleared grid filters via API.");
+      await sleep(300);
+      return;
+    }
+
+    // Fallback: look for a "Clear Filters" / "Show All" button
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const clearBtn = buttons.find((b) => {
+      const t = (b.innerText || "").trim().toLowerCase();
+      return t === "clear filters" || t === "reset filters" || t === "alle anzeigen" || t === "show all" || t === "all";
+    });
+    if (clearBtn) {
+      log("[Deinstall] Clicking filter clear button.");
+      clearBtn.click();
+      await sleep(500);
+    }
+  } catch (e) {
+    warn("[Deinstall] Could not clear filters:", e?.message || e);
+  }
+}
+
+/**
+ * Find the pagination "Next" button for the Deinstall grid.
+ * Returns { element, enabled } or null.
+ */
+function getDeinstallPaginationNext() {
+  // ag-grid built-in pagination buttons
+  const agRefs = document.querySelectorAll('[ref="btNext"], .ag-paging-button');
+  for (const el of agRefs) {
+    const btn = el.closest("button") || el;
+    if (btn.tagName !== "BUTTON" && btn.getAttribute("role") !== "button") continue;
+    const hasNextIcon = btn.querySelector(".ag-icon-next") || /next/i.test(btn.getAttribute("aria-label") || "");
+    if (hasNextIcon || el.getAttribute("ref") === "btNext") {
+      const disabled = btn.disabled
+        || btn.classList.contains("ag-disabled")
+        || btn.getAttribute("aria-disabled") === "true";
+      return { element: btn, enabled: !disabled };
+    }
+  }
+
+  // Custom pagination buttons (arrow / "Next" text)
+  const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+  for (const btn of allBtns) {
+    const text = (btn.innerText || btn.textContent || "").trim();
+    const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+    const title = (btn.getAttribute("title") || "").toLowerCase();
+
+    const isNext = text === ">" || text === "›" || text === "→" || text === "»"
+      || text.toLowerCase() === "next"
+      || ariaLabel.includes("next page") || ariaLabel === "next"
+      || title.includes("next") || title.includes("nächste");
+
+    if (isNext) {
+      const disabled = btn.disabled
+        || btn.classList.contains("disabled")
+        || btn.getAttribute("aria-disabled") === "true";
+      return { element: btn, enabled: !disabled };
+    }
+
+    // Icon-based next button
+    if (btn.querySelector('.ag-icon-next, [class*="chevron-right"], [class*="arrow-right"], [class*="next"]')) {
+      const disabled = btn.disabled
+        || btn.classList.contains("disabled")
+        || btn.getAttribute("aria-disabled") === "true";
+      return { element: btn, enabled: !disabled };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Collect ALL Deinstall rows across paginated pages.
+ * On each page, uses scroll-based collection (handles virtual grids).
+ * Validates page transitions deterministically.
+ */
+async function collectAllDeinstallRowsPaginated(keyColId, expectedTotal) {
+  const allRows = new Map();
+  let pageNum = 0;
+  const maxPages = Math.ceil(expectedTotal / 10) + 10; // generous safety margin
+  let consecutiveNoNew = 0;
+  const maxConsecutiveNoNew = 3;
+  let lastPageRowKeys = new Set();
+
+  while (pageNum < maxPages) {
+    pageNum++;
+    log(`[Deinstall] === Page ${pageNum} ===`);
+
+    // Collect current page rows (with virtual-scroll support)
+    const { headerMap, rows } = await collectAllRowsByScrolling({ keyColId });
+
+    const currentPageKeys = new Set();
+    let newOnThisPage = 0;
+
+    for (const row of rows) {
+      const key = (row[keyColId] || "").trim();
+      if (!key) continue;
+      currentPageKeys.add(key);
+      if (!allRows.has(key)) {
+        newOnThisPage++;
+        allRows.set(key, row);
+      } else {
+        // Merge: update with any enriched fields from this page
+        allRows.set(key, { ...allRows.get(key), ...row });
+      }
+    }
+
+    // Detect duplicate page (same rows as previous page)
+    const isSamePage = currentPageKeys.size > 0 && lastPageRowKeys.size > 0
+      && [...currentPageKeys].every((k) => lastPageRowKeys.has(k));
+
+    if (isSamePage) {
+      warn(`[Deinstall] Page ${pageNum} is duplicate of previous page.`);
+      consecutiveNoNew++;
+    } else if (newOnThisPage === 0 && rows.length > 0) {
+      warn(`[Deinstall] Page ${pageNum}: ${rows.length} rows but 0 new unique keys.`);
+      consecutiveNoNew++;
+    } else {
+      consecutiveNoNew = 0;
+    }
+
+    log(`[Deinstall] Page ${pageNum}: visible=${rows.length}, new=${newOnThisPage}, cumulative=${allRows.size}/${expectedTotal}, duplicate=${isSamePage}`);
+
+    // Log last few ticket IDs for diagnostics
+    const recentKeys = [...currentPageKeys].slice(-5);
+    log(`[Deinstall] Page ${pageNum} last IDs: ${JSON.stringify(recentKeys)}`);
+
+    lastPageRowKeys = currentPageKeys;
+
+    // Stop: consecutive empty/duplicate pages
+    if (consecutiveNoNew >= maxConsecutiveNoNew) {
+      warn(`[Deinstall] ${maxConsecutiveNoNew} consecutive pages without new rows. Stopping pagination.`);
+      break;
+    }
+
+    // Stop: reached expected total
+    if (allRows.size >= expectedTotal) {
+      log(`[Deinstall] Reached expected total (${allRows.size} >= ${expectedTotal}).`);
+      break;
+    }
+
+    // Advance to next page
+    const nextBtn = getDeinstallPaginationNext();
+    if (!nextBtn) {
+      log("[Deinstall] No Next button found. Pagination complete at page " + pageNum);
+      break;
+    }
+    if (!nextBtn.enabled) {
+      log("[Deinstall] Next button disabled. Pagination complete at page " + pageNum);
+      break;
+    }
+
+    // Snapshot first visible row keys before clicking Next
+    const beforeIds = new Set([...currentPageKeys].slice(0, 5));
+
+    nextBtn.element.click();
+    log("[Deinstall] Clicked Next. Waiting for grid update...");
+
+    // Wait until grid content actually changes (deterministic page transition check)
+    let contentChanged = false;
+    const waitStart = Date.now();
+    while (Date.now() - waitStart < 8000) {
+      await sleep(300);
+      try {
+        const root = await getAgGridRootAsync();
+        const newVisible = readVisibleRows(root);
+        const newFirstKeys = new Set();
+        for (const r of newVisible.slice(0, 5)) {
+          const k = (r[keyColId] || "").trim();
+          if (k) newFirstKeys.add(k);
+        }
+        if (newFirstKeys.size > 0 && ![...newFirstKeys].every((k) => beforeIds.has(k))) {
+          contentChanged = true;
+          break;
+        }
+      } catch (_) { /* grid might be briefly detached during page transition */ }
+    }
+
+    if (!contentChanged) {
+      warn(`[Deinstall] Grid content did not change after Next on page ${pageNum}. Retrying wait...`);
+      await sleep(1500);
+    }
+
+    // Stabilization
+    await sleep(300);
+  }
+
+  const root = await getAgGridRootAsync();
+  return {
+    headerMap: readHeaderMap(root),
+    rows: Array.from(allRows.values()),
+    pagesScraped: pageNum,
+  };
+}
+
+/**
+ * Scrape the Deinstall queue end-to-end: navigate, read counter,
+ * paginate, validate, retry.
+ */
+async function scrapeDeinstallQueue(maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      log(`[Deinstall] ========== Attempt ${attempt}/${maxAttempts} ==========`);
+
+      // 1. Navigate to Deinstalls section
+      const navOk = await navigateToDeinstalls();
+      if (!navOk) {
+        warn("[Deinstall] Navigation failed.");
+        if (attempt === maxAttempts)
+          return { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: attempt, error: "NAV_FAILED" };
+        await sleep(1000);
+        continue;
+      }
+
+      // 2. Clear any active filters to ensure full dataset
+      await clearDeinstallFilters();
+      await sleep(300);
+
+      // 3. Read "Total X records" counter (authoritative expected count)
+      const expectedTotal = readDeinstallTotalCounter();
+      log(`[Deinstall] Expected total from counter: ${expectedTotal}`);
+
+      if (!Number.isFinite(expectedTotal) || expectedTotal < 0) {
+        warn(`[Deinstall] Could not read total counter. Value: ${expectedTotal}`);
+        if (attempt === maxAttempts)
+          return { rows: [], actualCount: 0, expectedCount: expectedTotal, complete: false, attempts: attempt, error: "COUNTER_UNREADABLE" };
+        await sleep(800);
+        continue;
+      }
+
+      // Special case: 0 records
+      if (expectedTotal === 0) {
+        log("[Deinstall] Total is 0 — nothing to collect.");
+        return { rows: [], actualCount: 0, expectedCount: 0, complete: true, attempts: attempt };
+      }
+
+      // 4. Detect key column for deduplication
+      const deinstallKey = await detectKeyColIdByHeaderText("ACT_NUM", "Activity #");
+      log(`[Deinstall] Key col-id: "${deinstallKey}"`);
+
+      // 5. Collect rows across all pages
+      const { headerMap, rows, pagesScraped } = await collectAllDeinstallRowsPaginated(deinstallKey, expectedTotal);
+
+      // 6. Normalize column headers → canonical labels
+      const normalizedRows = normalizeRows(headerMap, rows);
+      const actualCount = normalizedRows.length;
+
+      log(`[Deinstall] Attempt ${attempt} result: pages=${pagesScraped}, actual=${actualCount}, expected=${expectedTotal}`);
+
+      // 7. Validate Soll == Ist
+      const complete = isCompleteRun(expectedTotal, actualCount);
+      if (complete) {
+        log(`[Deinstall] ✓ COMPLETE: ${actualCount}/${expectedTotal} (${pagesScraped} pages)`);
+        return { rows: normalizedRows, actualCount, expectedCount: expectedTotal, complete: true, attempts: attempt, pagesScraped };
+      }
+
+      warn(`[Deinstall] INCOMPLETE: ${actualCount}/${expectedTotal}. ${attempt < maxAttempts ? "Retrying..." : "Giving up."}`);
+
+      if (attempt === maxAttempts)
+        return { rows: normalizedRows, actualCount, expectedCount: expectedTotal, complete: false, attempts: attempt, pagesScraped };
+
+      // Backoff before retry
+      await sleep(600 + attempt * 500);
+    } catch (e) {
+      err(`[Deinstall] Attempt ${attempt} error:`, e?.message || e);
+      if (attempt === maxAttempts)
+        return { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: attempt, error: String(e?.message || e) };
+      await sleep(800 + attempt * 400);
+    }
+  }
+
+  return { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: maxAttempts, error: "MAX_ATTEMPTS" };
+}
+
 async function scrapeAllQueuesAndUpload() {
   if (!isJarvisHost()) {
     warn("Not a Jarvis host. Skip scraping.");
@@ -557,10 +960,19 @@ async function scrapeAllQueuesAndUpload() {
       3
     );
 
+    // 4) Deinstalls (separate section with pagination)
+    let diResult = { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: 0 };
+    try {
+      diResult = await scrapeDeinstallQueue(3);
+    } catch (e) {
+      err("[Deinstall] Scrape failed (non-blocking):", e?.message || e);
+    }
+
     const meta = {
       smartHands: { expected: shResult.expectedCount, actual: shResult.actualCount, complete: shResult.complete, attempts: shResult.attempts },
       troubleTickets: { expected: ttResult.expectedCount, actual: ttResult.actualCount, complete: ttResult.complete, attempts: ttResult.attempts },
       ccInstalls: { expected: ccResult.expectedCount, actual: ccResult.actualCount, complete: ccResult.complete, attempts: ccResult.attempts },
+      deinstalls: { expected: diResult.expectedCount, actual: diResult.actualCount, complete: diResult.complete, attempts: diResult.attempts },
     };
 
     // Only upload queues that are complete. Incomplete queues are omitted, preventing destructive overwrites.
@@ -568,6 +980,7 @@ async function scrapeAllQueuesAndUpload() {
     if (shResult.complete) queuesToUpload.smartHands = shResult.rows;
     if (ttResult.complete) queuesToUpload.troubleTickets = ttResult.rows;
     if (ccResult.complete) queuesToUpload.ccInstalls = ccResult.rows;
+    if (diResult.complete) queuesToUpload.deinstalls = diResult.rows;
 
     const hasAnyComplete = Object.keys(queuesToUpload).length > 0;
     if (!hasAnyComplete) {
@@ -592,6 +1005,7 @@ async function scrapeAllQueuesAndUpload() {
         smartHands: queuesToUpload.smartHands ? queuesToUpload.smartHands.length : 0,
         troubleTickets: queuesToUpload.troubleTickets ? queuesToUpload.troubleTickets.length : 0,
         ccInstalls: queuesToUpload.ccInstalls ? queuesToUpload.ccInstalls.length : 0,
+        deinstalls: queuesToUpload.deinstalls ? queuesToUpload.deinstalls.length : 0,
       },
     });
 

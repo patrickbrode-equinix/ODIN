@@ -31,7 +31,7 @@ export {
 export { checkRelevance } from './relevance/checkRelevance.js';
 
 // Candidates
-export { loadCandidateWorkers, buildCandidatePool, loadWorkerCurrentTickets, loadLastCrawlerTimestamp, loadExclusionList } from './candidates/loadCandidates.js';
+export { loadCandidateWorkers, buildCandidatePool, loadWorkerCurrentTickets, loadLastCrawlerTimestamp, loadExclusionList, loadSubtypeExclusionList } from './candidates/loadCandidates.js';
 
 // Eligibility
 export {

@@ -312,4 +312,376 @@ router.get("/crawler-meta", async (_req, res) => {
   }
 });
 
+/* ------------------------------------------------ */
+/* GET /api/tv/shiftplan-last-upload                */
+/* Public read-only last shiftplan upload timestamp */
+/* ------------------------------------------------ */
+router.get("/shiftplan-last-upload", async (_req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT uploaded_at, uploaded_by FROM shiftplan_upload_log ORDER BY uploaded_at DESC LIMIT 1`
+    );
+    res.json(rows[0] || null);
+  } catch (err) {
+    // Table might not exist yet
+    res.json(null);
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/tv/assignment-trace                     */
+/* Returns the latest ASSIGNED decision in a TV-    */
+/* friendly format for the Assignment Hero Slide.   */
+/* ------------------------------------------------ */
+
+/**
+ * Map a raw DB priority tier label to a human-friendly German label.
+ */
+function mapPriorityLabel(type, priority) {
+  const t = (type || '').toLowerCase();
+  const p = (priority || '').toLowerCase();
+  if (t.includes('trouble') && (p === 'high' || p === 'critical')) return 'TT High';
+  if (t.includes('trouble') && p === 'medium') return 'TT Medium';
+  if (t.includes('trouble') && p === 'low') return 'TT Low';
+  if (t.includes('smart') || t === 'smarthands') return 'SmartHands';
+  if (t.includes('cross') || t === 'crossconnect') return 'CrossConnect';
+  if (t === 'scheduled') return 'Scheduled';
+  return type || 'Ticket';
+}
+
+/**
+ * Map a ticket type to short code for badge display.
+ */
+function mapTicketTypeCode(type) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('trouble')) return 'TT';
+  if (t.includes('smart') || t === 'smarthands') return 'SH';
+  if (t.includes('cross') || t === 'crossconnect') return 'CC';
+  if (t === 'scheduled') return 'SCHED';
+  return 'OTHER';
+}
+
+/**
+ * Build TV-friendly decision steps from the rule_path array.
+ */
+function buildDecisionSteps(rulePath) {
+  const stepsDef = [
+    { key: 'ticket-recognized',    label: 'Ticket erkannt',                icon: 'scan' },
+    { key: 'ticket-classified',    label: 'Ticket klassifiziert',          icon: 'tag' },
+    { key: 'priority-determined',  label: 'Priorität bestimmt',            icon: 'signal' },
+    { key: 'candidates-loaded',    label: 'Verfügbare Mitarbeiter geladen', icon: 'users' },
+    { key: 'role-rules-applied',   label: 'Rollenregeln angewendet',       icon: 'shield' },
+    { key: 'cluster-checked',      label: 'System-Cluster geprüft',        icon: 'server' },
+    { key: 'workload-compared',    label: 'Arbeitslast verglichen',        icon: 'scale' },
+    { key: 'candidate-selected',   label: 'Finalen Kandidaten gewählt',    icon: 'check' },
+  ];
+
+  const path = (rulePath || []).map(r => r.toLowerCase());
+
+  return stepsDef.map(step => {
+    let status = 'pending';
+    let reason = '';
+
+    switch (step.key) {
+      case 'ticket-recognized':
+        status = 'done';
+        reason = 'Ticket-Daten validiert';
+        break;
+      case 'ticket-classified':
+        status = path.includes('relevance') ? 'done' : 'pending';
+        reason = path.includes('relevance') ? 'Relevanz bestätigt' : '';
+        break;
+      case 'priority-determined':
+        status = path.includes('relevance') ? 'done' : 'pending';
+        reason = 'Priorisierung abgeschlossen';
+        break;
+      case 'candidates-loaded':
+        status = path.includes('eligibility') ? 'done' : 'pending';
+        reason = 'Kandidatenpool geladen';
+        break;
+      case 'role-rules-applied':
+        if (path.some(p => p.includes('role') || p.includes('eligible') || p === 'eligibility')) {
+          status = 'done';
+          reason = 'Alle Rollenregeln geprüft';
+        }
+        break;
+      case 'cluster-checked':
+        if (path.some(p => p.includes('system-grouping') || p.includes('tie-breaker:system'))) {
+          status = 'done';
+          reason = 'System-Cluster-Prüfung abgeschlossen';
+        } else if (path.includes('worker-selection')) {
+          status = 'done';
+          reason = 'Kein Cluster-Vorteil ermittelt';
+        }
+        break;
+      case 'workload-compared':
+        status = path.includes('worker-selection') ? 'done' : 'pending';
+        reason = path.includes('worker-selection') ? 'Auslastung bewertet' : '';
+        break;
+      case 'candidate-selected':
+        status = path.includes('worker-selection') ? 'done' : 'pending';
+        reason = path.includes('worker-selection') ? 'Entscheidung getroffen' : '';
+        break;
+    }
+
+    return { key: step.key, label: step.label, icon: step.icon, status, reason };
+  });
+}
+
+/**
+ * Build a candidate state label (German, neutral).
+ */
+function buildCandidateState(excl) {
+  if (!excl || !excl.rule) return { state: 'eligible', reason: 'Verfügbar und regelkonform' };
+
+  const rule = (excl.rule || '').toLowerCase();
+  const reason = excl.reason || '';
+
+  if (rule.includes('role') || rule.includes('rolefilter')) {
+    if (reason.toLowerCase().includes('dispatcher')) return { state: 'excluded', reason: 'Durch Dispatcher-Regel ausgeschlossen' };
+    if (reason.toLowerCase().includes('large')) return { state: 'excluded', reason: 'Large Order aktiv' };
+    if (reason.toLowerCase().includes('project') || reason.toLowerCase().includes('projekt')) return { state: 'excluded', reason: 'Projekt-Regel greift' };
+    if (reason.toLowerCase().includes('lead')) return { state: 'excluded', reason: 'Durch Leads-Regel ausgeschlossen' };
+    if (reason.toLowerCase().includes('cross')) return { state: 'excluded', reason: 'Cross-Connect-only Regel greift' };
+    if (reason.toLowerCase().includes('dbs') || reason.toLowerCase().includes('börse') || reason.toLowerCase().includes('deutsche')) return { state: 'excluded', reason: 'DBS Project Regel greift' };
+    return { state: 'excluded', reason: 'Durch Rollenregel ausgeschlossen' };
+  }
+  if (rule.includes('queuepurity') || rule.includes('queue')) return { state: 'excluded', reason: 'Queue-Reinheit nicht erfüllt' };
+  if (rule.includes('absent')) return { state: 'excluded', reason: 'Aktuell nicht verfügbar (abwesend)' };
+  if (rule.includes('break')) return { state: 'excluded', reason: 'Aktuell in Pause' };
+  if (rule.includes('shift')) return { state: 'excluded', reason: 'Nicht in aktiver Schicht' };
+  if (rule.includes('site')) return { state: 'excluded', reason: 'Standort stimmt nicht überein' };
+  if (rule.includes('blocked')) return { state: 'excluded', reason: 'Aktuell nicht verfügbar' };
+  if (rule.includes('auto')) return { state: 'excluded', reason: 'Nicht für Auto-Zuweisung freigegeben' };
+
+  return { state: 'excluded', reason: reason || 'Durch Regel ausgeschlossen' };
+}
+
+/**
+ * Build final assignment reasons (German, neutral, rule-based).
+ */
+function buildFinalReasons(selectionReason, tieBreaker) {
+  const reasons = ['Verfügbar und regelkonform'];
+  const sel = (selectionReason || '').toLowerCase();
+
+  if (sel.includes('system grouping')) reasons.push('System-Cluster-Vorteil');
+  if (sel.includes('queue purity')) reasons.push('Queue-Reinheit gewahrt');
+  if (sel.includes('workload')) {
+    const match = sel.match(/workload:\s*(\d+)/);
+    if (match) reasons.push(`Aktuelle Auslastung: ${match[1]} Tickets`);
+    else reasons.push('Passende Auslastung');
+  }
+  if (sel.includes('only one')) reasons.push('Einziger regelkonformer Kandidat');
+
+  reasons.push('Bester Fit laut aktueller ODIN-Logik');
+  return reasons;
+}
+
+router.get("/assignment-trace", async (_req, res) => {
+  try {
+    // Get the most recent 'assigned' decision from the latest completed run
+    const decisionRes = await query(`
+      SELECT d.*,
+             r.started_at AS run_started_at,
+             r.status AS run_status
+      FROM assignment_ticket_decisions d
+      JOIN assignment_runs r ON r.id = d.run_id
+      WHERE d.result = 'assigned'
+        AND r.status = 'completed'
+      ORDER BY d.decided_at DESC
+      LIMIT 1
+    `);
+
+    if (decisionRes.rows.length === 0) {
+      return res.json({ available: false, trace: null });
+    }
+
+    const d = decisionRes.rows[0];
+
+    // Parse JSONB fields
+    const normalizedTicket = typeof d.normalized_ticket === 'string' ? JSON.parse(d.normalized_ticket) : (d.normalized_ticket || {});
+    const rulePath = typeof d.rule_path === 'string' ? JSON.parse(d.rule_path) : (d.rule_path || []);
+    const initialCandidates = typeof d.initial_candidates === 'string' ? JSON.parse(d.initial_candidates) : (d.initial_candidates || []);
+    const excludedCandidates = typeof d.excluded_candidates === 'string' ? JSON.parse(d.excluded_candidates) : (d.excluded_candidates || []);
+    const remainingCandidates = typeof d.remaining_candidates === 'string' ? JSON.parse(d.remaining_candidates) : (d.remaining_candidates || []);
+
+    // Build the ticket info
+    const ticketType = d.ticket_type || normalizedTicket.type || '';
+    const ticketPriority = d.ticket_priority || normalizedTicket.priority || '';
+    const typeCode = mapTicketTypeCode(ticketType);
+    const priorityLabel = mapPriorityLabel(ticketType, ticketPriority);
+
+    // Compute remaining time from dueAt
+    let restTimeLabel = null;
+    if (normalizedTicket.dueAt) {
+      const dueMs = new Date(normalizedTicket.dueAt).getTime();
+      const nowMs = Date.now();
+      const diffMs = dueMs - nowMs;
+      if (diffMs > 0) {
+        const h = Math.floor(diffMs / 3600000);
+        const m = Math.floor((diffMs % 3600000) / 60000);
+        restTimeLabel = `${h}h ${m}min`;
+      } else {
+        restTimeLabel = 'Überfällig';
+      }
+    }
+
+    // Build ticket object
+    const ticket = {
+      id: d.ticket_id || normalizedTicket.id,
+      externalId: d.external_id || normalizedTicket.externalId,
+      typeCode,
+      type: ticketType,
+      activity: normalizedTicket.activity || normalizedTicket.subtype || d.external_id || '',
+      systemName: normalizedTicket.systemName || '',
+      restTime: restTimeLabel,
+      schedStart: normalizedTicket.scheduledStart || null,
+      revisedCommitDate: normalizedTicket.dueAt || null,
+      priorityLabel,
+      priority: ticketPriority,
+    };
+
+    // Build classification
+    const classification = {
+      ticketType: typeCode,
+      priorityClass: ticketPriority,
+      scheduled: ticketType === 'Scheduled',
+      expedite: ticketPriority === 'critical' || ticketPriority === 'high',
+      clusterCandidate: (d.selection_reason || '').toLowerCase().includes('system grouping'),
+    };
+
+    // Build decision steps from rule path
+    const decisionSteps = buildDecisionSteps(rulePath);
+
+    // Build candidate pool
+    const excludedMap = new Map();
+    for (const excl of excludedCandidates) {
+      excludedMap.set(excl.id, excl);
+    }
+    const remainingSet = new Set(remainingCandidates.map(c => c.id));
+
+    // Try to get current workload per worker
+    let workerWorkloads = new Map();
+    try {
+      const workloadRes = await query(`
+        SELECT assigned_worker_id, COUNT(*) AS cnt
+        FROM assignment_ticket_decisions
+        WHERE run_id = $1 AND result = 'assigned' AND assigned_worker_id IS NOT NULL
+        GROUP BY assigned_worker_id
+      `, [d.run_id]);
+      for (const row of workloadRes.rows) {
+        workerWorkloads.set(row.assigned_worker_id, parseInt(row.cnt) || 0);
+      }
+    } catch (_) { /* best effort */ }
+
+    // Try to get shift info for workers
+    let workerShifts = new Map();
+    try {
+      const today = new Date();
+      const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+      const monthLabel = `${MONTHS_DE[today.getMonth()]} ${today.getFullYear()}`;
+      const day = today.getDate();
+      const shiftRes = await query(`SELECT employee_name, shift_code FROM shifts WHERE month = $1 AND day = $2`, [monthLabel, day]);
+      for (const row of shiftRes.rows) {
+        workerShifts.set(row.employee_name.replace(",", "").trim().toLowerCase(), row.shift_code);
+      }
+    } catch (_) { /* best effort */ }
+
+    const candidatePool = initialCandidates.map(c => {
+      const excl = excludedMap.get(c.id);
+      const isRemaining = remainingSet.has(c.id);
+      const isSelected = c.id === d.assigned_worker_id;
+      const stateInfo = excl ? buildCandidateState(excl) : { state: isRemaining ? 'eligible' : 'checked', reason: isRemaining ? 'Verfügbar und regelkonform' : 'Geprüft' };
+      const nameLower = (c.name || '').toLowerCase();
+      const shiftCode = workerShifts.get(nameLower) || null;
+
+      return {
+        employeeId: c.id,
+        employeeName: c.name,
+        shiftLabel: shiftCode || null,
+        roles: [],
+        currentLoad: workerWorkloads.get(c.id) || 0,
+        state: isSelected ? 'selected' : stateInfo.state,
+        reason: isSelected ? 'Ausgewählt durch ODIN-Logik' : stateInfo.reason,
+      };
+    });
+
+    // Build selected candidate
+    const selectedCandidate = {
+      employeeId: d.assigned_worker_id,
+      employeeName: d.assigned_worker_name,
+      shiftLabel: workerShifts.get((d.assigned_worker_name || '').toLowerCase()) || null,
+      roles: [],
+      currentLoad: workerWorkloads.get(d.assigned_worker_id) || 0,
+    };
+
+    // Build final reasons
+    const finalReasons = buildFinalReasons(d.selection_reason, null);
+
+    // Assemble trace
+    const trace = {
+      ticket,
+      classification,
+      decisionSteps,
+      candidatePool,
+      selectedCandidate,
+      finalReasons,
+      decidedAt: d.decided_at,
+      runId: d.run_id,
+    };
+
+    res.json({ available: true, trace });
+  } catch (err) {
+    console.error("[TV] /assignment-trace error:", err.message);
+    res.json({ available: false, trace: null }); // never 500 for TV
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/tv/teams-status                         */
+/* Public read-only Teams notification status for   */
+/* TV header display. No sensitive data exposed.    */
+/* ------------------------------------------------ */
+router.get("/teams-status", async (_req, res) => {
+  try {
+    const hasWebhook = !!(process.env.TEAMS_CHANNEL_WEBHOOK || process.env.TEAMS_PERSONAL_WEBHOOK);
+    const hasBotKey = !!process.env.BOT_INTERNAL_API_KEY;
+    const hasGraph = !!(process.env.GRAPH_CLIENT_ID && process.env.GRAPH_CLIENT_SECRET);
+    const configured = hasWebhook || hasBotKey || hasGraph;
+
+    let sentToday = 0;
+    try {
+      const { rows } = await query(
+        `SELECT COUNT(*) as cnt FROM teams_message_log WHERE status = 'sent' AND sent_at >= CURRENT_DATE`
+      );
+      sentToday = parseInt(rows[0]?.cnt, 10) || 0;
+    } catch { /* table may not exist */ }
+
+    res.json({ configured, active: configured, sentToday });
+  } catch (err) {
+    console.error("[TV] /teams-status error:", err.message);
+    res.json({ configured: false, active: false, sentToday: 0 });
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/tv/automation-status                    */
+/* Public read-only assignment engine status for    */
+/* TV header display. No sensitive data exposed.    */
+/* ------------------------------------------------ */
+router.get("/automation-status", async (_req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT key, value FROM assignment_settings WHERE key IN ('assignment.enabled', 'assignment.mode')`
+    );
+    const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const enabled = map['assignment.enabled'] === 'true';
+    const mode = map['assignment.mode'] || 'shadow';
+    res.json({ enabled, mode });
+  } catch (err) {
+    console.error("[TV] /automation-status error:", err.message);
+    res.json({ enabled: false, mode: 'unknown' });
+  }
+});
+
 export default router;

@@ -14,6 +14,17 @@ const PORT = parseInt(process.env.PORT || "8000", 10);
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8001";
 
 /* ------------------------------------------------ */
+/* LOCAL HEALTHCHECK (does NOT proxy to backend)     */
+/* Used by Docker/Portainer HEALTHCHECK so the       */
+/* frontend is not marked unhealthy when the backend */
+/* is temporarily unavailable.                       */
+/* ------------------------------------------------ */
+
+app.get("/healthz", (_req, res) => {
+    res.status(200).json({ status: "ok", service: "frontend", timestamp: new Date().toISOString() });
+});
+
+/* ------------------------------------------------ */
 /* PROXY /api/* and /uploads/* to backend            */
 /* ------------------------------------------------ */
 

@@ -19,3 +19,22 @@ export async function updateShiftplanPreferences(prefs: ShiftplanPreferences): P
     const res = await api.put("/user/preferences/shiftplan", prefs);
     return asObject(res.data, "updateShiftplanPreferences") as ShiftplanPreferences;
 }
+
+/* ------------------------------------------------ */
+/* PREFERRED COLLEAGUES (Wunschkollegen)            */
+/* ------------------------------------------------ */
+
+export async function getPreferredColleagues(): Promise<string[]> {
+    const res = await api.get("/user/preferred-colleagues");
+    return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function updatePreferredColleagues(names: string[]): Promise<string[]> {
+    const res = await api.put("/user/preferred-colleagues", { names });
+    return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function getEligibleColleagues(): Promise<string[]> {
+    const res = await api.get("/user/eligible-colleagues");
+    return Array.isArray(res.data) ? res.data : [];
+}

@@ -1,32 +1,67 @@
 /* ------------------------------------------------ */
-/* TV LAYOUT – 4-SLIDE ROTATOR                     */
+/* TV LAYOUT – SLIDE ROTATOR                       */
 /* Slide 1: Schichten Heute + Tickets               */
 /* Slide 2: Informationen & Anweisungen             */
 /* Slide 3: Nächste 72 Stunden                      */
 /* Slide 4: Handover                                */
+/* Slide 5: Projekte                                */
+/* Slide 6: Events                                  */
+/* Slide 7: Assignment Decision Flow (Hero)         */
 /* ------------------------------------------------ */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
+import { TVAssignmentHeroSlide } from "./TVAssignmentHeroSlide";
 import type { DashboardInfoEntry } from "../../api/dashboard";
-import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera } from "lucide-react";
+import type { TvAssignmentTrace, TvAssignmentTraceResponse } from "./tv.assignment.types";
+import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera, Cpu } from "lucide-react";
 import { api } from "../../api/api";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
-const AUTO_ROTATE_MS = 10_000; // 10 seconds – adjustable TV default
+const AUTO_ROTATE_MS = 10_000; // 10 seconds – default for most slides
 const PAUSE_AFTER_MANUAL_MS = 60_000;
+
+/* Per-slide rotation durations (ms) – defaults, overridden by API config */
+const DEFAULT_SLIDE_DURATION_MS: Partial<Record<string, number>> = {
+  "72h":        20_000, // 20 seconds for next-72h-tickets slide
+  "handover":   20_000, // 20 seconds for handover slide
+  "assignment": 20_000, // 20 seconds for assignment decision hero slide
+};
+
+/** Fetches slide config from backend, falls back to hardcoded defaults */
+async function loadSlideConfig(): Promise<Record<string, { enabled: boolean; duration_ms: number; sort_order: number; only_if_data: boolean }>> {
+  try {
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "") || "";
+    const url = baseUrl ? `${baseUrl}/api/tv/config` : "/api/tv/config";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) return {};
+    return Object.fromEntries(rows.map((r: any) => [r.slide_id, r]));
+  } catch {
+    return {};
+  }
+}
+
+function getSlideRotationMs(slideId: string, configMap: Record<string, { duration_ms: number }>): number {
+  if (configMap[slideId]) return configMap[slideId].duration_ms;
+  return DEFAULT_SLIDE_DURATION_MS[slideId] ?? AUTO_ROTATE_MS;
+}
+
+const CRAWLER_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 /* Static slide definitions – filtering happens at runtime */
 const ALL_SLIDES = [
-  { id: "shifts",   title: "Schichten Heute",           icon: Users         },
-  { id: "info",     title: "Informationen & Anweisungen", icon: Megaphone     },
-  { id: "72h",      title: "N\u00e4chste 72 Stunden",          icon: AlertTriangle },
-  { id: "handover", title: "Handover",                  icon: ArrowRightLeft },
-  { id: "projects", title: "Projekte",                  icon: FolderKanban  },
-  { id: "events",   title: "Events",                   icon: Camera        },
+  { id: "shifts",     title: "Schichten Heute",              icon: Users         },
+  { id: "info",       title: "Informationen & Anweisungen",  icon: Megaphone     },
+  { id: "72h",        title: "N\u00e4chste 72 Stunden",             icon: AlertTriangle },
+  { id: "handover",   title: "Handover",                     icon: ArrowRightLeft },
+  { id: "projects",   title: "Projekte",                     icon: FolderKanban  },
+  { id: "events",     title: "Events",                       icon: Camera        },
+  { id: "assignment", title: "ODIN Assignment Logic",         icon: Cpu           },
 ] as const;
 
 type SlideId = typeof ALL_SLIDES[number]["id"];
@@ -44,51 +79,80 @@ function getTodayShiftWindows(now: Date): ShiftWindow[] {
     d.setHours(h, m, 0, 0);
     return d.getTime();
   };
-  return [
+
+  const todayShifts: ShiftWindow[] = [
     { name: "E1", start: base(6, 30), end: base(15, 30) },
     { name: "E2", start: base(7, 0), end: base(16, 0) },
     { name: "L1", start: base(13, 0), end: base(22, 0) },
     { name: "L2", start: base(15, 0), end: base(0, 0, 1) },
     { name: "N", start: base(21, 15), end: base(6, 45, 1) },
   ];
+
+  // Before 07:00, also include yesterday's overnight shifts (L2, N)
+  // so a night shift that started yesterday at 21:15 and ends today at 06:45
+  // is correctly detected as "running".
+  const hour = now.getHours();
+  if (hour < 7) {
+    todayShifts.push(
+      { name: "L2", start: base(15, 0, -1), end: base(0, 0) },
+      { name: "N", start: base(21, 15, -1), end: base(6, 45) },
+    );
+  }
+
+  return todayShifts;
 }
 
 function buildShiftTiming(now: Date): { label: string; color: string }[] {
   const nowMs = now.getTime();
   const windows = getTodayShiftWindows(now);
-  const result: { label: string; color: string }[] = [];
+  const active: { label: string; color: string; name: string }[] = [];
+  const upcoming: { label: string; color: string; name: string }[] = [];
 
   for (const w of windows) {
     if (nowMs >= w.start && nowMs < w.end) {
       const remaining = w.end - nowMs;
       const h = Math.floor(remaining / 3600000);
       const m = Math.floor((remaining % 3600000) / 60000);
-      result.push({ label: `${w.name}: noch ${h}h ${m}min`, color: "text-green-400 font-bold" });
+      active.push({ label: `${w.name}: noch ${h}h ${m}min`, color: "text-green-400 font-bold", name: w.name });
     } else if (nowMs < w.start) {
-      const until = w.start - nowMs;
-      const h = Math.floor(until / 3600000);
-      const m = Math.floor((until % 3600000) / 60000);
-      result.push({ label: `${w.name} in ${h}h ${m}min`, color: "text-muted-foreground" });
+      upcoming.push({ label: `${w.name} in ${Math.floor((w.start - nowMs) / 3600000)}h ${Math.floor(((w.start - nowMs) % 3600000) / 60000)}min`, color: "text-muted-foreground", name: w.name });
     }
   }
 
-  // Active shifts first
-  result.sort((a, b) => {
-    const aAct = a.label.includes("noch");
-    const bAct = b.label.includes("noch");
-    if (aAct && !bAct) return -1;
-    if (!aAct && bAct) return 1;
-    return 0;
-  });
+  // Deduplicate: if a shift is active, remove it from upcoming
+  const activeNames = new Set(active.map(a => a.name));
+  const deduped = upcoming.filter(u => !activeNames.has(u.name));
 
-  return result;
+  return [...active, ...deduped];
 }
 
 /* ------------------------------------------------ */
 /* SLIDE HEADER                                     */
 /* ------------------------------------------------ */
-function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; icon: React.FC<any> }) {
+interface TeamsStatus { configured: boolean; active: boolean; sentToday: number }
+interface AutomationStatus { enabled: boolean; mode: string }
+
+function SlideHeader({ now, title, icon: Icon, crawlerLastUpdate, shiftplanLastUpload, crawlerStale, teamsStatus, automationStatus }: {
+  now: Date; title: string; icon: React.FC<any>;
+  crawlerLastUpdate?: string | null; shiftplanLastUpload?: string | null; crawlerStale?: boolean;
+  teamsStatus?: TeamsStatus | null; automationStatus?: AutomationStatus | null;
+}) {
   const shiftInfo = useMemo(() => buildShiftTiming(now), [now]);
+
+  const formatUpdateTime = (iso: string | null | undefined): string => {
+    if (!iso) return "–";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "–";
+    return d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
+  /* Mode label for automation */
+  const modeLabel = (mode: string): string => {
+    if (mode === "live") return "Live";
+    if (mode === "shadow") return "Shadow";
+    if (mode === "dry-run") return "Dry-Run";
+    return mode;
+  };
 
   return (
     <div className="flex items-center justify-between px-6 py-3 bg-[#050a1c] border-b border-blue-500/30 shadow-[0_4px_32px_rgba(0,0,0,0.6)] shrink-0 gap-4"
@@ -121,11 +185,57 @@ function SlideHeader({ now, title, icon: Icon }: { now: Date; title: string; ico
         </div>
       </div>
 
-      {/* Shift timers */}
-      <div className="flex items-center gap-4 text-base overflow-hidden">
-        {shiftInfo.map((s, i) => (
-          <span key={i} className={`font-semibold whitespace-nowrap ${s.color}`}>{s.label}</span>
-        ))}
+      {/* Center: Shift timers + Status info */}
+      <div className="flex flex-col items-end gap-1 overflow-hidden">
+        <div className="flex items-center gap-4 text-base">
+          {shiftInfo.map((s, i) => (
+            <span key={i} className={`font-semibold whitespace-nowrap ${s.color}`}>{s.label}</span>
+          ))}
+        </div>
+        <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap justify-end">
+          {/* Teams status badge */}
+          {teamsStatus && (
+            <span
+              className={`whitespace-nowrap px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
+                teamsStatus.active
+                  ? "bg-green-500/15 border-green-500/30 text-green-400"
+                  : "bg-zinc-500/15 border-zinc-500/30 text-zinc-400"
+              }`}
+              title={teamsStatus.active
+                ? `Teams-Benachrichtigungen sind aktiv. Heute versendet: ${teamsStatus.sentToday}`
+                : "Teams-Benachrichtigungen sind nicht konfiguriert oder inaktiv."
+              }
+            >
+              Teams: {teamsStatus.active ? "Aktiv" : "Inaktiv"}
+            </span>
+          )}
+          {/* Automation status badge */}
+          {automationStatus && (
+            <span
+              className={`whitespace-nowrap px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
+                automationStatus.enabled
+                  ? automationStatus.mode === "live"
+                    ? "bg-green-500/15 border-green-500/30 text-green-400"
+                    : "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                  : "bg-zinc-500/15 border-zinc-500/30 text-zinc-400"
+              }`}
+              title={automationStatus.enabled
+                ? `Automatische Zuweisungslogik ist im Modus „${modeLabel(automationStatus.mode)}" aktiv.`
+                : "Automatische Zuweisungslogik ist deaktiviert. Nur manuelle Runs möglich."
+              }
+            >
+              Automatisierung: {automationStatus.enabled ? `${modeLabel(automationStatus.mode)} aktiv` : "Inaktiv"}
+            </span>
+          )}
+          <span className="h-3 w-px bg-white/10" />
+          <span className={`whitespace-nowrap ${crawlerStale ? "text-red-400 font-bold" : ""}`}>Crawler: {formatUpdateTime(crawlerLastUpdate)}</span>
+          {crawlerStale && (
+            <span className="whitespace-nowrap px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 font-bold text-[10px] uppercase tracking-wider animate-pulse">
+              Keine aktuellen Crawler-Daten
+            </span>
+          )}
+          <span className="whitespace-nowrap">Dienstplan: {formatUpdateTime(shiftplanLastUpload)}</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 text-lg text-muted-foreground shrink-0">
@@ -437,6 +547,19 @@ export function TvLayout({
   const [projects,      setProjects]      = useState<TvProject[]>([]);
   const [handoverCount, setHandoverCount] = useState(0);
   const [eventImages,   setEventImages]   = useState<EventImage[]>([]);
+  const [assignmentTrace, setAssignmentTrace] = useState<TvAssignmentTrace | null>(null);
+  const [crawlerLastUpdate, setCrawlerLastUpdate] = useState<string | null>(null);
+  const [shiftplanLastUpload, setShiftplanLastUpload] = useState<string | null>(null);
+  const [slideConfigMap, setSlideConfigMap] = useState<Record<string, { enabled: boolean; duration_ms: number; sort_order: number; only_if_data: boolean }>>({});
+  const [teamsStatus, setTeamsStatus] = useState<TeamsStatus | null>(null);
+  const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
+
+  /* Load slide config from backend */
+  useEffect(() => {
+    loadSlideConfig().then(setSlideConfigMap).catch(() => {});
+    const id = setInterval(() => loadSlideConfig().then(setSlideConfigMap).catch(() => {}), 5 * 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   /* Clock */
   const [clock, setClock] = useState(new Date());
@@ -488,6 +611,69 @@ export function TvLayout({
       fetch("/api/tv/events/images")
         .then(r => r.ok ? r.json() : [])
         .then(data => setEventImages(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Assignment Trace – for Assignment Hero Slide */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/assignment-trace")
+        .then(r => r.ok ? r.json() : null)
+        .then((data: TvAssignmentTraceResponse | null) => {
+          if (data?.available && data.trace) setAssignmentTrace(data.trace);
+          else setAssignmentTrace(null);
+        })
+        .catch(() => setAssignmentTrace(null));
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Crawler last update – for status display */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/crawler-meta")
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.lastUpdate) setCrawlerLastUpdate(data.lastUpdate); })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Shiftplan last upload – for status display */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/shiftplan-last-upload")
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.uploaded_at) setShiftplanLastUpload(data.uploaded_at); })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Teams notification status – for header display */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/teams-status")
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setTeamsStatus(data); })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Automation / engine status – for header display */
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/tv/automation-status")
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setAutomationStatus(data); })
         .catch(() => {});
     load();
     const id = setInterval(load, 60_000);
@@ -564,11 +750,14 @@ export function TvLayout({
   }, [allTickets, early, late, night]);
 
   /* goToSlide – uses slidesCountRef for stale-closure safety */
+  const activeSlidesRef = useRef<typeof ALL_SLIDES[number][]>([]);
   const goToSlide = useCallback((idx: number, manual = false) => {
     const count = slidesCountRef.current;
     if (count === 0) return;
-    setCurrentSlide(((idx % count) + count) % count);
-    setCountdown(AUTO_ROTATE_MS / 1000);
+    const nextIdx = ((idx % count) + count) % count;
+    setCurrentSlide(nextIdx);
+    const nextSlideId = activeSlidesRef.current[nextIdx]?.id ?? "shifts";
+    setCountdown(getSlideRotationMs(nextSlideId, slideConfigMap) / 1000);
     if (manual) {
       isPaused.current = true;
       if (pauseTimer.current) clearTimeout(pauseTimer.current);
@@ -576,7 +765,7 @@ export function TvLayout({
     }
   }, []);
 
-  /* Auto-rotate */
+  /* Auto-rotate – per-slide duration aware */
   useEffect(() => {
     const tick = setInterval(() => {
       setCountdown(prev => {
@@ -584,10 +773,16 @@ export function TvLayout({
           if (!isPaused.current) {
             setCurrentSlide(s => {
               const count = slidesCountRef.current;
-              return count > 0 ? (s + 1) % count : 0;
+              const nextIdx = count > 0 ? (s + 1) % count : 0;
+              // Schedule new countdown for next slide
+              const nextSlideId = activeSlidesRef.current[nextIdx]?.id ?? "shifts";
+              setTimeout(() => setCountdown(getSlideRotationMs(nextSlideId, slideConfigMap) / 1000), 0);
+              return nextIdx;
             });
           }
-          return AUTO_ROTATE_MS / 1000;
+          // Return current value; will be overridden by setTimeout above
+          const currentId = activeSlidesRef.current[0]?.id ?? "shifts";
+          return getSlideRotationMs(currentId, slideConfigMap) / 1000;
         }
         return prev - 1;
       });
@@ -641,18 +836,22 @@ export function TvLayout({
   const activeSlides = useMemo(() => {
     const activeProjects = projects.filter(p => String(p.status ?? "").toLowerCase() !== "completed");
     return ALL_SLIDES.filter(s => {
-      if (s.id === "shifts")   return true;
-      if (s.id === "info")     return infoEntries.length > 0;
-      if (s.id === "72h")      return next72hTickets.length > 0;
-      if (s.id === "handover") return handoverCount > 0;
-      if (s.id === "projects") return activeProjects.length > 0;
-      if (s.id === "events")   return eventImages.length > 0;
+      if (s.id === "shifts")     return true;
+      if (s.id === "info")       return infoEntries.length > 0;
+      if (s.id === "72h")        return next72hTickets.length > 0;
+      if (s.id === "handover")   return handoverCount > 0;
+      if (s.id === "projects")   return activeProjects.length > 0;
+      if (s.id === "events")     return eventImages.length > 0;
+      if (s.id === "assignment") return assignmentTrace !== null;
       return true;
     });
-  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages]);
+  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages, assignmentTrace]);
 
   /* Keep ref in sync for stale-closure-safe auto-rotate */
-  useEffect(() => { slidesCountRef.current = activeSlides.length; }, [activeSlides.length]);
+  useEffect(() => {
+    slidesCountRef.current = activeSlides.length;
+    activeSlidesRef.current = activeSlides;
+  }, [activeSlides]);
 
   /* Clamp current index when active slides shrink */
   useEffect(() => {
@@ -666,7 +865,16 @@ export function TvLayout({
   return (
     <div className="tv-mode flex flex-col h-full min-h-0 bg-[#030711]">
       {/* SLIDE HEADER */}
-      <SlideHeader now={clock} title={activeSlides[currentSlide]?.title ?? ""} icon={activeSlides[currentSlide]?.icon ?? Users} />
+      <SlideHeader
+        now={clock}
+        title={activeSlides[currentSlide]?.title ?? ""}
+        icon={activeSlides[currentSlide]?.icon ?? Users}
+        crawlerLastUpdate={crawlerLastUpdate}
+        shiftplanLastUpload={shiftplanLastUpload}
+        crawlerStale={crawlerStale}
+        teamsStatus={teamsStatus}
+        automationStatus={automationStatus}
+      />
 
       {/* SLIDE CONTENT */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
@@ -690,9 +898,9 @@ export function TvLayout({
               <div className="flex flex-col items-center justify-center h-full gap-4">
                 <AlertTriangle className="w-20 h-20 text-red-500 animate-pulse" />
                 <span className="text-3xl font-black text-red-500 tracking-wide animate-pulse">
-                  NO RECENT CRAWLER DATA INPUT
+                  Keine aktuellen Crawler-Daten
                 </span>
-                <span className="text-lg text-muted-foreground">Ticket-Daten werden ausgeblendet, da der Crawler seit über 5 Minuten keine Daten liefert.</span>
+                <span className="text-lg text-muted-foreground">Ticket-Daten werden ausgeblendet, da der Crawler seit über 10 Minuten keine Daten liefert.</span>
               </div>
             ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-full">
@@ -761,6 +969,13 @@ export function TvLayout({
 
         {/* Events */}
         {currentSlideId === "events" && <EventsSlide images={eventImages} />}
+
+        {/* Assignment Decision Flow Hero Slide */}
+        {currentSlideId === "assignment" && assignmentTrace && (
+          <div className="h-full overflow-hidden">
+            <TVAssignmentHeroSlide trace={assignmentTrace} />
+          </div>
+        )}
       </div>
 
       {/* SLIDE NAVIGATION */}
@@ -769,7 +984,7 @@ export function TvLayout({
         <div className="h-0.5 bg-blue-900/40 w-full">
           <div
             className="h-full bg-cyan-400/70 transition-all duration-1000 shadow-[0_0_6px_rgba(0,216,255,0.6)]"
-            style={{ width: `${((AUTO_ROTATE_MS / 1000 - countdown) / (AUTO_ROTATE_MS / 1000)) * 100}%` }}
+            style={{ width: `${(() => { const totalSec = getSlideRotationMs(currentSlideId, slideConfigMap) / 1000; return ((totalSec - countdown) / totalSec) * 100; })()}%` }}
           />
         </div>
         <div className="flex items-center justify-center gap-4 py-2.5">

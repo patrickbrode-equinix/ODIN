@@ -16,6 +16,7 @@ import PendingApproval from "./components/users/PendingApproval";
 /* Lazy-loaded pages – code split per route */
 const Dashboard              = lazy(() => import("./components/pages/Dashboard"));
 const DashboardStatistik     = lazy(() => import("./components/pages/DashboardStatistik"));
+const TicketAudit            = lazy(() => import("./components/pages/TicketAudit"));
 const Shiftplan              = lazy(() => import("./components/pages/Shiftplan"));
 const Weekplan               = lazy(() => import("./components/pages/Weekplan"));
 const Handover               = lazy(() => import("./components/pages/Handover"));
@@ -28,8 +29,13 @@ const Protokoll              = lazy(() => import("./components/pages/Protokoll")
 const TeamsBenachrichtigungen = lazy(() => import("./components/pages/TeamsBenachrichtigungen"));
 const AutomatedAssignment    = lazy(() => import("./components/pages/AutomatedAssignment"));
 const DBSPage                = lazy(() => import("./components/pages/DBS"));
+const CARPage                = lazy(() => import("./components/pages/CAR"));
 const CommitCompliance       = lazy(() => import("./components/pages/CommitCompliance"));
 const OdinLogicPage          = lazy(() => import("./components/pages/OdinLogicPage"));
+const TeamsCommunicationCenter = lazy(() => import("./components/pages/TeamsCommunicationCenter"));
+const AdminSettings          = lazy(() => import("./components/pages/AdminSettings"));
+const AssignmentRulesEditor  = lazy(() => import("./components/pages/AssignmentRulesEditor"));
+const ShiftplanControlCenter = lazy(() => import("./components/pages/ShiftplanControlCenter"));
 
 /* Loading fallback */
 function PageLoader() {
@@ -98,6 +104,15 @@ export default function App() {
             />
 
             <Route
+              path="dashboard/ticket-audit"
+              element={
+                <PageGuard pageKey="ticket_audit" min="write">
+                  <TicketAudit />
+                </PageGuard>
+              }
+            />
+
+            <Route
               path="shiftplan"
               element={
                 <PageGuard pageKey="shiftplan">
@@ -161,11 +176,16 @@ export default function App() {
             />
 
             {/* New Pages */}
+            {/* DBS (Colo 2.0) → redirects to CAR */}
             <Route
               path="dbs/*"
+              element={<Navigate to="/car-liste" replace />}
+            />
+            <Route
+              path="car-liste"
               element={
-                <PageGuard pageKey="dbs">
-                  <DBSPage />
+                <PageGuard pageKey="car_liste">
+                  <CARPage />
                 </PageGuard>
               }
             />
@@ -209,6 +229,46 @@ export default function App() {
               element={
                 <PageGuard pageKey="odin_logic">
                   <OdinLogicPage />
+                </PageGuard>
+              }
+            />
+
+            {/* Assignment Rules Editor */}
+            <Route
+              path="odin-logic/rules"
+              element={
+                <PageGuard pageKey="odin_logic" min="write">
+                  <AssignmentRulesEditor />
+                </PageGuard>
+              }
+            />
+
+            {/* Shiftplan Control Center */}
+            <Route
+              path="shiftplan-control"
+              element={
+                <PageGuard pageKey="shiftplan_control" min="write">
+                  <ShiftplanControlCenter />
+                </PageGuard>
+              }
+            />
+
+            {/* Teams Communication Center */}
+            <Route
+              path="teams-center"
+              element={
+                <PageGuard pageKey="teams_center">
+                  <TeamsCommunicationCenter />
+                </PageGuard>
+              }
+            />
+
+            {/* Admin Settings */}
+            <Route
+              path="admin-settings"
+              element={
+                <PageGuard pageKey="admin_settings" min="write">
+                  <AdminSettings />
                 </PageGuard>
               }
             />

@@ -34,6 +34,7 @@ export function normalizeGroupFromQueueType(queueType) {
   if (queueType === "SmartHands")    return "FR2-Smart hands";
   if (queueType === "CCInstalls")    return "FR2-Cross Connects";
   if (queueType === "TroubleTickets") return "Trouble Tickets";
+  if (queueType === "Deinstall")     return "";  // group_key = subtype (Cage, Cabinet, etc.)
   return "";
 }
 
@@ -46,6 +47,7 @@ export function canonicalizeQueueType(v) {
   if (s === "SMART_HANDS"   || s.toLowerCase() === "smarthands")    return "SmartHands";
   if (s === "CC_INSTALLS"   || s.toLowerCase() === "ccinstalls")    return "CCInstalls";
   if (s === "TROUBLE_TICKETS" || s.toLowerCase() === "troubletickets") return "TroubleTickets";
+  if (s === "DEINSTALL" || s.toLowerCase() === "deinstall" || s.toLowerCase() === "deinstalls") return "Deinstall";
   return s;
 }
 

@@ -45,6 +45,8 @@ import teamsRoutes from "./routes/teams.js";
 import tvRoutes from "./routes/tv.js";
 import eventsRoutes from "./routes/events.js";
 import assignmentRoutes from "./routes/assignment.js";
+import feedbackRoutes from "./routes/feedback.js";
+import shiftplanControlRoutes from "./routes/shiftplanControl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -155,6 +157,10 @@ app.use("/api/commit-compliance", commitComplianceRoutes);
 // 17. Statistics
 app.use("/api/stats", statsRoutes);
 
+// 17a. Ticket Audit (Admin-only statistics)
+import ticketAuditRoutes from "./routes/ticketAudit.js";
+app.use("/api/stats/audit", ticketAuditRoutes);
+
 // 17b. Holidays (public, for Schichtplan)
 app.use("/api/holidays", holidaysRoutes);
 
@@ -197,9 +203,35 @@ app.use("/api/events", eventsRoutes);
 // Assignment Engine (ODIN-Logik, Phase 1 Shadow Mode)
 app.use("/api/assignment", assignmentRoutes);
 
+// Shiftplan Control Center (Draft generation, activation, Excel)
+app.use("/api/shiftplan-control", shiftplanControlRoutes);
+
+// Feedback (email via SMTP)
+app.use("/api/feedback", feedbackRoutes);
+
 // Weekplan Roles (per-employee per-day role assignments)
 import weekplanRolesRoutes from "./routes/weekplanRoles.js";
 app.use("/api/weekplan-roles", weekplanRolesRoutes);
+
+// Employee Contacts (E-Mail-Pflege für Teams-Bot)
+import employeeContactsRoutes from "./routes/employeeContacts.js";
+app.use("/api/employee-contacts", employeeContactsRoutes);
+
+// TV Slide Config (kiosk + admin)
+import tvConfigRoutes from "./routes/tvConfig.js";
+app.use("/api/tv/config", tvConfigRoutes);
+
+// Teams Communication Center Config
+import teamsConfigRoutes from "./routes/teamsConfig.js";
+app.use("/api/teams-config", teamsConfigRoutes);
+
+// Assignment Rules Config (ODIN Logic Editor)
+import assignmentRulesRoutes from "./routes/assignmentRules.js";
+app.use("/api/assignment-rules", assignmentRulesRoutes);
+
+// Settings Audit Log
+import settingsAuditRoutes from "./routes/settingsAudit.js";
+app.use("/api/admin/settings-audit", settingsAuditRoutes);
 
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */

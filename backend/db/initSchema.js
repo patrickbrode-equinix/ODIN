@@ -36,10 +36,11 @@ const DEFAULT_POLICY = {
   commit_dashboard: "none",
   dispatcher_console: "none",
   tv_dashboard: "view",
-  odin_logic: "none",
+  odin_logic: "view",
   settings: "view",
   user_management: "none",
-  odin_logic: "view",
+  car_liste: "view",
+  ticket_audit: "none",
 };
 
 const DEFAULT_GROUPS = [
@@ -853,6 +854,17 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_manual_excl_sysname ON manual_exclusions(system_name);
+
+    /* ── Subtype Exclusions (customer_trouble_type) ── */
+    /* Tickets with these subtypes are blocked from auto-assignment */
+    CREATE TABLE IF NOT EXISTS subtype_exclusions (
+      id SERIAL PRIMARY KEY,
+      subtype VARCHAR(255) NOT NULL UNIQUE,
+      reason TEXT,
+      created_by VARCHAR(120) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_subtype_excl_subtype ON subtype_exclusions(subtype);
 
     /* ── Assignment Runs (Shadow + Live) ──────────── */
     CREATE TABLE IF NOT EXISTS assignment_runs (

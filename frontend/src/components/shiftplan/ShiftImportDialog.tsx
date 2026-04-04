@@ -28,6 +28,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
   const [parsedData, setParsedData] = useState<Record<string, any> | null>(null);
   const [monthSummaries, setMonthSummaries] = useState<MonthSummary[]>([]);
   const [skippedSheets, setSkippedSheets] = useState<{ sheet: string; reason: string }[]>([]);
+  const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<{ months: number; employees: number; changes: number } | null>(null);
 
   const analyzeFile = async (f: File) => {
@@ -38,8 +39,17 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
       const yearMatch = f.name.match(/(20\d{2})/);
       if (yearMatch) year = Number(yearMatch[1]);
 
-      const { data: rawPlans, skippedSheets: skipped } = await parseShiftplanExcel(f);
+      const parseResult = await parseShiftplanExcel(f);
+      const rawPlans = parseResult.data;
+      const skipped = parseResult.skippedSheets;
       const normalized = normalizePlansByMonth(rawPlans, year);
+
+      // Log import details
+      for (const entry of parseResult.log) {
+        if (entry.level === "error") console.error(`[IMPORT] ${entry.sheet ?? ""} ${entry.message}`);
+        else if (entry.level === "warn") console.warn(`[IMPORT] ${entry.sheet ?? ""} ${entry.message}`);
+        else console.log(`[IMPORT] ${entry.sheet ?? ""} ${entry.message}`);
+      }
 
       const schedules: Record<string, any> = {};
       const summaries: MonthSummary[] = [];
@@ -62,6 +72,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
       setParsedData(schedules);
       setMonthSummaries(summaries);
       setSkippedSheets(skipped);
+      setUnknownCodes(parseResult.unknownCodes);
     } catch (err) {
       console.error("Analysis Error", err);
       alert("Fehler beim Analysieren der Datei.");
@@ -108,6 +119,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
     setParsedData(null);
     setMonthSummaries([]);
     setSkippedSheets([]);
+    setUnknownCodes([]);
     setImportResult(null);
   };
 
@@ -219,6 +231,22 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+              {unknownCodes.length > 0 && (
+                <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
+                    <p className="text-xs font-bold text-yellow-300 uppercase tracking-wide">
+                      {unknownCodes.length} unbekannte{unknownCodes.length > 1 ? " Codes" : "r Code"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {unknownCodes.map(c => (
+                      <span key={c} className="text-xs px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 font-mono">{c}</span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-yellow-300/60 mt-1.5">Diese Codes werden als Rohwerte importiert. Fachliche Abstimmung ggf. nötig.</p>
                 </div>
               )}
               <p className="text-[11px] text-muted-foreground">Alle anderen Monate bleiben unberührt.</p>

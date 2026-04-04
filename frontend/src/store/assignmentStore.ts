@@ -41,6 +41,8 @@ interface AssignmentState {
   fetchHealth: () => Promise<void>;
   fetchSettings: () => Promise<void>;
   updateSettings: (updates: Partial<AssignmentSettings>) => Promise<void>;
+  startEngine: (mode?: AssignmentMode) => Promise<void>;
+  stopEngine: () => Promise<void>;
   fetchRuns: (params?: { limit?: number; offset?: number }) => Promise<void>;
   selectRun: (runId: number) => Promise<void>;
   executeRun: (mode?: AssignmentMode) => Promise<void>;
@@ -105,6 +107,28 @@ export const useAssignmentStore = create<AssignmentState>()((set, get) => ({
       set({ settings, settingsRaw: raw, settingsSaving: false });
     } catch (err: any) {
       set({ error: err.message || 'Failed to update settings', settingsSaving: false });
+    }
+  },
+
+  startEngine: async (mode) => {
+    set({ executing: true, error: null });
+    try {
+      await AssignmentApi.startEngine(mode);
+      const health = await AssignmentApi.getHealth();
+      set({ health, executing: false });
+    } catch (err: any) {
+      set({ error: err.message || 'Failed to start engine', executing: false });
+    }
+  },
+
+  stopEngine: async () => {
+    set({ executing: true, error: null });
+    try {
+      await AssignmentApi.stopEngine();
+      const health = await AssignmentApi.getHealth();
+      set({ health, executing: false });
+    } catch (err: any) {
+      set({ error: err.message || 'Failed to stop engine', executing: false });
     }
   },
 

@@ -131,6 +131,35 @@ export async function deleteExclusion(id: number): Promise<void> {
   await api.delete(`/engine/exclusions/${id}`);
 }
 
+/* ── Subtype Exclusions ────────────────────────── */
+
+export interface SubtypeExclusion {
+  id: number;
+  subtype: string;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export async function fetchSubtypeExclusions(): Promise<SubtypeExclusion[]> {
+  const res = await api.get("/engine/exclusions/subtypes");
+  return res.data;
+}
+
+export async function fetchAvailableSubtypes(): Promise<string[]> {
+  const res = await api.get("/engine/exclusions/subtypes/available");
+  return res.data;
+}
+
+export async function addSubtypeExclusion(subtype: string, reason?: string): Promise<SubtypeExclusion> {
+  const res = await api.post("/engine/exclusions/subtypes", { subtype, reason });
+  return res.data.exclusion;
+}
+
+export async function deleteSubtypeExclusion(id: number): Promise<void> {
+  await api.delete(`/engine/exclusions/subtypes/${id}`);
+}
+
 /* ── Employee Shift Roles ──────────────────────── */
 
 export interface EmployeeShiftRole {
