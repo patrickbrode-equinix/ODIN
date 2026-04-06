@@ -46,7 +46,11 @@ router.post("/change-password", requireAuth, async (req, res) => {
     const newHash = await bcrypt.hash(newPassword, 12);
 
     await db.query(
-      `UPDATE users SET password_hash = $1 WHERE id = $2`,
+      `UPDATE users
+       SET password_hash = $1,
+           must_change_password = false,
+           password_changed_at = NOW()
+       WHERE id = $2`,
       [newHash, userId]
     );
 

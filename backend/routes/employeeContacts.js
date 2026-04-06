@@ -7,48 +7,14 @@ import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
+import { generateEmailFromName } from "../lib/employeeIdentity.js";
 
 const router = express.Router();
 
 /* ------------------------------------------------ */
 /* E-MAIL AUS NAME GENERIEREN                       */
 /* ------------------------------------------------ */
-
-export function generateEmailFromName(name) {
-  if (!name || typeof name !== "string") return null;
-
-  let cleaned = name.trim();
-
-  // "Nachname, Vorname" → "Vorname Nachname"
-  if (cleaned.includes(",")) {
-    const parts = cleaned.split(",").map(p => p.trim());
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      cleaned = `${parts[1]} ${parts[0]}`;
-    }
-  }
-
-  // Split into parts
-  const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return null;
-
-  const vorname = parts[0];
-  const nachname = parts[parts.length - 1];
-
-  // Umlaute + Sonderzeichen normalisieren
-  const normalize = (s) =>
-    s.toLowerCase()
-      .replace(/ä/g, "ae")
-      .replace(/ö/g, "oe")
-      .replace(/ü/g, "ue")
-      .replace(/ß/g, "ss")
-      .replace(/[^a-z0-9.-]/g, "");
-
-  const vn = normalize(vorname);
-  const nn = normalize(nachname);
-
-  if (!vn || !nn) return null;
-  return `${vn}.${nn}@eu.equinix.com`;
-}
+export { generateEmailFromName };
 
 /* ------------------------------------------------ */
 /* SYNC – Mitarbeiter aus shifts in contacts         */

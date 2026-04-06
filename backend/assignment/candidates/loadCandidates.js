@@ -3,6 +3,7 @@
 /* ================================================ */
 
 import pool from '../../db.js';
+import { findBestMatch, normalizeName } from '../../lib/nameNorm.js';
 
 /**
  * Weekplan role ↔ engine role mapping.
@@ -21,62 +22,197 @@ const WEEKPLAN_TO_ENGINE_ROLE = {
   support: 'support',
 };
 
+const GERMAN_MONTHS = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+];
+
+const NON_WORKING_SHIFT_CODES = new Set(['ABW', 'FS', 'SEMINAR', 'S']);
+
+const SHIFT_WINDOWS = {
+  E1: { startHour: 6, startMinute: 30, endHour: 15, endMinute: 30 },
+  E2: { startHour: 7, startMinute: 0, endHour: 16, endMinute: 0 },
+  L1: { startHour: 13, startMinute: 0, endHour: 22, endMinute: 0 },
+  L2: { startHour: 15, startMinute: 0, endHour: 0, endMinute: 0 },
+  N: { startHour: 21, startMinute: 15, endHour: 6, endMinute: 45 },
+};
+
+export function resolveEffectiveWorkerRole(weekplanRole, assignmentRole) {
+  if (weekplanRole) {
+    return WEEKPLAN_TO_ENGINE_ROLE[weekplanRole] || 'normal';
+  }
+
+  return 'normal';
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function toLocalDateString(now = new Date()) {
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+function getTodayPlanningContext(now = new Date()) {
+  return {
+    today: toLocalDateString(now),
+    day: now.getDate(),
+    monthLabel: `${GERMAN_MONTHS[now.getMonth()]} ${now.getFullYear()}`,
+  };
+}
+
+function normalizeDisplayName(value) {
+  if (!value) return '';
+  return String(value).replace(/,\s*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function buildUserDisplayName(row) {
+  const fullName = `${row.first_name || ''} ${row.last_name || ''}`.trim();
+  return normalizeDisplayName(fullName || row.email || '');
+}
+
+function buildLookup(rows, valueKey = 'employee_name') {
+  const exact = new Map();
+  const byOriginal = new Map();
+  const originals = [];
+
+  for (const row of rows) {
+    const original = row[valueKey];
+    const normalized = normalizeName(original);
+    if (!normalized) continue;
+    if (!exact.has(normalized)) {
+      exact.set(normalized, row);
+      byOriginal.set(original, row);
+      originals.push(original);
+    }
+  }
+
+  return { exact, byOriginal, originals };
+}
+
+function findLookupMatch(name, lookup) {
+  const normalized = normalizeName(name);
+  if (!normalized) return null;
+
+  const exact = lookup.exact.get(normalized);
+  if (exact) return exact;
+
+  const best = findBestMatch(name, lookup.originals);
+  if (!best) return null;
+  return lookup.byOriginal.get(best.name) || null;
+}
+
+export function isWorkingShiftCode(shiftCode) {
+  const code = String(shiftCode || '').trim().toUpperCase();
+  if (!code) return false;
+  return !NON_WORKING_SHIFT_CODES.has(code);
+}
+
+export function isShiftCodeActiveNow(shiftCode, now = new Date()) {
+  const code = String(shiftCode || '').trim().toUpperCase();
+  if (!code || !isWorkingShiftCode(code)) return false;
+
+  const window = SHIFT_WINDOWS[code];
+  if (!window) return true;
+
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  const start = window.startHour * 60 + window.startMinute;
+  const end = window.endHour * 60 + window.endMinute;
+
+  if (end <= start) {
+    return minutesNow >= start || minutesNow <= end;
+  }
+
+  return minutesNow >= start && minutesNow <= end;
+}
+
 /**
- * Load candidate workers from the user/shift system.
- * Includes assignment_role, shift_active, and current workload.
- * Weekplan role for today takes priority over static assignment_role.
+ * Load candidate workers from today's weekly plan (shifts) and enrich with user metadata.
+ * The weekly plan is the source of truth for who is planned today; users only provide metadata.
+ * Role-based assignment restrictions are only active when today's weekplan carries a role.
  *
  * Returns an array of worker objects:
  * { id, name, email, group, site, responsibility, role, weekplanRole, shiftActive, onBreak, absent, autoAssignable, blocked }
  */
 export async function loadCandidateWorkers() {
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const { today, day, monthLabel } = getTodayPlanningContext(now);
 
-  const { rows } = await pool.query(`
-    SELECT
-      u.id,
-      COALESCE(u.first_name || ' ' || u.last_name, u.email) AS name,
-      u.email,
-      u.user_group AS "group",
-      u.ibx AS site,
-      u.department AS responsibility,
-      COALESCE(u.assignment_role, 'normal') AS assignment_role,
-      COALESCE(u.shift_active, true) AS shift_active,
-      COALESCE(u.auto_assignable, true) AS auto_assignable,
-      COALESCE(u.blocked, false) AS blocked,
-      COALESCE(u.on_break, false) AS on_break,
-      COALESCE(u.absent, false) AS absent,
-      wr.role_key AS weekplan_role
-    FROM users u
-    LEFT JOIN weekplan_roles wr
-      ON LOWER(TRIM(COALESCE(u.first_name || ' ' || u.last_name, u.email))) = LOWER(TRIM(wr.employee_name))
-      AND wr.date = $1
-    WHERE u.approved = true
-      AND u.is_root = false
-    ORDER BY u.id
-  `, [today]);
+  const [shiftRes, userRes, roleRes] = await Promise.all([
+    pool.query(
+      `SELECT employee_name, shift_code
+       FROM shifts
+       WHERE month = $1 AND day = $2
+       ORDER BY employee_name ASC`,
+      [monthLabel, day]
+    ),
+    pool.query(`
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.user_group AS "group",
+        u.ibx AS site,
+        u.department AS responsibility,
+        COALESCE(u.assignment_role, 'normal') AS assignment_role,
+        COALESCE(u.auto_assignable, true) AS auto_assignable,
+        COALESCE(u.blocked, false) AS blocked,
+        COALESCE(u.on_break, false) AS on_break,
+        COALESCE(u.absent, false) AS absent
+      FROM users u
+      WHERE u.approved = true
+        AND u.is_root = false
+      ORDER BY u.id
+    `),
+    pool.query(
+      `SELECT employee_name, role_key
+       FROM weekplan_roles
+       WHERE date = $1`,
+      [today]
+    ),
+  ]);
 
-  return rows.map(r => {
-    // Weekplan role for today takes priority over static assignment_role
-    const weekplanRole = r.weekplan_role || null;
-    const engineRole = weekplanRole
-      ? (WEEKPLAN_TO_ENGINE_ROLE[weekplanRole] || 'normal')
-      : (r.assignment_role || 'normal');
+  const userRows = userRes.rows.map(row => ({
+    ...row,
+    display_name: buildUserDisplayName(row),
+  }));
+
+  const userLookup = buildLookup(
+    userRows.map(row => ({ employee_name: row.display_name, ...row }))
+  );
+  const roleLookup = buildLookup(roleRes.rows);
+
+  return shiftRes.rows.map((shiftRow, index) => {
+    const plannedEmployeeName = normalizeDisplayName(shiftRow.employee_name);
+    const shiftCode = String(shiftRow.shift_code || '').trim().toUpperCase() || null;
+    const matchedUser = findLookupMatch(plannedEmployeeName, userLookup);
+    const matchedRoleRow = findLookupMatch(plannedEmployeeName, roleLookup);
+    const weekplanRole = matchedRoleRow?.role_key || null;
+    const engineRole = resolveEffectiveWorkerRole(
+      weekplanRole,
+      matchedUser?.assignment_role || null
+    );
 
     return {
-      id: r.id,
-      name: r.name || r.email,
-      email: r.email,
-      group: r.group,
-      site: r.site || null,
-      responsibility: r.responsibility || null,
+      id: matchedUser?.id ?? -(index + 1),
+      name: matchedUser?.display_name || plannedEmployeeName || `weekly-plan-${index + 1}`,
+      email: matchedUser?.email || null,
+      group: matchedUser?.group || null,
+      site: matchedUser?.site || null,
+      responsibility: matchedUser?.responsibility || null,
       role: engineRole,
-      weekplanRole: weekplanRole,
-      shiftActive: r.shift_active !== false,
-      onBreak: !!r.on_break,
-      absent: !!r.absent,
-      autoAssignable: r.auto_assignable !== false,
-      blocked: !!r.blocked,
+      userRole: matchedUser?.assignment_role || null,
+      weekplanRole,
+      shiftCode,
+      shiftActive: isShiftCodeActiveNow(shiftCode, now),
+      onBreak: !!matchedUser?.on_break,
+      absent: !!matchedUser?.absent || shiftCode === 'ABW',
+      autoAssignable: matchedUser ? matchedUser.auto_assignable !== false : true,
+      blocked: !!matchedUser?.blocked,
+      userMapped: !!matchedUser,
+      planningSource: 'weekly_plan',
+      plannedEmployeeName,
     };
   });
 }
@@ -86,10 +222,7 @@ export async function loadCandidateWorkers() {
  * Applies basic filtering (active, not blocked, auto-assignable).
  */
 export function buildCandidatePool(workers) {
-  return workers.filter(w =>
-    w.autoAssignable &&
-    !w.blocked
-  );
+  return workers;
 }
 
 /**
@@ -109,8 +242,13 @@ export async function loadWorkerCurrentTickets(candidates) {
   // Build lookup of worker names
   const nameToId = new Map();
   for (const c of candidates) {
-    nameToId.set(c.name?.toLowerCase().trim(), c.id);
-    nameToId.set(c.email?.toLowerCase().trim(), c.id);
+    const normalizedName = normalizeName(c.name);
+    const normalizedPlannedName = normalizeName(c.plannedEmployeeName);
+    const normalizedEmail = normalizeName(c.email);
+
+    if (normalizedName) nameToId.set(normalizedName, c.id);
+    if (normalizedPlannedName) nameToId.set(normalizedPlannedName, c.id);
+    if (normalizedEmail) nameToId.set(normalizedEmail, c.id);
   }
 
   try {
@@ -136,7 +274,7 @@ export async function loadWorkerCurrentTickets(candidates) {
     `);
 
     for (const row of rows) {
-      const ownerKey = row.owner?.toLowerCase().trim();
+      const ownerKey = normalizeName(row.owner);
       const workerId = nameToId.get(ownerKey);
       if (workerId != null && map.has(workerId)) {
         // Create a lightweight normalized ticket for grouping/purity checks

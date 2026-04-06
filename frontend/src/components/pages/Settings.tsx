@@ -20,6 +20,7 @@ import { useTheme } from "../ThemeProvider";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
 import PreferredColleagues from "../settings/PreferredColleagues";
+import EmployeePreferences from "../settings/EmployeePreferences";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +53,7 @@ type UserMeta = {
 /* ------------------------------------------------ */
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, completeForcedPasswordChange } = useAuth();
   const { setTheme } = useTheme();
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -82,6 +83,7 @@ export default function Settings() {
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState<string | null>(null);
   const [pwLoading, setPwLoading] = useState(false);
+  const passwordChangeRequired = user?.mustChangePassword === true;
 
   /* ------------------------------------------------ */
   /* LOAD SETTINGS + META                             */
@@ -101,11 +103,18 @@ export default function Settings() {
     }
 
     load();
-    // Load app-wide settings
-    api.get("/app-settings").then(res => {
-      if (res.data) setAppSettings(s => ({ ...s, ...res.data }));
-    }).catch(() => { /* table may not exist yet */ });
-  }, [setTheme]);
+    if (!passwordChangeRequired) {
+      api.get("/app-settings").then(res => {
+        if (res.data) setAppSettings(s => ({ ...s, ...res.data }));
+      }).catch(() => { /* table may not exist yet */ });
+    }
+  }, [passwordChangeRequired, setTheme]);
+
+  useEffect(() => {
+    if (passwordChangeRequired) {
+      setPwOpen(true);
+    }
+  }, [passwordChangeRequired]);
 
   async function saveAppSettings() {
     setAppSettingsSaving(true);
@@ -154,6 +163,8 @@ export default function Settings() {
         newPassword: newPw,
       });
 
+      completeForcedPasswordChange();
+
       setPwSuccess("Passwort erfolgreich geändert");
 
       setTimeout(() => {
@@ -198,10 +209,19 @@ export default function Settings() {
         rightContent={
           <Button onClick={() => setPwOpen(true)} className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm">
             <Lock className="w-3.5 h-3.5 mr-2" />
-            Passwort ändern
+            {passwordChangeRequired ? "Startpasswort ändern" : "Passwort ändern"}
           </Button>
         }
       />
+
+      {passwordChangeRequired && (
+        <EnterpriseCard noPadding={false} className="flex flex-col gap-3 border-amber-500/30 bg-amber-500/10">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-200">Sicherheitsvorgabe</div>
+          <p className="text-sm text-amber-50/90">
+            Dieses Konto verwendet noch das initiale Passwort. Bitte ändere es jetzt. Bis dahin bleibt ODIN auf diese Seite beschränkt.
+          </p>
+        </EnterpriseCard>
+      )}
 
       {/* PROFIL */}
       <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
@@ -218,144 +238,172 @@ export default function Settings() {
         </div>
       </EnterpriseCard>
 
-      {/* APP */}
-      <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
-        <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
-          App
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <Label>Sprache</Label>
-            <Select
-              value={settings.language}
-              onValueChange={(v) =>
-                update({ language: v as UserSettings["language"] })
-              }
-            >
-              <SelectTrigger className="rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="de">Deutsch</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      {!passwordChangeRequired && (
+        <>
+          {/* APP */}
+          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
+              App
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>Sprache</Label>
+                <Select
+                  value={settings.language}
+                  onValueChange={(v) =>
+                    update({ language: v as UserSettings["language"] })
+                  }
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="de">Deutsch</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <Label>Theme</Label>
-            <Select
-              value={settings.theme}
-              onValueChange={(v) =>
-                update({ theme: v as UserSettings["theme"] })
-              }
-            >
-              <SelectTrigger className="rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </EnterpriseCard>
+              <div className="space-y-2">
+                <Label>Theme</Label>
+                <Select
+                  value={settings.theme}
+                  onValueChange={(v) =>
+                    update({ theme: v as UserSettings["theme"] })
+                  }
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectItem value="light">Light</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </EnterpriseCard>
 
-      {/* NOTIFICATIONS */}
-      <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
-        <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
-          <Bell className="w-4 h-4" />
-          Benachrichtigungen
-        </div>
-        <div className="space-y-4">
-          <NotificationRow
-            title="E-Mail Benachrichtigungen"
-            value={settings.notify_email}
-            onChange={(v) => update({ notify_email: v })}
-          />
-          <NotificationRow
-            title="Browser Benachrichtigungen"
-            value={settings.notify_browser}
-            onChange={(v) => update({ notify_browser: v })}
-          />
-          <NotificationRow
-            title="Schicht-Erinnerungen"
-            value={settings.notify_shift_reminder}
-            onChange={(v) => update({ notify_shift_reminder: v })}
-          />
-        </div>
-      </EnterpriseCard>
+          {/* NOTIFICATIONS */}
+          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
+              <Bell className="w-4 h-4" />
+              Benachrichtigungen
+            </div>
+            <div className="space-y-4">
+              <NotificationRow
+                title="E-Mail Benachrichtigungen"
+                value={settings.notify_email}
+                onChange={(v) => update({ notify_email: v })}
+              />
+              <NotificationRow
+                title="Browser Benachrichtigungen"
+                value={settings.notify_browser}
+                onChange={(v) => update({ notify_browser: v })}
+              />
+              <NotificationRow
+                title="Schicht-Erinnerungen"
+                value={settings.notify_shift_reminder}
+                onChange={(v) => update({ notify_shift_reminder: v })}
+              />
+            </div>
+          </EnterpriseCard>
 
-      {/* PREFERRED COLLEAGUES (Wunschkollegen) */}
-      <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
-        <PreferredColleagues />
-      </EnterpriseCard>
+          {/* PREFERRED COLLEAGUES (Wunschkollegen) */}
+          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+            <PreferredColleagues />
+          </EnterpriseCard>
 
-      {/* SYSTEM THRESHOLDS */}
-      <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
-        <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
-          <Sliders className="w-4 h-4" />
-          System-Schwellenwerte
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <ThresholdInput
-            label="Schicht-Warnungsschwelle"
-            description="Mindestanzahl Mitarbeiter vor Schicht-Warnung"
-            value={appSettings.shift_warning_threshold}
-            min={0} max={10}
-            onChange={v => setAppSettings(s => ({ ...s, shift_warning_threshold: v }))}
-          />
-          <ThresholdInput
-            label="Unterbesetzungs-Schwelle"
-            description="Mitarbeiter unter diesem Wert = Unterbesetzung"
-            value={appSettings.understaffing_threshold}
-            min={0} max={20}
-            onChange={v => setAppSettings(s => ({ ...s, understaffing_threshold: v }))}
-          />
-          <ThresholdInput
-            label="Wellbeing-Schwelle (%)"
-            description="Score unter diesem Wert = Warnmeldung"
-            value={appSettings.wellbeing_threshold}
-            min={0} max={100}
-            onChange={v => setAppSettings(s => ({ ...s, wellbeing_threshold: v }))}
-          />
-          <ThresholdInput
-            label="Log-Aufbewahrung (Tage)"
-            description="Activity-Logs älterer als X Tage werden gelöscht"
-            value={appSettings.log_retention_days}
-            min={7} max={365}
-            onChange={v => setAppSettings(s => ({ ...s, log_retention_days: v }))}
-          />
-        </div>
-        <div className="flex items-center justify-end gap-3 pt-1">
-          {appSettingsMsg && (
-            <span className={`text-xs font-semibold ${appSettingsMsg.ok ? "text-green-400" : "text-red-400"}`}>
-              {appSettingsMsg.text}
-            </span>
-          )}
-          <Button
-            onClick={saveAppSettings}
-            disabled={appSettingsSaving}
-            className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-indigo-600/80 hover:bg-indigo-600 text-white border border-indigo-400/30 shadow-sm"
-          >
-            <Save className="w-3.5 h-3.5 mr-1.5" />
-            {appSettingsSaving ? "Speichern…" : "Speichern"}
-          </Button>
-        </div>
-      </EnterpriseCard>
+          {/* EMPLOYEE PREFERENCES (Schichtplan-Wünsche) */}
+          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
+              <Sliders className="w-4 h-4" />
+              Schichtplan-Wünsche
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lege deine bevorzugten und unerwünschten Schichten, verfügbare Tage und weitere Wünsche fest.
+              Diese werden bei der automatischen Schichtplanung berücksichtigt.
+            </p>
+            <EmployeePreferences />
+          </EnterpriseCard>
+
+          {/* SYSTEM THRESHOLDS */}
+          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
+              <Sliders className="w-4 h-4" />
+              System-Schwellenwerte
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <ThresholdInput
+                label="Schicht-Warnungsschwelle"
+                description="Mindestanzahl Mitarbeiter vor Schicht-Warnung"
+                value={appSettings.shift_warning_threshold}
+                min={0} max={10}
+                onChange={v => setAppSettings(s => ({ ...s, shift_warning_threshold: v }))}
+              />
+              <ThresholdInput
+                label="Unterbesetzungs-Schwelle"
+                description="Mitarbeiter unter diesem Wert = Unterbesetzung"
+                value={appSettings.understaffing_threshold}
+                min={0} max={20}
+                onChange={v => setAppSettings(s => ({ ...s, understaffing_threshold: v }))}
+              />
+              <ThresholdInput
+                label="Wellbeing-Schwelle (%)"
+                description="Score unter diesem Wert = Warnmeldung"
+                value={appSettings.wellbeing_threshold}
+                min={0} max={100}
+                onChange={v => setAppSettings(s => ({ ...s, wellbeing_threshold: v }))}
+              />
+              <ThresholdInput
+                label="Log-Aufbewahrung (Tage)"
+                description="Activity-Logs älterer als X Tage werden gelöscht"
+                value={appSettings.log_retention_days}
+                min={7} max={365}
+                onChange={v => setAppSettings(s => ({ ...s, log_retention_days: v }))}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-1">
+              {appSettingsMsg && (
+                <span className={`text-xs font-semibold ${appSettingsMsg.ok ? "text-green-400" : "text-red-400"}`}>
+                  {appSettingsMsg.text}
+                </span>
+              )}
+              <Button
+                onClick={saveAppSettings}
+                disabled={appSettingsSaving}
+                className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-indigo-600/80 hover:bg-indigo-600 text-white border border-indigo-400/30 shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {appSettingsSaving ? "Speichern…" : "Speichern"}
+              </Button>
+            </div>
+          </EnterpriseCard>
+        </>
+      )}
 
       {/* PASSWORD DIALOG */}
-      <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+      <Dialog
+        open={pwOpen}
+        onOpenChange={(nextOpen) => {
+          if (passwordChangeRequired && !nextOpen) return;
+          setPwOpen(nextOpen);
+        }}
+      >
         <DialogContent className="rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Passwort ändern</DialogTitle>
+            <DialogTitle>{passwordChangeRequired ? "Initiales Passwort ändern" : "Passwort ändern"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
+            {passwordChangeRequired && (
+              <p className="text-sm text-muted-foreground">
+                Verwende für die erste Anmeldung dein initiales Passwort <strong>root</strong> und vergib danach ein persönliches Passwort.
+              </p>
+            )}
             <Input
               type="password"
-              placeholder="Aktuelles Passwort"
+              placeholder={passwordChangeRequired ? "Aktuelles Passwort (root)" : "Aktuelles Passwort"}
               value={currentPw}
               onChange={(e) => setCurrentPw(e.target.value)}
             />

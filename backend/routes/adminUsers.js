@@ -1,7 +1,7 @@
 /* ———————————————— */
 /* USERS – MANAGEMENT API (POLICY-ONLY)            */
 /* Root is technical & protected via is_root       */
-/* RBAC enforced via requirePageAccess             */
+/* Simplified RBAC: user + admin                   */
 /* ———————————————— */
 
 import express from "express";
@@ -13,6 +13,9 @@ import {
   normalizeGroupKey,
 } from "../db/initSchema.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
+import { syncEmployeeContacts } from "./employeeContacts.js";
+import { provisionUsersFromShiftplan } from "../services/shiftUserProvisioning.service.js";
+import { logActivity } from "./activity.js";
 
 const router = express.Router();
 
@@ -26,29 +29,6 @@ function normalizeEmail(value) {
 
 function normalizeGroup(value) {
   return normalizeGroupKey(value);
-}
-
-/* 🔒 FINAL: sanitize access override */
-function sanitizeAccessOverride(input) {
-  const out = {};
-
-  if (!input || typeof input !== "object") {
-    return out;
-  }
-
-  for (const [pageKey, rawLevel] of Object.entries(input)) {
-    const level = String(rawLevel || "").toLowerCase().trim();
-
-    if (level === "view" || level === "write") {
-      out[pageKey] = level;
-    } else if (level === "manage") {
-      // legacy mapping
-      out[pageKey] = "write";
-    }
-    // alles andere -> ignorieren (Default greift)
-  }
-
-  return out;
 }
 
 /* ———————————————— */
@@ -73,7 +53,12 @@ router.get(
           department,
           user_group AS "group",
           approved,
+          is_admin   AS "isAdmin",
           is_root    AS "isRoot",
+          last_login AS "lastLogin",
+          must_change_password AS "mustChangePassword",
+          provisioned_from_shiftplan AS "provisionedFromShiftplan",
+          provisioned_employee_name AS "provisionedEmployeeName",
           created_at AS "createdAt"
         FROM users
         ORDER BY id ASC
@@ -98,7 +83,7 @@ router.post(
   requireAuth,
   requirePageAccess("user_management", "write"),
   async (req, res) => {
-    const { firstName, lastName, email, ibx, department, group } = req.body;
+    const { firstName, lastName, email, ibx, department, group, isAdmin } = req.body;
 
     if (!firstName || !lastName || !email || !ibx || !(department || group)) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -124,7 +109,7 @@ router.post(
         firstName.trim().charAt(0).toLowerCase() +
         lastName.trim().toLowerCase();
 
-      const passwordHash = await bcrypt.hash("1234", 10);
+      const passwordHash = await bcrypt.hash("root", 12);
 
       const result = await db.query(
         `
@@ -138,9 +123,11 @@ router.post(
           department,
           ibx,
           approved,
-          is_root
+          is_admin,
+          is_root,
+          must_change_password
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,false)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,false,true)
         RETURNING id
         `,
         [
@@ -152,6 +139,7 @@ router.post(
           groupKey,
           groupKey,
           ibx,
+          Boolean(isAdmin),
         ]
       );
 
@@ -159,6 +147,42 @@ router.post(
     } catch (err) {
       console.error("USER CREATE ERROR:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+router.post(
+  "/provision-from-shifts",
+  requireAuth,
+  requirePageAccess("user_management", "write"),
+  async (req, res) => {
+    const dryRun = req.body?.dryRun === true;
+
+    try {
+      let contactSync = null;
+      try {
+        contactSync = await syncEmployeeContacts();
+      } catch (contactErr) {
+        console.warn("USER PROVISIONING CONTACT SYNC ERROR:", contactErr.message);
+      }
+
+      const result = await provisionUsersFromShiftplan({ dryRun });
+
+      await logActivity(
+        req.user.id,
+        req.user.email,
+        dryRun ? "USER_PROVISIONING_DRY_RUN" : "USER_PROVISIONING_SYNC",
+        "user_management",
+        "users",
+        null,
+        null,
+        { contactSync, ...result }
+      );
+
+      res.json({ success: true, contactSync, ...result });
+    } catch (err) {
+      console.error("USER PROVISIONING ERROR:", err);
+      res.status(500).json({ message: "User provisioning failed" });
     }
   }
 );
@@ -174,7 +198,7 @@ router.patch(
   requirePageAccess("user_management", "write"),
   async (req, res) => {
     const targetUserId = Number(req.params.id);
-    const { group, department, ibx, firstName, lastName, approved } = req.body;
+    const { group, department, ibx, firstName, lastName, approved, isAdmin, mustChangePassword } = req.body;
 
     try {
       const current = await db.query(
@@ -225,6 +249,16 @@ router.patch(
       if (approved !== undefined) {
         fields.push(`approved = $${idx++}`);
         values.push(Boolean(approved));
+      }
+
+      if (isAdmin !== undefined) {
+        fields.push(`is_admin = $${idx++}`);
+        values.push(Boolean(isAdmin));
+      }
+
+      if (mustChangePassword !== undefined) {
+        fields.push(`must_change_password = $${idx++}`);
+        values.push(Boolean(mustChangePassword));
       }
 
       if (!fields.length) {
@@ -285,86 +319,6 @@ router.delete(
       res.json({ success: true });
     } catch (err) {
       console.error("USER DELETE ERROR:", err);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-/* ———————————————— */
-/* USER ACCESS OVERRIDES                            */
-/* view / write access                              */
-/* ———————————————— */
-
-router.get(
-  "/:id/access-override",
-  requireAuth,
-  requirePageAccess("user_management", "view"),
-  async (req, res) => {
-    const userId = Number(req.params.id);
-
-    try {
-      const result = await db.query(
-        `
-        SELECT
-          id,
-          user_group,
-          access_override
-        FROM users
-        WHERE id = $1
-        `,
-        [userId]
-      );
-
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const u = result.rows[0];
-
-      res.json({
-        id: u.id,
-        group: u.user_group,
-        accessOverride: u.access_override || {},
-      });
-    } catch (err) {
-      console.error("GET USER ACCESS OVERRIDE ERROR:", err);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-router.put(
-  "/:id/access-override",
-  requireAuth,
-  requirePageAccess("user_management", "write"),
-  async (req, res) => {
-    const userId = Number(req.params.id);
-    const { accessOverride } = req.body;
-
-    if (!accessOverride || typeof accessOverride !== "object") {
-      return res.status(400).json({ message: "Invalid accessOverride" });
-    }
-
-    try {
-      const sanitized = sanitizeAccessOverride(accessOverride);
-
-      const result = await db.query(
-        `
-        UPDATE users
-        SET access_override = $1
-        WHERE id = $2
-        RETURNING id
-        `,
-        [sanitized, userId]
-      );
-
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json({ success: true });
-    } catch (err) {
-      console.error("UPDATE USER ACCESS OVERRIDE ERROR:", err);
       res.status(500).json({ message: "Server error" });
     }
   }

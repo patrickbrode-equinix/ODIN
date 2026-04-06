@@ -8,39 +8,14 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import db from "../../db.js";
 import { config } from "../../config/index.js";
-import { getGroupPolicy } from "../../db/initSchema.js";
 import { ensureUserSettings } from "../../db/userSettings.js";
+import { buildAccessPolicy, resolveUserRole } from "../../auth/accessControl.js";
 
 const router = express.Router();
 
 /* ———————————————————————————————— */
 /* RBAC HELPERS                       */
 /* ———————————————————————————————— */
-
-const ALLOWED_LEVELS = new Set(["none", "view", "write"]);
-
-function normalizeLevel(level) {
-  const v = String(level || "").toLowerCase().trim();
-  if (v === "manage") return "write";
-  if (ALLOWED_LEVELS.has(v)) return v;
-  return "none";
-}
-
-function sanitizePolicy(input) {
-  const policy = input && typeof input === "object" ? input : {};
-  const out = {};
-  for (const [key, level] of Object.entries(policy)) {
-    out[key] = normalizeLevel(level);
-  }
-  return out;
-}
-
-function mergePolicies(groupPolicy, userOverride) {
-  return {
-    ...sanitizePolicy(groupPolicy),
-    ...sanitizePolicy(userOverride),
-  };
-}
 
 /* ———————————————————————————————— */
 /* POST /api/auth/login               */
@@ -66,10 +41,12 @@ router.post("/login", async (req, res) => {
         last_name,
         password_hash,
         is_root,
+        is_admin,
         approved,
         user_group,
         ibx,
         department,
+        must_change_password,
         access_override
       FROM users
       WHERE email = $1
@@ -99,12 +76,8 @@ router.post("/login", async (req, res) => {
       return res.status(403).json({ message: "Account pending approval" });
     }
 
-    /* RBAC */
-    const groupPolicy = (await getGroupPolicy(user.user_group)) || {};
-    const accessPolicy = mergePolicies(
-      groupPolicy,
-      user.access_override || {}
-    );
+    const role = resolveUserRole(user);
+    const accessPolicy = buildAccessPolicy(role);
 
     /* ENSURE SETTINGS */
     await ensureUserSettings(user.id);
@@ -120,6 +93,8 @@ router.post("/login", async (req, res) => {
       {
         userId: user.id,
         isRoot: user.is_root === true,
+        isAdmin: user.is_admin === true,
+        role,
       },
       config.JWT_SECRET,
       {
@@ -143,7 +118,10 @@ router.post("/login", async (req, res) => {
         group: user.user_group,
 
         approved: user.approved,
+        mustChangePassword: user.must_change_password === true,
         isRoot: user.is_root === true,
+        isAdmin: user.is_admin === true,
+        role,
 
         accessPolicy,
       },

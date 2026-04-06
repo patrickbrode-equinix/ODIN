@@ -36,6 +36,7 @@ const TeamsCommunicationCenter = lazy(() => import("./components/pages/TeamsComm
 const AdminSettings          = lazy(() => import("./components/pages/AdminSettings"));
 const AssignmentRulesEditor  = lazy(() => import("./components/pages/AssignmentRulesEditor"));
 const ShiftplanControlCenter = lazy(() => import("./components/pages/ShiftplanControlCenter"));
+const ShiftAdminSettings     = lazy(() => import("./components/pages/ShiftAdminSettings"));
 
 /* Loading fallback */
 function PageLoader() {
@@ -249,6 +250,16 @@ export default function App() {
               element={
                 <PageGuard pageKey="shiftplan_control" min="write">
                   <ShiftplanControlCenter />
+                </PageGuard>
+              }
+            />
+
+            {/* Shift Admin Settings */}
+            <Route
+              path="shift-admin-settings"
+              element={
+                <PageGuard pageKey="shiftplan_control" min="write">
+                  <ShiftAdminSettings />
                 </PageGuard>
               }
             />

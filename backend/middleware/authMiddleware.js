@@ -4,6 +4,7 @@
 
 import jwt from "jsonwebtoken";
 import db from "../db.js";
+import { resolveUserRole } from "../auth/accessControl.js";
 
 /* ———————————————————————————————— */
 /* REQUIRE AUTH                                     */
@@ -35,7 +36,9 @@ export async function requireAuth(req, res, next) {
         email,
         user_group,
         approved,
-        is_root
+        is_root,
+        is_admin,
+        must_change_password
       FROM users
       WHERE id = $1
       `,
@@ -47,6 +50,7 @@ export async function requireAuth(req, res, next) {
     }
 
     const user = result.rows[0];
+  const role = resolveUserRole(user);
 
     /* ———————————————————————————————— */
     /* ATTACH USER CONTEXT                */
@@ -58,6 +62,9 @@ export async function requireAuth(req, res, next) {
       group: user.user_group,
       approved: user.approved === true,
       is_root: user.is_root === true,
+      is_admin: user.is_admin === true,
+      must_change_password: user.must_change_password === true,
+      role,
     };
 
     req.isRoot = user.is_root === true;
@@ -71,6 +78,16 @@ export async function requireAuth(req, res, next) {
         code: "ACCOUNT_NOT_APPROVED",
         message: "Account wartet auf Freigabe",
       });
+    }
+
+    if (req.user.must_change_password && !req.isRoot) {
+      const allowPasswordChangeOnly = req.originalUrl.startsWith("/api/auth/change-password") || req.originalUrl.startsWith("/api/user/");
+      if (!allowPasswordChangeOnly) {
+        return res.status(403).json({
+          code: "PASSWORD_CHANGE_REQUIRED",
+          message: "Initiales Passwort muss vor der Nutzung von ODIN geändert werden",
+        });
+      }
     }
 
     next();

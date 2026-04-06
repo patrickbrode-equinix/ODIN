@@ -1,5 +1,5 @@
 /* ———————————————————————————————— */
-/* AUTH CONTEXT – ACCESS LEVEL BASED (FINAL)        */
+/* AUTH CONTEXT – SIMPLIFIED ROLE MODEL             */
 /* Single source of truth: user.accessPolicy        */
 /* ———————————————————————————————— */
 
@@ -42,7 +42,10 @@ type User = {
 
   /* STATUS */
   approved: boolean;
+  mustChangePassword: boolean;
+  isAdmin: boolean;
   isRoot: boolean;
+  role: "user" | "admin";
 
   /* RBAC */
   accessPolicy: Record<string, AccessLevel>;
@@ -53,6 +56,7 @@ type AuthContextType = {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  completeForcedPasswordChange: () => void;
 
   /* ACCESS */
   getLevel: (pageKey: string) => AccessLevel;
@@ -120,7 +124,10 @@ function normalizeUser(raw: any): User {
     team: raw.team ?? null,
 
     approved: raw.approved === true,
+    mustChangePassword: raw.mustChangePassword === true,
+    isAdmin: raw.isAdmin === true,
     isRoot: raw.isRoot === true,
+    role: raw.role === "admin" ? "admin" : "user",
 
     accessPolicy,
   };
@@ -155,6 +162,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("auth_user");
     setUser(null);
     useCommitStore.getState().setTickets([]); // sauber resetten
+  };
+
+  const completeForcedPasswordChange = () => {
+    setUser((current) => {
+      if (!current) return current;
+      const nextUser = { ...current, mustChangePassword: false };
+      localStorage.setItem("auth_user", JSON.stringify(nextUser));
+      return nextUser;
+    });
   };
 
   /* ------------------------------------------------ */
@@ -244,6 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!user,
       login,
       logout,
+      completeForcedPasswordChange,
       getLevel,
       canAccess,
       canView,

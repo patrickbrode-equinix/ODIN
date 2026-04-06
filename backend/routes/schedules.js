@@ -10,6 +10,7 @@ import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { recomputeConstraintsInternal } from "./constraints.js"; // [NEW]
 import { parseMonthLabel } from "../lib/monthParser.js";
 import { syncEmployeeContacts } from "./employeeContacts.js";
+import { provisionUsersFromShiftplan } from "../services/shiftUserProvisioning.service.js";
 
 const router = express.Router();
 
@@ -335,7 +336,23 @@ router.post(
       // Fire and forget (or await if we want strictness)
       recomputeConstraintsInternal(month).catch(err => console.error("Constraint Recompute Error:", err));
 
-      res.json({ success: true });
+      let contactSync = null;
+      let userProvisioning = null;
+      try {
+        contactSync = await syncEmployeeContacts();
+      } catch (contactErr) {
+        console.warn("[SCHEDULES] Employee contacts sync failed:", contactErr.message);
+        contactSync = { error: contactErr.message };
+      }
+
+      try {
+        userProvisioning = await provisionUsersFromShiftplan();
+      } catch (provisionErr) {
+        console.warn("[SCHEDULES] User provisioning failed:", provisionErr.message);
+        userProvisioning = { error: provisionErr.message };
+      }
+
+      res.json({ success: true, contactSync, userProvisioning });
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("IMPORT ERROR:", err);
@@ -416,10 +433,23 @@ router.post(
         console.warn("shiftplan_upload_log insert failed (non-fatal):", logErr.message);
       }
 
-      // Sync employee contacts (fire-and-forget, non-blocking)
-      syncEmployeeContacts().catch(err => console.warn("[SCHEDULES] Employee contacts sync failed (non-fatal):", err.message));
+      let contactSync = null;
+      let userProvisioning = null;
+      try {
+        contactSync = await syncEmployeeContacts();
+      } catch (contactErr) {
+        console.warn("[SCHEDULES] Employee contacts sync failed:", contactErr.message);
+        contactSync = { error: contactErr.message };
+      }
 
-      res.json({ success: true, updatedMonths: monthsToUpdate });
+      try {
+        userProvisioning = await provisionUsersFromShiftplan();
+      } catch (provisionErr) {
+        console.warn("[SCHEDULES] User provisioning failed:", provisionErr.message);
+        userProvisioning = { error: provisionErr.message };
+      }
+
+      res.json({ success: true, updatedMonths: monthsToUpdate, contactSync, userProvisioning });
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("IMPORT MERGE ERROR:", err);

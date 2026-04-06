@@ -11,7 +11,7 @@ import { AssignmentDecisionTable } from '../assignment/AssignmentDecisionTable';
 import { AssignmentDecisionDrawer } from '../assignment/AssignmentDecisionDrawer';
 import { AssignmentFilters } from '../assignment/AssignmentFilters';
 import { InfoTooltip } from '../ui/InfoTooltip';
-import { Play, RotateCcw, ChevronDown, ChevronUp, AlertCircle, Power, PowerOff, Shield, StopCircle, Zap, Clock, Brain } from 'lucide-react';
+import { Play, RotateCcw, ChevronDown, ChevronUp, AlertCircle, Power, PowerOff, Shield, StopCircle, Zap, Clock, Brain, FileText, SkipForward } from 'lucide-react';
 import { EnterprisePageShell, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
 
 const OdinExclusions = lazy(() => import('../odinlogic/OdinExclusions'));
@@ -19,7 +19,7 @@ const OdinLogicTree = lazy(() => import('../odinlogic/OdinLogicTree'));
 const AssignmentVisualizer = lazy(() => import('../odinlogic/AssignmentVisualizer'));
 const EmployeeExclusions = lazy(() => import('../odinlogic/EmployeeExclusions'));
 
-type TabKey = 'runs' | 'decisions' | 'settings' | 'exclusions' | 'employeeExclusions' | 'logicTree' | 'visualizer';
+type TabKey = 'runs' | 'decisions' | 'report' | 'settings' | 'exclusions' | 'employeeExclusions' | 'logicTree' | 'visualizer';
 
 /* ---- Safety Confirmation Dialog ---- */
 function ConfirmDialog({ open, title, message, confirmLabel, cancelLabel, variant, onConfirm, onCancel }: {
@@ -84,6 +84,9 @@ export default function OdinLogicPage() {
 
   const [tab, setTab] = useState<TabKey>('runs');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [skipCrawler, setSkipCrawler] = useState(false);
+  const [runReport, setRunReport] = useState<any>(null);
+  const [reportLoading, setReportLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -153,9 +156,10 @@ export default function OdinLogicPage() {
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'runs', label: 'Runs & Logs' },
     { key: 'decisions', label: selectedRun ? `Entscheidungen (Run #${selectedRun.id})` : 'Entscheidungen' },
+    { key: 'report', label: selectedRun ? `Run-Report (#${selectedRun.id})` : 'Run-Report' },
     { key: 'logicTree', label: 'Logikbaum' },
     { key: 'visualizer', label: 'Zuweisungsfluss' },
-    { key: 'exclusions', label: 'Manuelle Zuweisung' },
+    { key: 'exclusions', label: 'Manuelle Ausnahmeliste' },
     { key: 'employeeExclusions', label: 'Dauerhafte Ausschlüsse' },
     { key: 'settings', label: 'Einstellungen' },
   ];
@@ -181,12 +185,23 @@ export default function OdinLogicPage() {
         subtitle="Assignment Engine – Automatische Ticketzuweisung"
         rightContent={
           <div className="flex items-center gap-2">
+            {/* Crawler Override Toggle */}
+            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer" title="Crawler-Aktualitätsprüfung für Dry/Shadow-Runs überspringen">
+              <input type="checkbox" checked={skipCrawler} onChange={e => setSkipCrawler(e.target.checked)} className="rounded w-3 h-3" />
+              <SkipForward className="w-3 h-3" />
+              Crawler-Override
+            </label>
+            {skipCrawler && (
+              <span className="text-[10px] text-amber-400 font-medium">⚠ Veraltete Daten</span>
+            )}
+            <div className="w-px h-6 bg-border/30" />
             <InfoTooltip title="Dry-Run" side="bottom">
               <p><strong>Einmaliger Testlauf</strong> — die Engine verarbeitet alle aktuellen Tickets und protokolliert Entscheidungen, aber nimmt <em>keine</em> Änderungen vor.</p>
               <p>Ideal zum Testen nach Regeländerungen.</p>
+              {skipCrawler && <p className="text-amber-400 mt-1"><strong>⚠ Crawler-Override aktiv:</strong> Die 10-Minuten-Regel wird übersprungen. Ergebnisse basieren möglicherweise auf veralteten Daten.</p>}
             </InfoTooltip>
             <button
-              onClick={() => executeRun('dry-run')}
+              onClick={() => executeRun('dry-run', skipCrawler)}
               disabled={executing}
               className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-md border border-border/40 bg-background/60 hover:bg-background/80 transition text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
@@ -197,7 +212,7 @@ export default function OdinLogicPage() {
               <p><strong>Einmaliger Simulationslauf</strong> — die Engine führt den kompletten Zuweisungsprozess durch, speichert alle Entscheidungen, aber ändert <em>keine</em> Ticketzuweisungen.</p>
             </InfoTooltip>
             <button
-              onClick={() => executeRun('shadow')}
+              onClick={() => executeRun('shadow', skipCrawler)}
               disabled={executing}
               className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50"
             >
@@ -410,6 +425,125 @@ export default function OdinLogicPage() {
         )}
 
         {!loading && tab === 'settings' && <AssignmentSettingsPanel />}
+
+        {/* Run Report Tab */}
+        {!loading && tab === 'report' && (
+          <div className="p-5 space-y-4">
+            {!selectedRun ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Wähle zuerst einen Run im Tab „Runs & Logs" aus, um den detaillierten Report zu sehen.</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-400" />
+                    Run-Report #{selectedRun.id}
+                  </h3>
+                  <button
+                    onClick={async () => {
+                      setReportLoading(true);
+                      try {
+                        const { AssignmentApi } = await import('../../api/assignment');
+                        const data = await AssignmentApi.getRunReport(selectedRun.id);
+                        setRunReport(data.report);
+                      } catch (e: any) { /* ignore */ }
+                      setReportLoading(false);
+                    }}
+                    disabled={reportLoading}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50"
+                  >
+                    {reportLoading ? 'Lädt...' : 'Report laden'}
+                  </button>
+                </div>
+                {runReport && (
+                  <div className="space-y-4">
+                    {/* Summary */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      {Object.entries(runReport.summary || {}).map(([key, val]) => (
+                        <div key={key} className="rounded-lg border border-border/20 bg-background/40 p-3 text-center">
+                          <div className="text-lg font-bold text-foreground">{String(val)}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">{key}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Validation */}
+                    {runReport.validation && (
+                      <div className={`rounded-lg border p-3 ${runReport.validation.countConsistent ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                        <div className="text-xs font-bold mb-1">{runReport.validation.countConsistent ? '✓ Ticketzählung konsistent' : '⚠ Ticketzählung inkonsistent'}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Verarbeitet: {runReport.validation.totalProcessed} | Zugewiesen: {runReport.validation.totalAssigned} | Nicht zugewiesen: {runReport.validation.totalUnassigned} | Nicht relevant: {runReport.validation.totalNotRelevant}
+                        </div>
+                        {runReport.validation.warning && <div className="text-[10px] text-red-400 mt-1">{runReport.validation.warning}</div>}
+                      </div>
+                    )}
+
+                    {/* Crawler Override Warning */}
+                    {runReport.crawlerOverride && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                        <div className="text-xs font-bold text-amber-400">⚠ Crawler-Override war aktiv</div>
+                        <div className="text-[10px] text-muted-foreground">Ergebnisse basieren möglicherweise auf veralteten Crawler-Daten.</div>
+                      </div>
+                    )}
+
+                    {/* Assigned Tickets */}
+                    {runReport.assigned?.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-bold text-green-400 mb-2">✓ Zugewiesene Tickets ({runReport.assigned.length})</h4>
+                        <div className="max-h-64 overflow-auto rounded-lg border border-border/20">
+                          <table className="w-full text-xs">
+                            <thead><tr className="bg-background/60 text-muted-foreground">
+                              <th className="px-3 py-1.5 text-left">Ticket</th>
+                              <th className="px-3 py-1.5 text-left">Queue</th>
+                              <th className="px-3 py-1.5 text-left">Zugewiesen an</th>
+                              <th className="px-3 py-1.5 text-left">Begründung</th>
+                            </tr></thead>
+                            <tbody>
+                              {runReport.assigned.map((d: any, i: number) => (
+                                <tr key={i} className="border-t border-border/10 hover:bg-green-500/5">
+                                  <td className="px-3 py-1.5 font-mono">{d.ticketId}</td>
+                                  <td className="px-3 py-1.5">{d.queueType}</td>
+                                  <td className="px-3 py-1.5 font-medium text-green-400">{d.assignedTo}</td>
+                                  <td className="px-3 py-1.5 text-muted-foreground">{d.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Unassigned Tickets */}
+                    {runReport.unassigned?.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-bold text-red-400 mb-2">✗ Nicht zugewiesene Tickets ({runReport.unassigned.length})</h4>
+                        <div className="max-h-64 overflow-auto rounded-lg border border-border/20">
+                          <table className="w-full text-xs">
+                            <thead><tr className="bg-background/60 text-muted-foreground">
+                              <th className="px-3 py-1.5 text-left">Ticket</th>
+                              <th className="px-3 py-1.5 text-left">Queue</th>
+                              <th className="px-3 py-1.5 text-left">Status</th>
+                              <th className="px-3 py-1.5 text-left">Grund</th>
+                            </tr></thead>
+                            <tbody>
+                              {runReport.unassigned.map((d: any, i: number) => (
+                                <tr key={i} className="border-t border-border/10 hover:bg-red-500/5">
+                                  <td className="px-3 py-1.5 font-mono">{d.ticketId}</td>
+                                  <td className="px-3 py-1.5">{d.queueType}</td>
+                                  <td className="px-3 py-1.5 text-amber-400">{d.result}</td>
+                                  <td className="px-3 py-1.5 text-muted-foreground">{d.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </EnterpriseCard>
 
       {/* Decision Drawer */}

@@ -1,13 +1,6 @@
 /* ------------------------------------------------ */
-/* ADD USER MODAL – CREATE USER (POLICY CLEAN)      */
+/* ADD USER MODAL – CREATE USER                     */
 /* ------------------------------------------------ */
-/**
- * Regeln:
- * - Neue User bekommen KEINE Overrides
- * - Abteilungs-Policy greift automatisch
- * - Keine Rollen-Auswahl (RBAC only)
- * - Passwort wird serverseitig gesetzt
- */
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/api";
@@ -46,6 +39,17 @@ type Option = {
   label: string;
 };
 
+const EMPTY_FORM = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  ibx: "",
+  department: "",
+  role: "user",
+};
+
+const FALLBACK_DEPARTMENT = { value: "other", label: "Other Team" };
+
 /* ------------------------------------------------ */
 /* COMPONENT                                        */
 /* ------------------------------------------------ */
@@ -60,16 +64,10 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
 
   const [deptOptions, setDeptOptions] = useState<Option[]>([]);
 
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    ibx: "",
-    department: "",
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const canSubmit = useMemo(() => {
-    return (
+    return Boolean(
       form.firstName.trim() &&
       form.lastName.trim() &&
       form.email.trim() &&
@@ -77,6 +75,19 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
       form.department.trim()
     );
   }, [form]);
+
+  useEffect(() => {
+    if (open) {
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    setError("");
+    setLoading(false);
+    setDeptOptions([]);
+    setForm(EMPTY_FORM);
+  }, [open]);
 
   /* ------------------------------------------------ */
   /* LOAD DEPARTMENTS                                */
@@ -89,7 +100,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
 
     async function loadDepartments() {
       try {
-        const res = await api.get<GroupRow[]>("/groups");
+        const res = await api.get<GroupRow[]>("/admin/groups");
         const groups = Array.isArray(res.data) ? res.data : [];
 
         if (cancelled) return;
@@ -101,13 +112,24 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             label: g.label || g.key,
           }));
 
-        setDeptOptions(opts);
+        const nextOptions = opts.length ? opts : [FALLBACK_DEPARTMENT];
 
-        if (!form.department && opts.length > 0) {
-          setForm((prev) => ({ ...prev, department: opts[0].value }));
-        }
+        setDeptOptions(nextOptions);
+
+        setForm((prev) =>
+          prev.department
+            ? prev
+            : { ...prev, department: nextOptions[0].value }
+        );
       } catch {
-        if (!cancelled) setDeptOptions([]);
+        if (!cancelled) {
+          setDeptOptions([FALLBACK_DEPARTMENT]);
+          setForm((prev) =>
+            prev.department
+              ? prev
+              : { ...prev, department: FALLBACK_DEPARTMENT.value }
+          );
+        }
       }
     }
 
@@ -128,12 +150,13 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
     setLoading(true);
 
     try {
-      await api.post("/users", {
+      await api.post("/admin/users", {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         email: form.email.trim(),
         ibx: form.ibx,
-        group: form.department,
+        group: form.department.trim(),
+        isAdmin: form.role === "admin",
       });
 
       onClose();
@@ -162,7 +185,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             User anlegen
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Passwort wird automatisch serverseitig gesetzt
+            Passwort wird automatisch serverseitig auf den Initialwert gesetzt
           </p>
         </CardHeader>
 
@@ -239,17 +262,33 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                 disabled={loading}
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue />
+                  <SelectValue placeholder="Abteilung auswählen" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(deptOptions.length
-                    ? deptOptions
-                    : [{ value: "other", label: "Other Team" }]
-                  ).map((opt) => (
+                  {(deptOptions.length ? deptOptions : [FALLBACK_DEPARTMENT]).map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Rolle</Label>
+              <Select
+                value={form.role}
+                onValueChange={(v) =>
+                  setForm({ ...form, role: v })
+                }
+                disabled={loading}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>

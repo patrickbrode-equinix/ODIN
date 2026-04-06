@@ -70,6 +70,27 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    if (error.response?.status === 403 && error.response?.data?.code === "PASSWORD_CHANGE_REQUIRED") {
+      try {
+        const stored = localStorage.getItem("auth_user");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          localStorage.setItem("auth_user", JSON.stringify({
+            ...parsed,
+            mustChangePassword: true,
+          }));
+        }
+      } catch {
+        // ignore storage parsing issues
+      }
+
+      const isPublicPage = window.location.pathname.startsWith("/tv-dashboard") ||
+                           window.location.pathname.startsWith("/tv-fullscreen");
+      if (!isPublicPage && window.location.pathname !== "/settings") {
+        window.location.href = "/settings";
+      }
+    }
+
     if (error.response?.status === 401) {
       // Skip login redirect on public TV kiosk pages
       const isPublicPage = window.location.pathname.startsWith("/tv-dashboard") ||

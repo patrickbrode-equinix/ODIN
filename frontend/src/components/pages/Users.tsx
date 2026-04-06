@@ -1,10 +1,10 @@
 /* ------------------------------------------------ */
-/* USERS – USER MANAGEMENT PAGE (POLICY-ONLY)       */
+/* USERS – USER MANAGEMENT PAGE                     */
 /* ------------------------------------------------ */
 
 import { useEffect, useState } from "react";
-import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon } from "lucide-react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
+import { Plus, CheckCircle, Trash2, Users as UsersIcon } from "lucide-react";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
 
 import {
   Table,
@@ -17,13 +17,12 @@ import {
 
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Switch } from "../ui/switch";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
 
 import { AddUserModal } from "../users/AddUserModal";
-import { AbteilungAccessModal } from "../users/AbteilungAccessModal";
-import { UserAccessModal } from "../users/UserAccessModal";
 
 /* ------------------------------------------------ */
 /* TYPES                                           */
@@ -37,6 +36,8 @@ interface User {
   group: string;
   department?: string | null;
   approved: boolean;
+  isAdmin: boolean;
+  isRoot?: boolean;
   createdAt: string;
   lastLogin: string | null;
 }
@@ -75,10 +76,6 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
 
   const [addUserOpen, setAddUserOpen] = useState(false);
-  const [groupAccessOpen, setAbteilungAccessOpen] = useState(false);
-
-  const [userAccessOpen, setUserAccessOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   /* ------------------------------------------------ */
   /* LOAD USERS                                      */
@@ -137,20 +134,6 @@ export default function Users() {
   }
 
   /* ------------------------------------------------ */
-  /* USER ACCESS MODAL                                */
-  /* ------------------------------------------------ */
-
-  function openUserAccess(user: User) {
-    setSelectedUser(user);
-    setUserAccessOpen(true);
-  }
-
-  function closeUserAccess() {
-    setUserAccessOpen(false);
-    setSelectedUser(null);
-  }
-
-  /* ------------------------------------------------ */
   /* RENDER                                          */
   /* ------------------------------------------------ */
 
@@ -164,16 +147,6 @@ export default function Users() {
         rightContent={
           canManageUsers && (
             <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm"
-                onClick={() => setAbteilungAccessOpen(true)}
-              >
-                <Shield className="w-3.5 h-3.5 mr-2" />
-                Abteilung Access
-              </Button>
-
               <Button
                 size="sm"
                 className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-sm border-transparent"
@@ -196,6 +169,7 @@ export default function Users() {
                 <TableHead>User</TableHead>
                 <TableHead>E-Mail</TableHead>
                 <TableHead>Abteilung</TableHead>
+                <TableHead>Rolle</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -204,25 +178,26 @@ export default function Users() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-[13px] text-[#4b5563]">
+                  <TableCell colSpan={6} className="text-center py-8 text-[13px] text-[#4b5563]">
                     Loading users…
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-[13px] text-[#4b5563]">
+                  <TableCell colSpan={6} className="text-center py-8 text-[13px] text-[#4b5563]">
                     No users found
                   </TableCell>
                 </TableRow>
               ) : (
                 users.map((user) => {
                   const isSelf = user.id === currentUser?.id;
+                  const isRoot = user.isRoot === true;
+                  const displayName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
 
                   return (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
-                        {`${user.firstName ?? ""} ${user.lastName ?? ""
-                          }`.trim()}
+                        {displayName}
                       </TableCell>
 
                       <TableCell>{user.email}</TableCell>
@@ -231,21 +206,39 @@ export default function Users() {
                         {(user.department ?? user.group) || "-"}
                       </TableCell>
 
+                      <TableCell>
+                        {isRoot ? (
+                          <Badge className="border-red-500/30 bg-red-500/15 text-red-300">
+                            Root
+                          </Badge>
+                        ) : user.isAdmin ? (
+                          <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-300">
+                            Admin
+                          </Badge>
+                        ) : (
+                          <Badge className="border-slate-500/30 bg-slate-500/15 text-slate-300">
+                            User
+                          </Badge>
+                        )}
+                      </TableCell>
+
                       <TableCell>{renderApproval(user.approved)}</TableCell>
 
                       <TableCell className="text-right space-x-1">
-                        {canManageUsers && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openUserAccess(user)}
-                            title="Permissions"
-                          >
-                            <Shield className="w-4 h-4" />
-                          </Button>
+                        {canManageUsers && !isRoot && !isSelf && (
+                          <div className="inline-flex items-center gap-2 mr-2 align-middle">
+                            <span className="text-xs text-muted-foreground">Admin</span>
+                            <Switch
+                              checked={user.isAdmin}
+                              onCheckedChange={(checked) =>
+                                updateUser(user.id, { isAdmin: checked })
+                              }
+                              aria-label={`Toggle admin for ${user.email}`}
+                            />
+                          </div>
                         )}
 
-                        {!user.approved && canManageUsers && (
+                        {!user.approved && canManageUsers && !isRoot && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -258,7 +251,7 @@ export default function Users() {
                           </Button>
                         )}
 
-                        {!isSelf && canManageUsers && (
+                        {!isSelf && canManageUsers && !isRoot && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -280,32 +273,12 @@ export default function Users() {
         </div>
       </EnterpriseCard>
 
-      {/* MODALS */}
-      <UserAccessModal
-        open={userAccessOpen}
-        onClose={closeUserAccess}
-        user={
-          selectedUser
-            ? {
-              id: selectedUser.id,
-              email: selectedUser.email,
-              group: selectedUser.group,
-            }
-            : null
-        }
-      />
-
-      <AbteilungAccessModal
-        open={groupAccessOpen}
-        onClose={() => setAbteilungAccessOpen(false)}
-      />
-
       <AddUserModal
         open={addUserOpen}
         onClose={() => {
           setAddUserOpen(false);
-          loadUsers();
         }}
+        onCreated={loadUsers}
       />
     </EnterprisePageShell>
   );

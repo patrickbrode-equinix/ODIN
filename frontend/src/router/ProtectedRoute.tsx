@@ -23,6 +23,10 @@ export function ProtectedRoute() {
     return <Navigate to="/pending-approval" replace />;
   }
 
+  if (!user?.isRoot && user?.mustChangePassword === true && location.pathname !== "/settings") {
+    return <Navigate to="/settings" replace />;
+  }
+
   /* -------------------------------- */
   /* OK                               */
   /* -------------------------------- */

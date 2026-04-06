@@ -17,7 +17,7 @@ import { checkRelevance } from '../assignment/relevance/checkRelevance.js';
 
 // Eligibility
 import {
-  isWorkerAutoAssignable, isAvailable, isNotOnBreak, isNotAbsent,
+  hasUserMapping, isWorkerAutoAssignable, isAvailable, isNotOnBreak, isNotAbsent,
   isShiftActive, matchesSite, matchesResponsibility, applyEligibilityRules,
   checkRole, checkQueueClean,
 } from '../assignment/eligibility/rules.js';
@@ -36,6 +36,11 @@ import { routeHandover } from '../assignment/rules/handoverRouter.js';
 import { checkQueuePurity } from '../assignment/rules/queuePurity.js';
 import { evaluateSystemGrouping } from '../assignment/rules/systemGrouping.js';
 import { PRIORITY_TIERS, CRAWLER_MAX_AGE_MS } from '../assignment/constants.js';
+import {
+  isShiftCodeActiveNow,
+  isWorkingShiftCode,
+  resolveEffectiveWorkerRole,
+} from '../assignment/candidates/loadCandidates.js';
 
 /* ================================================ */
 /* mapType                                          */
@@ -267,6 +272,12 @@ describe('Eligibility Rules', () => {
   it('isWorkerAutoAssignable passes for assignable worker', () => {
     assert.ok(isWorkerAutoAssignable(baseWorker).eligible);
   });
+  it('hasUserMapping fails for unmapped weekly-plan workers in live mode', () => {
+    assert.ok(!hasUserMapping({ ...baseWorker, userMapped: false, plannedEmployeeName: 'Max Mustermann' }).eligible);
+  });
+  it('hasUserMapping passes for unmapped weekly-plan workers in shadow mode', () => {
+    assert.ok(hasUserMapping({ ...baseWorker, userMapped: false, plannedEmployeeName: 'Max Mustermann' }, { executionMode: 'shadow' }).eligible);
+  });
   it('isWorkerAutoAssignable fails for non-assignable', () => {
     assert.ok(!isWorkerAutoAssignable({ ...baseWorker, autoAssignable: false }).eligible);
   });
@@ -295,6 +306,9 @@ describe('Eligibility Rules', () => {
   it('matchesSite fails when sites differ', () => {
     assert.ok(!matchesSite({ ...baseWorker, site: 'AM3' }, baseTicket, baseSettings).eligible);
   });
+  it('matchesSite passes for unmapped weekly-plan workers in shadow mode without site metadata', () => {
+    assert.ok(matchesSite({ ...baseWorker, site: null, userMapped: false, plannedEmployeeName: 'Max Mustermann' }, baseTicket, { ...baseSettings, executionMode: 'shadow' }).eligible);
+  });
   it('matchesSite passes when strictness disabled', () => {
     assert.ok(matchesSite({ ...baseWorker, site: 'AM3' }, baseTicket, { siteStrictness: 'false' }).eligible);
   });
@@ -317,6 +331,54 @@ describe('Eligibility Rules', () => {
     const r = applyEligibilityRules({ ...baseWorker, blocked: true }, baseTicket, baseSettings);
     assert.ok(!r.eligible);
     assert.ok(r.exclusions.length > 0);
+  });
+  it('applyEligibilityRules excludes unmapped weekly-plan workers in live mode', () => {
+    const r = applyEligibilityRules({ ...baseWorker, userMapped: false, plannedEmployeeName: 'Max Mustermann' }, baseTicket, baseSettings);
+    assert.ok(!r.eligible);
+    assert.ok(r.exclusions.some(excl => excl.rule === 'hasUserMapping'));
+  });
+  it('applyEligibilityRules allows unmapped weekly-plan workers in shadow mode', () => {
+    const r = applyEligibilityRules(
+      { ...baseWorker, site: null, userMapped: false, plannedEmployeeName: 'Max Mustermann' },
+      baseTicket,
+      { ...baseSettings, executionMode: 'shadow' }
+    );
+    assert.ok(r.eligible);
+  });
+});
+
+describe('Weekly Plan Shift Windows', () => {
+  it('marks FS as non-working', () => {
+    assert.equal(isWorkingShiftCode('FS'), false);
+  });
+
+  it('marks E1 as active during early shift window', () => {
+    const activeAt = new Date('2026-03-08T07:30:00');
+    assert.equal(isShiftCodeActiveNow('E1', activeAt), true);
+  });
+
+  it('marks L1 as inactive during early morning', () => {
+    const activeAt = new Date('2026-03-08T07:30:00');
+    assert.equal(isShiftCodeActiveNow('L1', activeAt), false);
+  });
+
+  it('keeps night shift active across midnight window', () => {
+    const activeAt = new Date('2026-03-08T02:30:00');
+    assert.equal(isShiftCodeActiveNow('N', activeAt), true);
+  });
+});
+
+describe('Weekly Plan Role Resolution', () => {
+  it('uses the weekplan role when one is assigned for today', () => {
+    assert.equal(resolveEffectiveWorkerRole('dispatcher', 'support'), 'dispatcher');
+  });
+
+  it('falls back to normal when no weekplan role exists for today', () => {
+    assert.equal(resolveEffectiveWorkerRole(null, 'project'), 'normal');
+  });
+
+  it('treats unknown weekplan role keys as normal', () => {
+    assert.equal(resolveEffectiveWorkerRole('unknown-role', 'dispatcher'), 'normal');
   });
 });
 
@@ -501,6 +563,7 @@ describe('buildTicketExplanation', () => {
   it('builds markdown and structured explanation', () => {
     const decision = {
       ticket_id: '42',
+      external_id: 'TT-12345',
       result: 'assigned',
       short_reason: 'Zugewiesen an Marco D.',
       ticket_type: 'TroubleTicket',
@@ -515,11 +578,15 @@ describe('buildTicketExplanation', () => {
       assigned_worker_id: 1,
       selection_reason: 'Only one eligible candidate',
       rule_path: ['relevance', 'eligibility', 'worker-selection'],
+      normalized_ticket: { id: '42', queue: 'TroubleTicket', externalId: 'TT-12345' },
+      raw_ticket: { id: 42, external_id: 'TT-12345', queue_type: 'TroubleTicket' },
     };
     const exp = buildTicketExplanation(decision);
     assert.ok(exp.markdown.includes('Marco D.'));
     assert.equal(exp.structured.result, 'assigned');
     assert.equal(exp.structured.assignedWorkerName, 'Marco D.');
+    assert.equal(exp.structured.displayTicketNumber, 'TT-12345');
+    assert.equal(exp.structured.queueOrigin, 'TroubleTicket');
   });
 });
 

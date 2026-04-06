@@ -1,0 +1,393 @@
+import bcrypt from "bcrypt";
+import pool from "../db.js";
+import { normalizeName } from "../lib/nameNorm.js";
+import {
+  buildNameKeyFromParts,
+  buildShortNameKeyFromParts,
+  buildUsernameBase,
+  generateEmailFromName,
+  isEmailLike,
+  splitEmployeeName,
+} from "../lib/employeeIdentity.js";
+
+const DEFAULT_GROUP = "c-ops";
+const DEFAULT_IBX = "FR2";
+const DEFAULT_INITIAL_PASSWORD = "root";
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildExistingUserName(user) {
+  return [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+}
+
+function buildCandidate(employee) {
+  const sourceKind = isEmailLike(employee.employeeName) ? "email" : "name";
+  const parts = splitEmployeeName(employee.employeeName);
+  if (!parts) return null;
+
+  const sourceEmail = employee.email || (sourceKind === "email" ? employee.employeeName : "");
+  const preferredEmail = normalizeEmail(sourceEmail || generateEmailFromName(parts.displayName));
+  const usernameBase = buildUsernameBase(parts.firstName, parts.lastName);
+  const fullNameKey = buildNameKeyFromParts(parts.firstName, parts.lastName);
+  const shortNameKey = buildShortNameKeyFromParts(parts.firstName, parts.lastName);
+
+  if (!preferredEmail || !usernameBase || !fullNameKey) return null;
+
+  return {
+    employeeName: employee.employeeName,
+    displayName: parts.displayName,
+    firstName: parts.firstName,
+    lastName: parts.lastName,
+    sourceKind,
+    preferredEmail,
+    usernameBase,
+    fullNameKey,
+    shortNameKey,
+  };
+}
+
+function isEquivalentSeenCandidate(candidate, seenCandidates) {
+  return seenCandidates.some((seen) => {
+    if (candidate.fullNameKey && seen.fullNameKey && candidate.fullNameKey === seen.fullNameKey) {
+      return true;
+    }
+
+    if (candidate.preferredEmail && seen.preferredEmail && candidate.preferredEmail === seen.preferredEmail) {
+      return true;
+    }
+
+    if (
+      candidate.shortNameKey
+      && seen.shortNameKey
+      && candidate.shortNameKey === seen.shortNameKey
+      && (candidate.sourceKind === "email" || seen.sourceKind === "email")
+    ) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+function buildExistingIndexes(existingUsers) {
+  const byEmail = new Map();
+  const byName = new Map();
+  const byShortName = new Map();
+  const usedEmails = new Set();
+  const usedUsernames = new Set();
+
+  for (const user of existingUsers) {
+    const email = normalizeEmail(user.email);
+    if (email) {
+      byEmail.set(email, user);
+      usedEmails.add(email);
+    }
+
+    const username = normalizeUsername(user.username);
+    if (username) usedUsernames.add(username);
+
+    const fullName = buildExistingUserName(user);
+    const fullNameParts = fullName ? splitEmployeeName(fullName) : null;
+    if (fullNameParts) {
+      const fullNameKey = buildNameKeyFromParts(fullNameParts.firstName, fullNameParts.lastName);
+      const shortNameKey = buildShortNameKeyFromParts(fullNameParts.firstName, fullNameParts.lastName);
+      if (fullNameKey) byName.set(fullNameKey, user);
+      if (shortNameKey) byShortName.set(shortNameKey, user);
+    }
+
+    const provisionedName = normalizeName(user.provisioned_employee_name || "");
+    if (provisionedName) {
+      byName.set(`provisioned:${provisionedName}`, user);
+    }
+  }
+
+  return {
+    byEmail,
+    byName,
+    byShortName,
+    usedEmails,
+    usedUsernames,
+  };
+}
+
+function isCompatibleExistingUser(candidate, existingUser) {
+  if (!existingUser) return false;
+
+  const existingFullName = buildExistingUserName(existingUser);
+  const existingParts = existingFullName ? splitEmployeeName(existingFullName) : null;
+  const existingFullNameKey = existingParts
+    ? buildNameKeyFromParts(existingParts.firstName, existingParts.lastName)
+    : null;
+  const existingShortNameKey = existingParts
+    ? buildShortNameKeyFromParts(existingParts.firstName, existingParts.lastName)
+    : null;
+  const provisionedNameKey = normalizeName(existingUser.provisioned_employee_name || "");
+  const candidateNameKey = normalizeName(candidate.employeeName);
+
+  return !existingFullNameKey
+    || existingFullNameKey === candidate.fullNameKey
+    || existingShortNameKey === candidate.shortNameKey
+    || provisionedNameKey === candidateNameKey;
+}
+
+function nextAvailableEmail(baseEmail, usedEmails) {
+  if (!baseEmail) return null;
+  if (!usedEmails.has(baseEmail)) return baseEmail;
+
+  const [localPart, domainPart = "eu.equinix.com"] = baseEmail.split("@");
+  let counter = 2;
+  while (counter < 1000) {
+    const candidate = `${localPart}+odin${counter}@${domainPart}`;
+    if (!usedEmails.has(candidate)) return candidate;
+    counter += 1;
+  }
+
+  return null;
+}
+
+function nextAvailableUsername(baseUsername, usedUsernames) {
+  if (!baseUsername) return null;
+  if (!usedUsernames.has(baseUsername)) return baseUsername;
+
+  let counter = 2;
+  while (counter < 1000) {
+    const candidate = `${baseUsername}${counter}`;
+    if (!usedUsernames.has(candidate)) return candidate;
+    counter += 1;
+  }
+
+  return null;
+}
+
+export function buildProvisioningPlan({ employees, existingUsers, defaultGroup = DEFAULT_GROUP, defaultIbx = DEFAULT_IBX }) {
+  const indexes = buildExistingIndexes(existingUsers);
+  const creates = [];
+  const updates = [];
+  const skipped = [];
+  const seenCandidates = [];
+  let matchedExisting = 0;
+
+  for (const employee of employees) {
+    const candidate = buildCandidate(employee);
+    if (!candidate) {
+      skipped.push({ employeeName: employee.employeeName, reason: "invalid_name" });
+      continue;
+    }
+
+    if (isEquivalentSeenCandidate(candidate, seenCandidates)) continue;
+    seenCandidates.push(candidate);
+
+    const emailMatch = indexes.byEmail.get(candidate.preferredEmail);
+    const nameMatch = indexes.byName.get(candidate.fullNameKey)
+      || indexes.byName.get(`provisioned:${normalizeName(candidate.employeeName)}`)
+      || indexes.byShortName.get(candidate.shortNameKey);
+
+    const existingUser = isCompatibleExistingUser(candidate, emailMatch)
+      ? emailMatch
+      : nameMatch;
+
+    if (existingUser) {
+      matchedExisting += 1;
+
+      const patch = {};
+      const existingDisplayName = buildExistingUserName(existingUser);
+      if ((!existingDisplayName || existingUser.provisioned_from_shiftplan === true) && existingDisplayName !== candidate.displayName) {
+        patch.firstName = candidate.firstName;
+        patch.lastName = candidate.lastName;
+      }
+      if (existingUser.approved !== true) patch.approved = true;
+      if (existingUser.provisioned_from_shiftplan !== true) patch.provisionedFromShiftplan = true;
+      if ((existingUser.provisioned_employee_name || "") !== candidate.employeeName) {
+        patch.provisionedEmployeeName = candidate.employeeName;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        updates.push({ userId: existingUser.id, email: existingUser.email, match: existingUser === emailMatch ? "email" : "name", patch });
+      }
+      continue;
+    }
+
+    const email = nextAvailableEmail(candidate.preferredEmail, indexes.usedEmails);
+    const username = nextAvailableUsername(candidate.usernameBase, indexes.usedUsernames);
+    if (!email || !username) {
+      skipped.push({ employeeName: employee.employeeName, reason: "unique_identity_unavailable" });
+      continue;
+    }
+
+    indexes.usedEmails.add(email);
+    indexes.usedUsernames.add(username);
+
+    creates.push({
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      username,
+      email,
+      group: defaultGroup,
+      department: defaultGroup,
+      ibx: defaultIbx,
+      approved: true,
+      isAdmin: false,
+      isRoot: false,
+      mustChangePassword: true,
+      provisionedFromShiftplan: true,
+      provisionedEmployeeName: candidate.employeeName,
+    });
+  }
+
+  return {
+    totalEmployees: employees.length,
+    uniqueEmployees: seenCandidates.length,
+    matchedExisting,
+    creates,
+    updates,
+    skipped,
+  };
+}
+
+function summarizePlan(plan, dryRun) {
+  return {
+    dryRun,
+    totalEmployees: plan.totalEmployees,
+    uniqueEmployees: plan.uniqueEmployees,
+    matchedExisting: plan.matchedExisting,
+    created: plan.creates.length,
+    updated: plan.updates.length,
+    skipped: plan.skipped.length,
+    createdUsers: plan.creates.map((user) => ({ email: user.email, username: user.username })),
+    updatedUsers: plan.updates.map((user) => ({ userId: user.userId, email: user.email, match: user.match, patch: user.patch })),
+    skippedUsers: plan.skipped,
+  };
+}
+
+export async function provisionUsersFromShiftplan({
+  dryRun = false,
+  initialPassword = DEFAULT_INITIAL_PASSWORD,
+  logger = console,
+} = {}) {
+  const client = await pool.connect();
+  try {
+    const employeeRes = await client.query(
+      `SELECT DISTINCT s.employee_name AS "employeeName", ec.email
+       FROM shifts s
+       LEFT JOIN employee_contacts ec ON ec.employee_name = s.employee_name
+       WHERE s.employee_name IS NOT NULL AND btrim(s.employee_name) <> ''
+       ORDER BY s.employee_name ASC`
+    );
+
+    const existingUsersRes = await client.query(
+      `SELECT id, email, username, first_name, last_name, approved,
+              provisioned_from_shiftplan, provisioned_employee_name
+       FROM users
+       WHERE is_root = false
+       ORDER BY id ASC`
+    );
+
+    const plan = buildProvisioningPlan({
+      employees: employeeRes.rows,
+      existingUsers: existingUsersRes.rows,
+    });
+
+    const summary = summarizePlan(plan, dryRun);
+    if (dryRun) {
+      logger.log?.(`[USER PROVISIONING] Dry run: ${summary.created} create, ${summary.updated} update, ${summary.skipped} skipped.`);
+      return summary;
+    }
+
+    if (plan.creates.length === 0 && plan.updates.length === 0) {
+      logger.log?.("[USER PROVISIONING] No user changes required.");
+      return summary;
+    }
+
+    await client.query("BEGIN");
+
+    const passwordHash = await bcrypt.hash(initialPassword, 12);
+    for (const create of plan.creates) {
+      await client.query(
+        `INSERT INTO users (
+           first_name,
+           last_name,
+           username,
+           email,
+           password_hash,
+           user_group,
+           department,
+           ibx,
+           approved,
+           is_admin,
+           is_root,
+           must_change_password,
+           provisioned_from_shiftplan,
+           provisioned_employee_name
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          create.firstName,
+          create.lastName,
+          create.username,
+          create.email,
+          passwordHash,
+          create.group,
+          create.department,
+          create.ibx,
+          create.approved,
+          create.isAdmin,
+          create.isRoot,
+          create.mustChangePassword,
+          create.provisionedFromShiftplan,
+          create.provisionedEmployeeName,
+        ]
+      );
+    }
+
+    for (const update of plan.updates) {
+      const fields = [];
+      const values = [];
+      let idx = 1;
+
+      if (update.patch.firstName !== undefined) {
+        fields.push(`first_name = $${idx++}`);
+        values.push(update.patch.firstName);
+      }
+      if (update.patch.lastName !== undefined) {
+        fields.push(`last_name = $${idx++}`);
+        values.push(update.patch.lastName);
+      }
+      if (update.patch.approved !== undefined) {
+        fields.push(`approved = $${idx++}`);
+        values.push(update.patch.approved);
+      }
+      if (update.patch.provisionedFromShiftplan !== undefined) {
+        fields.push(`provisioned_from_shiftplan = $${idx++}`);
+        values.push(update.patch.provisionedFromShiftplan);
+      }
+      if (update.patch.provisionedEmployeeName !== undefined) {
+        fields.push(`provisioned_employee_name = $${idx++}`);
+        values.push(update.patch.provisionedEmployeeName);
+      }
+
+      values.push(update.userId);
+      await client.query(
+        `UPDATE users SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${idx}`,
+        values
+      );
+    }
+
+    await client.query("COMMIT");
+    logger.log?.(`[USER PROVISIONING] Applied: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped.`);
+    return summary;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // ignore rollback errors
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
