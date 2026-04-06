@@ -17,6 +17,28 @@ export function isWorkerAutoAssignable(worker) {
   return { eligible: true, rule: 'isWorkerAutoAssignable', reason: 'Worker is auto-assignable' };
 }
 
+function isShadowExecution(settings) {
+  return settings?.executionMode === 'shadow' || settings?.executionMode === 'dry-run';
+}
+
+export function hasUserMapping(worker, settings = {}) {
+  if (worker.userMapped === false) {
+    if (isShadowExecution(settings)) {
+      return {
+        eligible: true,
+        rule: 'hasUserMapping',
+        reason: `${worker.plannedEmployeeName || worker.name} wird im Shadow-Modus trotz fehlender ODIN-Benutzerzuordnung aus dem Wochenplan berücksichtigt`,
+      };
+    }
+    return {
+      eligible: false,
+      rule: 'hasUserMapping',
+      reason: `${worker.plannedEmployeeName || worker.name} ist im Wochenplan vorhanden, konnte aber keinem freigegebenen ODIN-Benutzer zugeordnet werden`,
+    };
+  }
+  return { eligible: true, rule: 'hasUserMapping', reason: 'Worker is linked to an approved ODIN user' };
+}
+
 export function isAvailable(worker) {
   if (worker.blocked) {
     return { eligible: false, rule: 'isAvailable', reason: `${worker.name} is blocked` };
@@ -39,9 +61,9 @@ export function isNotAbsent(worker) {
 }
 
 export function isShiftActive(worker) {
-  // Use the shift_active column from users table
   if (worker.shiftActive === false) {
-    return { eligible: false, rule: 'isShiftActive', reason: `${worker.name} is not on active shift` };
+    const shiftLabel = worker.shiftCode ? ` (${worker.shiftCode})` : '';
+    return { eligible: false, rule: 'isShiftActive', reason: `${worker.name} ist laut Wochenplanung aktuell nicht im aktiven Schichtfenster${shiftLabel}` };
   }
   return { eligible: true, rule: 'isShiftActive', reason: 'Worker is on active shift' };
 }
@@ -54,6 +76,13 @@ export function matchesSite(worker, ticket, settings) {
     return { eligible: true, rule: 'matchesSite', reason: 'Ticket has no site — skipping site check' };
   }
   if (!worker.site) {
+    if (worker.userMapped === false && isShadowExecution(settings)) {
+      return {
+        eligible: true,
+        rule: 'matchesSite',
+        reason: `${worker.plannedEmployeeName || worker.name} hat keine ODIN-Site-Stammdaten, wird im Shadow-Modus aber trotzdem bewertet`,
+      };
+    }
     return { eligible: false, rule: 'matchesSite', reason: `${worker.name} has no site assigned (ticket requires ${ticket.site})` };
   }
   const workerSite = worker.site.toLowerCase().trim();
@@ -72,6 +101,13 @@ export function matchesResponsibility(worker, ticket, settings) {
     return { eligible: true, rule: 'matchesResponsibility', reason: 'Ticket has no responsibility — skipping check' };
   }
   if (!worker.responsibility) {
+    if (worker.userMapped === false && isShadowExecution(settings)) {
+      return {
+        eligible: true,
+        rule: 'matchesResponsibility',
+        reason: `${worker.plannedEmployeeName || worker.name} hat keine ODIN-Responsibility-Stammdaten, wird im Shadow-Modus aber trotzdem bewertet`,
+      };
+    }
     return { eligible: false, rule: 'matchesResponsibility', reason: `${worker.name} has no responsibility assigned (ticket requires ${ticket.responsibility})` };
   }
   const wResp = worker.responsibility.toLowerCase().trim();
@@ -116,6 +152,7 @@ export function checkQueueClean(worker, ticket, workerCurrentTickets = [], insuf
  */
 export function applyEligibilityRules(worker, ticket, settings, workerCurrentTickets = [], insufficientResources = false, now = Date.now()) {
   const rules = [
+    () => hasUserMapping(worker, settings),
     () => isWorkerAutoAssignable(worker),
     () => isAvailable(worker),
     () => isNotOnBreak(worker),

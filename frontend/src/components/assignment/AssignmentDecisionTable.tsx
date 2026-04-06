@@ -6,6 +6,7 @@ import { useAssignmentStore } from '../../store/assignmentStore';
 import type { AssignmentDecision, DecisionResult } from '../../types/assignment';
 import { Eye, AlertCircle, CheckCircle2, XCircle, HelpCircle, Ban, AlertTriangle } from 'lucide-react';
 import { InfoTooltip } from '../ui/InfoTooltip';
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId } from '../../utils/assignmentTicketDisplay';
 
 const resultStyles: Record<DecisionResult, { label: string; className: string; icon: React.ReactNode; explanation: string }> = {
   assigned: {
@@ -66,7 +67,7 @@ export function AssignmentDecisionTable({ decisions }: Props) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border/30 text-xs text-muted-foreground">
-            <th className="text-left px-3 py-2 font-medium">Ticket-ID</th>
+            <th className="text-left px-3 py-2 font-medium">Ticketnummer</th>
             <th className="text-left px-3 py-2 font-medium">Typ</th>
             <th className="text-left px-3 py-2 font-medium">Status</th>
             <th className="text-left px-3 py-2 font-medium">Site</th>
@@ -79,12 +80,19 @@ export function AssignmentDecisionTable({ decisions }: Props) {
         <tbody>
           {decisions.map((d) => {
             const rs = resultStyles[d.result] || resultStyles.error;
+            const displayTicketNumber = getAssignmentDisplayTicketNumber(d);
+            const internalTicketId = getAssignmentInternalTicketId(d);
             return (
               <tr
                 key={d.id}
                 className="border-b border-border/20 hover:bg-accent/30 transition"
               >
-                <td className="px-3 py-2 font-mono text-xs">{d.ticket_id}</td>
+                <td className="px-3 py-2 text-xs">
+                  <div className="font-mono">{displayTicketNumber}</div>
+                  {internalTicketId && internalTicketId !== displayTicketNumber && (
+                    <div className="text-[10px] text-muted-foreground">DB-ID: {internalTicketId}</div>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-xs">{d.ticket_type || '–'}</td>
                 <td className="px-3 py-2 text-xs">{d.ticket_status || '–'}</td>
                 <td className="px-3 py-2 text-xs">{d.ticket_site || '–'}</td>

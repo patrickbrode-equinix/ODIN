@@ -58,7 +58,6 @@ Rufe `http://localhost:9000` auf, um ein visuelles Monitoring der laufenden ODIN
    - `odin-backend`
    - `odin-postgres`
    - `odin-frontend`
-   - `odin-pgadmin`
 3. **Regel:** Es handelt sich um ein View-Only Setup. Klicke keine "Stop/Start" oder "Delete" Buttons, belasse die Verwaltung beim `podman-compose` CLI in der WSL.
 
 ## 5. Troubleshooting (Häufige Fehler)

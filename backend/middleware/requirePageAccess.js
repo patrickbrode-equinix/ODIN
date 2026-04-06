@@ -4,8 +4,7 @@
 /* Levels: none | view | write                      */
 /* ———————————————————————————————— */
 
-import db from "../db.js";
-import { normalizeGroupKey } from "../db/initSchema.js";
+import { canRoleAccess } from "../auth/accessControl.js";
 
 /* ———————————————————————————————— */
 /* ACCESS LEVEL ORDER                               */
@@ -47,6 +46,10 @@ export function requirePageAccess(pageKey, minLevel = "view") {
         return next();
       }
 
+      if (user.is_admin === true) {
+        return next();
+      }
+
       /* --- Nicht approved: block --- */
       if (user.approved !== true) {
         return res.status(403).json({
@@ -55,46 +58,9 @@ export function requirePageAccess(pageKey, minLevel = "view") {
         });
       }
 
-      /* ———————————————————————————————— */
-      /* LOAD GROUP POLICY                         */
-      /* ———————————————————————————————— */
-
-      const groupKey = normalizeGroupKey(user.group);
-
-      const groupRes = await db.query(
-        `SELECT policy FROM groups WHERE key = $1`,
-        [groupKey]
-      );
-
-      const groupPolicy =
-        groupRes.rowCount > 0 ? groupRes.rows[0].policy || {} : {};
-
-      /* ———————————————————————————————— */
-      /* LOAD USER OVERRIDES                       */
-      /* ———————————————————————————————— */
-
-      const userRes = await db.query(
-        `SELECT access_override FROM users WHERE id = $1`,
-        [user.id]
-      );
-
-      const accessOverride =
-        userRes.rowCount > 0 ? userRes.rows[0].access_override || {} : {};
-
-      /* ———————————————————————————————— */
-      /* EFFECTIVE LEVEL                           */
-      /* override > group > none                  */
-      /* ———————————————————————————————— */
-
-      const rawLevel =
-        Object.prototype.hasOwnProperty.call(accessOverride, pageKey)
-          ? accessOverride[pageKey]
-          : groupPolicy[pageKey];
-
-      const level = normalizeLevel(rawLevel);
       const required = normalizeLevel(minLevel);
 
-      if (!meets(level, required)) {
+      if (!canRoleAccess(user.role, pageKey, required)) {
         return res.status(403).json({
           code: "INSUFFICIENT_PERMISSION",
           message: `Access denied (${pageKey}:${required})`,

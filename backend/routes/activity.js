@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import { requirePageAccess } from '../middleware/requirePageAccess.js';
 
 const router = express.Router();
 router.use(requireAuth); // All /api/activity/* routes require a valid JWT
@@ -16,7 +17,7 @@ router.use(requireAuth); // All /api/activity/* routes require a valid JWT
  *  - start (optional ISO date)
  *  - end (optional ISO date)
  */
-router.get('/', async (req, res) => {
+router.get('/', requirePageAccess('protokoll', 'view'), async (req, res) => {
     try {
         const { limit = 50, offset = 0, module, action, actor, start, end } = req.query;
 
@@ -36,7 +37,7 @@ router.get('/', async (req, res) => {
         }
         if (actor) {
             params.push(`%${actor}%`);
-            sql += ` AND actor ILIKE $${params.length}`;
+            sql += ` AND actor_name ILIKE $${params.length}`;
         }
         if (start) {
             params.push(start);
@@ -70,7 +71,7 @@ router.get('/', async (req, res) => {
  * GET /api/activity/stats
  * Returns simple stats (e.g. counts per module today)
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', requirePageAccess('protokoll', 'view'), async (req, res) => {
     try {
         const sql = `
             SELECT module, COUNT(*) as count 

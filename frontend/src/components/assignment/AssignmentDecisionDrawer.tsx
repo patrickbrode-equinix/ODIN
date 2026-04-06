@@ -5,6 +5,7 @@
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { AssignmentExplanationCard } from './AssignmentExplanationCard';
 import { X, AlertCircle, CheckCircle2, HelpCircle, Ban, AlertTriangle, XCircle } from 'lucide-react';
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId } from '../../utils/assignmentTicketDisplay';
 
 const RESULT_INFO: Record<string, { label: string; color: string; icon: React.ReactNode; description: string }> = {
   assigned: { label: 'Zugewiesen', color: 'text-green-400', icon: <CheckCircle2 className="w-4 h-4 text-green-400" />, description: 'Ticket wurde erfolgreich einem Mitarbeiter zugewiesen.' },
@@ -27,6 +28,8 @@ export function AssignmentDecisionDrawer() {
   if (!drawerOpen) return null;
 
   const ri = selectedDecision ? (RESULT_INFO[selectedDecision.result] || RESULT_INFO.error) : null;
+  const displayTicketNumber = selectedDecision ? getAssignmentDisplayTicketNumber(selectedDecision) : null;
+  const internalTicketId = selectedDecision ? getAssignmentInternalTicketId(selectedDecision) : null;
 
   return (
     <>
@@ -44,8 +47,8 @@ export function AssignmentDecisionDrawer() {
             <h3 className="text-sm font-semibold text-foreground">Ticket-Erklärung</h3>
             {selectedDecision && (
               <div className="text-xs text-muted-foreground mt-0.5">
-                Ticket: {selectedDecision.ticket_id}
-                {selectedDecision.external_id && ` (${selectedDecision.external_id})`}
+                Ticket: {displayTicketNumber}
+                {internalTicketId && internalTicketId !== displayTicketNumber && ` • DB-ID ${internalTicketId}`}
               </div>
             )}
           </div>

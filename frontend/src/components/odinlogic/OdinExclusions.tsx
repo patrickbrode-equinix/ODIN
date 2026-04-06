@@ -4,22 +4,24 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, RefreshCw, ShieldBan, Tag } from "lucide-react";
+import { Plus, Trash2, ShieldBan, Tag } from "lucide-react";
 import {
-  fetchExclusions, addExclusion, deleteExclusion, type ManualExclusion,
-  fetchSubtypeExclusions, fetchAvailableSubtypes, addSubtypeExclusion, deleteSubtypeExclusion, type SubtypeExclusion,
-} from "../../api/engine";
+  AssignmentApi,
+  type AssignmentExclusionEntry,
+  type AssignmentSubtypeExclusionEntry,
+} from "../../api/assignment";
 
 export default function OdinExclusions() {
-  const [exclusions, setExclusions] = useState<ManualExclusion[]>([]);
+  const [exclusions, setExclusions] = useState<AssignmentExclusionEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [availableSystemNames, setAvailableSystemNames] = useState<string[]>([]);
   const [newSystemName, setNewSystemName] = useState("");
   const [newReason, setNewReason] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Subtype Exclusions state
-  const [subtypeExclusions, setSubtypeExclusions] = useState<SubtypeExclusion[]>([]);
+  const [subtypeExclusions, setSubtypeExclusions] = useState<AssignmentSubtypeExclusionEntry[]>([]);
   const [subtypeLoading, setSubtypeLoading] = useState(true);
   const [availableSubtypes, setAvailableSubtypes] = useState<string[]>([]);
   const [selectedSubtype, setSelectedSubtype] = useState("");
@@ -27,10 +29,30 @@ export default function OdinExclusions() {
   const [addingSubtype, setAddingSubtype] = useState(false);
   const [subtypeError, setSubtypeError] = useState<string | null>(null);
 
+  const filteredSystemNames = availableSystemNames.filter((systemName) => {
+    const normalizedSystemName = systemName.toLowerCase().trim();
+    const alreadyExcluded = exclusions.some((entry) => entry.system_name.toLowerCase().trim() === normalizedSystemName);
+    const matchesFilter = !newSystemName.trim() || normalizedSystemName.includes(newSystemName.toLowerCase().trim());
+    return !alreadyExcluded && matchesFilter;
+  });
+
+  const filteredSubtypes = availableSubtypes.filter((subtype) => {
+    const normalizedSubtype = subtype.toLowerCase().trim();
+    const alreadyExcluded = subtypeExclusions.some((entry) => entry.subtype.toLowerCase().trim() === normalizedSubtype);
+    const matchesFilter = !selectedSubtype.trim() || normalizedSubtype.includes(selectedSubtype.toLowerCase().trim());
+    return !alreadyExcluded && matchesFilter;
+  });
+
   const load = () => {
     setLoading(true);
-    fetchExclusions()
-      .then(setExclusions)
+    Promise.all([
+      AssignmentApi.getExclusions(),
+      AssignmentApi.getAvailableSystemNames(),
+    ])
+      .then(([loadedExclusions, systemNames]) => {
+        setExclusions(loadedExclusions);
+        setAvailableSystemNames(systemNames);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -42,7 +64,7 @@ export default function OdinExclusions() {
     setAdding(true);
     setError(null);
     try {
-      await addExclusion(newSystemName.trim(), newReason.trim() || undefined);
+      await AssignmentApi.addExclusion(newSystemName.trim(), newReason.trim() || undefined);
       setNewSystemName("");
       setNewReason("");
       load();
@@ -56,7 +78,7 @@ export default function OdinExclusions() {
   const handleDelete = async (id: number, systemName: string) => {
     if (!confirm(`System Name "${systemName}" von der Ausnahmeliste entfernen?`)) return;
     try {
-      await deleteExclusion(id);
+      await AssignmentApi.deleteExclusion(id);
       load();
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message);
@@ -67,8 +89,8 @@ export default function OdinExclusions() {
   const loadSubtypes = () => {
     setSubtypeLoading(true);
     Promise.all([
-      fetchSubtypeExclusions(),
-      fetchAvailableSubtypes(),
+      AssignmentApi.getSubtypeExclusions(),
+      AssignmentApi.getAvailableSubtypes(),
     ])
       .then(([excl, avail]) => {
         setSubtypeExclusions(excl);
@@ -83,7 +105,7 @@ export default function OdinExclusions() {
     setAddingSubtype(true);
     setSubtypeError(null);
     try {
-      await addSubtypeExclusion(selectedSubtype.trim(), subtypeReason.trim() || undefined);
+      await AssignmentApi.addSubtypeExclusion(selectedSubtype.trim(), subtypeReason.trim() || undefined);
       setSelectedSubtype("");
       setSubtypeReason("");
       loadSubtypes();
@@ -97,7 +119,7 @@ export default function OdinExclusions() {
   const handleDeleteSubtype = async (id: number, subtype: string) => {
     if (!confirm(`Subtype "${subtype}" von der Ausnahmeliste entfernen?`)) return;
     try {
-      await deleteSubtypeExclusion(id);
+      await AssignmentApi.deleteSubtypeExclusion(id);
       loadSubtypes();
     } catch (e: any) {
       setSubtypeError(e?.response?.data?.error || e.message);
@@ -153,6 +175,31 @@ export default function OdinExclusions() {
           {error}
         </div>
       )}
+
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Aktuelle Systemnamen aus der Datenbank ({filteredSystemNames.length})
+        </div>
+        {filteredSystemNames.length === 0 ? (
+          <div className="text-xs text-muted-foreground">Keine weiteren Systemnamen zur Auswahl.</div>
+        ) : (
+          <div className="flex max-h-40 flex-wrap gap-2 overflow-auto pr-2">
+            {filteredSystemNames.map((systemName) => (
+              <button
+                key={systemName}
+                type="button"
+                onClick={() => setNewSystemName(systemName)}
+                className={`rounded-full border px-3 py-1 text-xs transition ${newSystemName === systemName
+                  ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-100"
+                  : "border-white/10 bg-white/5 text-muted-foreground hover:border-indigo-400/30 hover:bg-indigo-500/10 hover:text-foreground"
+                }`}
+              >
+                {systemName}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* TABLE */}
       <div className="rounded-xl border border-white/10 overflow-hidden">
@@ -258,6 +305,31 @@ export default function OdinExclusions() {
             {subtypeError}
           </div>
         )}
+
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 mt-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Aktuelle Ticket-Subtypes aus der Datenbank ({filteredSubtypes.length})
+          </div>
+          {filteredSubtypes.length === 0 ? (
+            <div className="text-xs text-muted-foreground">Keine weiteren Subtypes zur Auswahl.</div>
+          ) : (
+            <div className="flex max-h-40 flex-wrap gap-2 overflow-auto pr-2">
+              {filteredSubtypes.map((subtype) => (
+                <button
+                  key={subtype}
+                  type="button"
+                  onClick={() => setSelectedSubtype(subtype)}
+                  className={`rounded-full border px-3 py-1 text-xs transition ${selectedSubtype === subtype
+                    ? "border-orange-400/40 bg-orange-500/20 text-orange-100"
+                    : "border-white/10 bg-white/5 text-muted-foreground hover:border-orange-400/30 hover:bg-orange-500/10 hover:text-foreground"
+                  }`}
+                >
+                  {subtype}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* SUBTYPE TABLE */}
         <div className="rounded-xl border border-white/10 overflow-hidden mt-4">

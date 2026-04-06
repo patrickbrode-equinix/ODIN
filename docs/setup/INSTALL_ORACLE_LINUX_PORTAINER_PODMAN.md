@@ -25,14 +25,13 @@ sudo dnf install -y podman podman-compose
 ```
 
 **Firewall-Konfiguration (falls `firewalld` aktiv ist):**
-Es müssen die Ports für das Frontend (8000), das Backend (8001) und optional pgAdmin (8003) extern freigegeben werden. 
+Es müssen die Ports für das Frontend (8000) und das Backend (8001) extern freigegeben werden. 
 *Hinweis: Port 8002 (Postgres) sollte standardmäßig **NICHT** nach außen geöffnet werden, da die Applikation intern mit der Datenbank kommuniziert. Falls Postgres-Port 8002 in Compose nach außen published ist, sollte er in Production optional deaktiviert bleiben (Security).*
 
 ```bash
-# Ports für Frontend, Backend und (optional) pgAdmin öffnen
+# Ports für Frontend und Backend öffnen
 sudo firewall-cmd --permanent --add-port=8000/tcp  # Frontend
 sudo firewall-cmd --permanent --add-port=8001/tcp  # Backend API
-sudo firewall-cmd --permanent --add-port=8003/tcp  # pgAdmin (optional)
 
 # Optional: Ports für Portainer öffnen (falls extern erreichbar sein soll)
 # Empfehlung: nur 9443 extern öffnen; 9000 nur intern/VPN.
@@ -91,8 +90,6 @@ Alle notwendigen Variablen werden im Bereich "Environment variables" in Portaine
 | **`VITE_API_BASE_URL`** | `http://<VM-IP>:8001` (oder die HTTPS Domain des Backends) |
 
 *Zusätzlich optionale Variablen:*
-- `PGADMIN_EMAIL`: z.B. `admin@firma.de`
-- `PGADMIN_PASSWORD`: z.B. `PgAdminSecurePass!`
 - `JWT_EXPIRES_IN`: z.B. `12h` oder `7d`
 
 ## 6. Deploy & Verify

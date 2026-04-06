@@ -74,7 +74,6 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "`n=== ODIN Stack is UP ===" -ForegroundColor Green
 Write-Host "  Frontend:       http://localhost:8000"
 Write-Host "  Backend Health: http://localhost:8001/api/health"
-Write-Host "  pgAdmin:        http://localhost:8003"
 Write-Host "`nStreaming logs (Ctrl+C to stop)..." -ForegroundColor Gray
 
 wsl -u root -d $WSLDistro --cd "$WSLRoot" podman-compose -f podman-compose.wsl.yml logs -f --tail 200

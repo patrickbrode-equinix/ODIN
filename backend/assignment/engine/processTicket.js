@@ -13,6 +13,32 @@ import { checkExclusionList } from '../rules/exclusionList.js';
 import { routeHandover } from '../rules/handoverRouter.js';
 import { analyticsTracker } from '../analytics/tracker.js';
 
+function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
+  if (initialCandidates.length === 0) {
+    return 'Keine Mitarbeiter aus der Wochenplanung für das aktuelle Zeitfenster gefunden';
+  }
+
+  const rules = new Set(excludedCandidates.map(candidate => candidate.rule).filter(Boolean));
+
+  if (rules.size === 1 && rules.has('hasUserMapping')) {
+    return 'Mitarbeiter aus der Wochenplanung konnten keinem freigegebenen ODIN-Benutzer zugeordnet werden';
+  }
+
+  if (rules.size === 1 && rules.has('checkRole')) {
+    return `Für Tickettyp ${ticket.type} blieb nach Rollenprüfung kein zulässiger Kandidat übrig`;
+  }
+
+  if (rules.size === 1 && rules.has('isShiftActive')) {
+    return 'Alle Mitarbeiter aus der Wochenplanung liegen außerhalb des aktuellen Schichtfensters';
+  }
+
+  if (rules.has('hasUserMapping') && rules.has('checkRole')) {
+    return 'Rollen- oder Benutzermapping aus der Wochenplanung ist unvollständig';
+  }
+
+  return 'Alle Mitarbeiter aus der Wochenplanung wurden durch Berechtigungs-, Rollen- oder Ausnahme-Regeln ausgeschlossen';
+}
+
 /**
  * Process a single normalized ticket through the full assignment pipeline.
  *
@@ -128,15 +154,26 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
     }
 
     // 4b. Check subtype exclusion list (customer_trouble_type)
-    if (subtypeExclusionList.length > 0 && ticket.customerTroubleType) {
-      const normalizedSubtype = ticket.customerTroubleType.toLowerCase().trim();
-      const subtypeMatch = subtypeExclusionList.find(s => s.toLowerCase().trim() === normalizedSubtype);
+    const subtypeCandidates = [
+      ticket.customerTroubleType,
+      ticket.raw?.customer_trouble_type,
+      ticket.raw?.customerTroubleType,
+      ticket.raw?.subtype,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    if (subtypeExclusionList.length > 0 && subtypeCandidates.length > 0) {
+      const subtypeMatch = subtypeCandidates.find((candidate) =>
+        subtypeExclusionList.some((entry) => entry.toLowerCase().trim() === candidate.toLowerCase().trim())
+      );
+
       if (subtypeMatch) {
         const log = buildDecisionLog({
           ticket,
           result: 'manual_review',
           assignedWorker: null,
-          selectionReason: `Subtype "${ticket.customerTroubleType}" is on the subtype exclusion list → manual review`,
+          selectionReason: `Subtype "${subtypeMatch}" is on the subtype exclusion list → manual review`,
           rulePath: ['relevance', 'override-check', 'exclusion-list', 'subtype-exclusion'],
           initialCandidates: [],
           excludedCandidates: [],
@@ -193,7 +230,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         ticket,
         result: 'no_candidate',
         assignedWorker: null,
-        selectionReason: 'No candidate workers available',
+        selectionReason: buildNoCandidateReason(ticket, initialCandidates, []),
         rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check', 'candidates'],
         initialCandidates: [],
         excludedCandidates: [],
@@ -216,7 +253,19 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         eligibleCandidates.push(worker);
       } else {
         for (const excl of result.exclusions) {
-          excludedCandidates.push({ id: worker.id, name: worker.name, reason: excl.reason, rule: excl.rule });
+          excludedCandidates.push({
+            id: worker.id,
+            name: worker.name,
+            reason: excl.reason,
+            rule: excl.rule,
+            role: worker.role,
+            weekplanRole: worker.weekplanRole || null,
+            shiftCode: worker.shiftCode || null,
+            shiftActive: worker.shiftActive !== false,
+            planningSource: worker.planningSource || null,
+            userMapped: worker.userMapped !== false,
+            plannedEmployeeName: worker.plannedEmployeeName || worker.name,
+          });
         }
       }
     }
@@ -230,9 +279,9 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
     if (eligibleCandidates.length === 0) {
       const log = buildDecisionLog({
         ticket,
-        result: 'manual_review',
+        result: 'no_candidate',
         assignedWorker: null,
-        selectionReason: 'All candidates were excluded by eligibility rules — manual review required',
+        selectionReason: buildNoCandidateReason(ticket, initialCandidates, excludedCandidates),
         rulePath,
         initialCandidates,
         excludedCandidates,

@@ -16,7 +16,7 @@
 - The `podman system connection list` now neatly defaults to the correct socket.
 
 ## STEP 4 — Verification
-- The necessary containers (`odin-postgres`, `odin-backend`, `odin-frontend`, `odin-pgadmin`) are successfully visible again via `podman ps`.
+- The necessary containers (`odin-postgres`, `odin-backend`, `odin-frontend`) are successfully visible again via `podman ps`.
 - **Healthcheck Results:** (http://localhost:8001/api/health)
   - Result: **PASS**
   - Response: `{"status":"ok","timestamp":"..."}`
@@ -31,5 +31,5 @@ Desktop is entirely optional. It views an NPIPE engine machine configuration com
 
 - **Default connection** = `podman-machine-default-root`
 - **`podman ps`** = OK (No more schema format errors / actively refused connects)
-- **ODIN Containers** = RUNNING (postgres, backend, frontend, pgadmin)
+- **ODIN Containers** = RUNNING (postgres, backend, frontend)
 - **Healthcheck Result** = OK (200 OK - `"status":"ok"`)

@@ -17,7 +17,6 @@ router.get("/", async (req, res) => {
   const start = Date.now();
 
   let dbStatus = "unknown";
-  let dbError = null;
 
   try {
     await db.query("SELECT 1");
@@ -26,7 +25,6 @@ router.get("/", async (req, res) => {
     // IMPORTANT: Health should be reachable even if Postgres is down,
     // otherwise the frontend looks "broken" and Vite shows proxy 500s.
     dbStatus = "error";
-    dbError = err?.message || String(err);
     console.error("HEALTH DB ERROR:", err);
   }
 
@@ -34,7 +32,6 @@ router.get("/", async (req, res) => {
   res.json({
     backend: "ok",
     database: dbStatus,
-    databaseError: dbError,
     latencyMs: Date.now() - start,
     timestamp: new Date().toISOString(),
   });
@@ -60,7 +57,6 @@ router.get("/ready", async (req, res) => {
     res.status(503).json({
       ready: false,
       database: "error",
-      error: err?.message || String(err),
       latencyMs: Date.now() - start,
       timestamp: new Date().toISOString(),
     });

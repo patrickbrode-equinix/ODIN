@@ -66,6 +66,13 @@ export interface AssignmentRun {
 export interface CandidateRef {
   id: number;
   name: string;
+  role?: string | null;
+  weekplanRole?: string | null;
+  shiftCode?: string | null;
+  shiftActive?: boolean;
+  planningSource?: string | null;
+  userMapped?: boolean;
+  plannedEmployeeName?: string | null;
 }
 
 export interface ExcludedCandidate {
@@ -73,6 +80,13 @@ export interface ExcludedCandidate {
   name: string;
   reason: string;
   rule?: string;
+  role?: string | null;
+  weekplanRole?: string | null;
+  shiftCode?: string | null;
+  shiftActive?: boolean;
+  planningSource?: string | null;
+  userMapped?: boolean;
+  plannedEmployeeName?: string | null;
 }
 
 export interface AssignmentDecision {
@@ -103,8 +117,10 @@ export interface AssignmentDecision {
 /* ---- Explanation ---- */
 
 export interface TicketExplanationStructured {
+  displayTicketNumber: string | null;
   ticketId: string;
   externalId: string | null;
+  queueOrigin: string | null;
   result: DecisionResult;
   shortReason: string | null;
   ticketType: string | null;
@@ -120,6 +136,8 @@ export interface TicketExplanationStructured {
   selectionReason: string | null;
   rulePath: string[];
   errorMessage: string | null;
+  normalizedTicket: Record<string, unknown> | null;
+  rawTicket: Record<string, unknown> | null;
 }
 
 export interface TicketExplanation {

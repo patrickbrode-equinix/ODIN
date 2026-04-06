@@ -2,7 +2,7 @@
 #  podman-compose.wsl.yml  — WSL2 dev compose (no systemd)
 #
 #  Uses host networking to avoid aardvark-dns issues on WSL2 without systemd.
-#  Services:  postgres | pgadmin | backend | frontend
+#  Services:  postgres | backend | frontend
 #
 #  NOTE: healthcheck: sections are intentionally omitted.
 #  Podman 5.x registers healthcheck timers via systemd, but WSL2 without
@@ -37,28 +37,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-
-  # ── pgAdmin ────────────────────────────────────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: odin-pgadmin
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_LISTEN_PORT: 8003
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
-    depends_on:
-      - postgres
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
@@ -118,4 +96,3 @@ services:
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
-  pgadmin_data:

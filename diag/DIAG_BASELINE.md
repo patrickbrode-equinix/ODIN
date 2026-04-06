@@ -3,7 +3,7 @@
 ## Running Containers
 - **Backend:** `odin-backend:prod` (Port 8001)
 - **Database:** `postgres:15-alpine` (Port 5432)
-- *(Note: Frontend and pgAdmin are also running as defined by compose)*
+- *(Note: Frontend is also running as defined by compose)*
 
 ## Volumes Mounted
 ### `odin-postgres`

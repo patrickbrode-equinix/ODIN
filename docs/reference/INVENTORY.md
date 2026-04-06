@@ -7,7 +7,7 @@
 ├── frontend/           # Vite / React Application
 ├── oes-jarvis-crawler/ # External crawler/ingest tool (not inspected deeply)
 ├── scripts/            # Helper scripts 
-├── docker-compose.yml       # Standard deployment (ports: 8000, 8001, 8002, 8003)
+├── docker-compose.yml       # Standard deployment (ports: 8000, 8001, 8002)
 ├── docker-compose.prod.yml  # Production overrides 
 ├── podman-compose.yml       # Podman deployment equivalent to docker-compose
 ├── .env.example             # Global example environment variables
@@ -19,7 +19,6 @@ There are three main compose files at the root: `docker-compose.yml`, `podman-co
 
 ### Services Started:
 - **`postgres`**: Postgres 15 database. Exposed on port `8002`.
-- **`pgadmin`**: Database management UI. Exposed on port `8003`.
 - **`backend`**: Node.js backend (`dispatcher-backend`). Exposed on port `8001` (default).
 - **`frontend`**: Vite static build (`dispatcher-frontend`). Exposed on port `8000`.
 

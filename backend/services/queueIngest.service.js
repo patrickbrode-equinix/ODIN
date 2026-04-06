@@ -167,6 +167,7 @@ export function normalizePayload(body) {
   const queuesInput     = body.queues;
   const itemsToUpsert   = [];
   const completeTypesSet = new Set();
+  const queueMetaByType = normalizeQueueMetaByType(body);
 
   if (Array.isArray(queuesInput)) {
     for (const q of queuesInput) {
@@ -197,6 +198,7 @@ export function normalizePayload(body) {
   return {
     itemsToUpsert,
     completeTypes: Array.from(completeTypesSet),
+    queueMetaByType,
   };
 }
 
@@ -243,35 +245,190 @@ const UPSERT_SQL = `
     closed_at              = NULL,
     inactive_reason        = NULL,
     is_final_closed        = false,
+    snapshot_removed_at    = NULL,
+    snapshot_removed_run_id = NULL,
     last_seen_at           = NOW(),
     jarvis_seen_at         = NOW(),
     updated_at             = NOW()
 `;
 
 /**
+ * Minimum snapshot ratio threshold.
+ * If a complete queue type has fewer tickets than (previous_active * MIN_RATIO),
+ * we skip deletion for that queue to protect against partial / broken crawls.
+ * E.g. 0.2 = if new snapshot has < 20% of previous, skip deletion for safety.
+ */
+const SNAPSHOT_MIN_RATIO = 0.2;
+
+function toFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+export function normalizeQueueMetaByType(body = {}) {
+  const metaByType = {};
+  const queuesMeta = body.queuesMeta;
+  const queuesInput = body.queues;
+
+  if (queuesMeta && typeof queuesMeta === "object" && !Array.isArray(queuesMeta)) {
+    for (const [rawKey, rawMeta] of Object.entries(queuesMeta)) {
+      const qType = canonicalizeQueueType(rawKey);
+      if (!qType) continue;
+
+      metaByType[qType] = {
+        sourceQueueKey: rawKey,
+        complete: rawMeta?.complete === true,
+        expected: toFiniteNumber(rawMeta?.expected),
+        actual: toFiniteNumber(rawMeta?.actual),
+        attempts: toFiniteNumber(rawMeta?.attempts),
+      };
+    }
+  }
+
+  if (Array.isArray(queuesInput)) {
+    for (const q of queuesInput) {
+      const qType = canonicalizeQueueType(q?.queueType);
+      if (!qType) continue;
+
+      const current = metaByType[qType] || {};
+      metaByType[qType] = {
+        sourceQueueKey: current.sourceQueueKey || q?.queueType || qType,
+        complete: current.complete === true || q?.complete === true,
+        expected: current.expected ?? toFiniteNumber(q?.expected ?? q?.expectedCount ?? q?.items?.length),
+        actual: current.actual ?? toFiniteNumber(q?.actual ?? q?.actualCount ?? q?.items?.length),
+        attempts: current.attempts ?? toFiniteNumber(q?.attempts),
+      };
+    }
+  } else if (queuesInput && typeof queuesInput === "object") {
+    const typeMap = { smartHands: "SmartHands", ccInstalls: "CCInstalls", troubleTickets: "TroubleTickets", deinstalls: "Deinstall" };
+    for (const [rawKey, qType] of Object.entries(typeMap)) {
+      if (!Array.isArray(queuesInput[rawKey])) continue;
+
+      const current = metaByType[qType] || {};
+      metaByType[qType] = {
+        sourceQueueKey: current.sourceQueueKey || rawKey,
+        complete: current.complete === true || true,
+        expected: current.expected ?? queuesInput[rawKey].length,
+        actual: current.actual ?? queuesInput[rawKey].length,
+        attempts: current.attempts ?? null,
+      };
+    }
+  }
+
+  return metaByType;
+}
+
+export function isCrawlerConfirmedComplete(queueMeta) {
+  if (!queueMeta || queueMeta.complete !== true) return false;
+  return queueMeta.expected !== null && queueMeta.actual !== null && queueMeta.expected === queueMeta.actual;
+}
+
+export function buildDeletionPlan({ completeTypes, beforeCountByType, incomingCountByType, queueMetaByType = {}, minRatio = SNAPSHOT_MIN_RATIO }) {
+  const safeForDeletion = new Set();
+  const deletionSkipped = {};
+
+  for (const qt of completeTypes) {
+    const before = beforeCountByType[qt] || 0;
+    const incoming = incomingCountByType[qt] || 0;
+    const queueMeta = queueMetaByType[qt] || null;
+
+    if (before === 0) {
+      safeForDeletion.add(qt);
+      continue;
+    }
+
+    if (isCrawlerConfirmedComplete(queueMeta)) {
+      safeForDeletion.add(qt);
+      continue;
+    }
+
+    if (incoming === 0 && before > 5) {
+      console.warn(`[CRAWLER INGEST] SAFETY: ${qt} snapshot has 0 items but ${before} were active — skipping deletion (possible broken crawl)`);
+      deletionSkipped[qt] = { reason: 'empty_snapshot', before, incoming };
+      continue;
+    }
+
+    const ratio = before > 0 ? incoming / before : 1;
+    if (ratio < minRatio && before > 5) {
+      console.warn(`[CRAWLER INGEST] SAFETY: ${qt} snapshot ratio ${(ratio * 100).toFixed(1)}% (${incoming}/${before}) below ${minRatio * 100}% threshold — skipping deletion`);
+      deletionSkipped[qt] = { reason: 'low_ratio', ratio: ratio.toFixed(3), before, incoming, threshold: minRatio };
+      continue;
+    }
+
+    safeForDeletion.add(qt);
+  }
+
+  return {
+    safeForDeletion,
+    deletionSkipped,
+  };
+}
+
+/**
  * Persist a queue snapshot to the database.
  * Handles upserts, mark-missing logic, expired archive, and run log.
+ *
+ * Safety: For each complete queue type, validates that the new snapshot
+ * is not suspiciously small (< 20% of prior active count). If so, skips
+ * deletion for that queue type to prevent mass data loss from broken crawls.
  *
  * @param {object[]} itemsToUpsert - mapped DB rows
  * @param {string[]} completeTypes - queue types that were fully scraped
  * @param {string}   nowIso        - snapshot timestamp ISO string
- * @returns {{ processed, active_seen, new_count, gone_count, complete_types }}
+ * @param {object}   [options]
+ * @param {object}   [options.queueMetaByType]
+ * @returns {{ processed, active_seen, new_count, gone_count, complete_types, deletionSkipped }}
  */
-export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
+export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso, options = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const queueMetaByType = options.queueMetaByType || {};
 
-    // Snapshot active state before upserts
+    // ── PRE-SNAPSHOT: count active tickets per queue type ──
     const beforeRes = await client.query(
       `SELECT queue_type, external_id FROM queue_items WHERE active = true AND is_final_closed = false`
     );
     const beforeSet = new Set(beforeRes.rows.map((r) => `${r.queue_type}::${r.external_id}`));
-    const seenSet   = new Set();
 
-    // Upsert all items
+    // Count per queue type BEFORE
+    const beforeCountByType = {};
+    for (const r of beforeRes.rows) {
+      beforeCountByType[r.queue_type] = (beforeCountByType[r.queue_type] || 0) + 1;
+    }
+
+    const seenSet = new Set();
+
+    // Count per queue type in INCOMING snapshot
+    const incomingCountByType = {};
+    for (const it of itemsToUpsert) {
+      incomingCountByType[it.queue_type] = (incomingCountByType[it.queue_type] || 0) + 1;
+    }
+
+    console.log(`[CRAWLER INGEST] === Snapshot Start ===`);
+    console.log(`[CRAWLER INGEST] Complete types: ${completeTypes.join(', ') || '(none)'}`);
+    console.log(`[CRAWLER INGEST] Incoming items: ${itemsToUpsert.length}`);
+    for (const qt of completeTypes) {
+      const before = beforeCountByType[qt] || 0;
+      const incoming = incomingCountByType[qt] || 0;
+      console.log(`[CRAWLER INGEST]   ${qt}: before=${before} incoming=${incoming}`);
+    }
+
+    // ── SNAPSHOT SAFETY: determine which queue types are safe for deletion ──
+    const { safeForDeletion, deletionSkipped } = buildDeletionPlan({
+      completeTypes,
+      beforeCountByType,
+      incomingCountByType,
+      queueMetaByType,
+    });
+
+    // ── UPSERT all items ──
+    let upsertCount = 0;
+    let updateCount = 0;
     for (const it of itemsToUpsert) {
       seenSet.add(`${it.queue_type}::${it.external_id}`);
+      const existed = beforeSet.has(`${it.queue_type}::${it.external_id}`);
       await client.query(UPSERT_SQL, [
         it.queue_type, it.external_id, it.group_key,
         it.so_number || "", it.status || "", it.owner || "", it.severity || "",
@@ -281,11 +438,29 @@ export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
         it.subtype || "", it.system_name || "", it.account_name || "", it.customer_trouble_type || "",
         JSON.stringify(it.raw_json || {}),
       ]);
+      if (existed) updateCount++;
+      else upsertCount++;
     }
 
-    // Mark missing (only for complete types)
-    const completeSet    = new Set(completeTypes.map(String));
-    const candidatesRes  = await client.query(
+    const runRes = await client.query(
+      `INSERT INTO crawler_runs (snapshot_at, complete_types_json, total_active, new_count, gone_count, success, error_message, details_json)
+       VALUES ($1, $2::jsonb, 0, 0, 0, true, NULL, $3::jsonb) RETURNING id`,
+      [
+        nowIso,
+        JSON.stringify(completeTypes),
+        JSON.stringify({
+          before_count_by_type: beforeCountByType,
+          incoming_count_by_type: incomingCountByType,
+          queue_meta_by_type: queueMetaByType,
+          safe_for_deletion: Array.from(safeForDeletion),
+          deletion_skipped: deletionSkipped,
+        }),
+      ]
+    );
+    const runId = runRes.rows?.[0]?.id;
+
+    // ── MARK MISSING (only for complete types that pass safety check) ──
+    const candidatesRes = await client.query(
       `SELECT queue_type, external_id, status, missing_count,
               commit_date, revised_commit_date,
               owner, group_key, first_seen_at, last_seen_at,
@@ -294,22 +469,29 @@ export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
     );
 
     let goneCount = 0;
+    let archivedCount = 0;
+    const goneByType = {};
+    const goneItems = [];
     for (const r of candidatesRes.rows) {
-      if (!completeSet.has(String(r.queue_type))) continue;
+      // Only process queue types that were fully scraped AND passed safety check
+      if (!safeForDeletion.has(String(r.queue_type))) continue;
       const k = `${r.queue_type}::${r.external_id}`;
       if (seenSet.has(k)) continue;
 
-      const newMissing      = Number(r.missing_count || 0) + 1;
-      const shouldClose     = isClosedStatus(r.status) || newMissing >= 2;
+      // Ticket not in current snapshot → mark inactive immediately
+      const newMissing = Number(r.missing_count || 0) + 1;
       const inactive_reason = isClosedStatus(r.status) ? "CLOSED" : "TICKET_GONE";
 
       await client.query(
         `UPDATE queue_items SET active = false, missing_count = $1, closed_at = COALESCE(closed_at, NOW()),
-                inactive_reason = $2, is_final_closed = $3
-         WHERE queue_type = $4 AND external_id = $5`,
-        [newMissing, inactive_reason, shouldClose, r.queue_type, r.external_id]
+                inactive_reason = $2, is_final_closed = true,
+                snapshot_removed_at = NOW(), snapshot_removed_run_id = $5
+         WHERE queue_type = $3 AND external_id = $4`,
+        [newMissing, inactive_reason, r.queue_type, r.external_id, runId || null]
       );
       goneCount++;
+      goneItems.push(k);
+      goneByType[r.queue_type] = (goneByType[r.queue_type] || 0) + 1;
 
       // Archive to expired_tickets if commit exceeded
       const commitMs =
@@ -335,21 +517,44 @@ export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
             r.first_seen_at, r.last_seen_at, JSON.stringify(r.raw_json || {}),
           ]
         );
+        archivedCount++;
       }
     }
 
-    // Run log + deltas
+    // ── RUN LOG + DELTAS ──
     const newItems  = [...seenSet].filter((k) => !beforeSet.has(k));
-    const goneItems = [...beforeSet].filter((k) => !seenSet.has(k));
-
-    const runRes = await client.query(
-      `INSERT INTO crawler_runs (snapshot_at, complete_types_json, total_active, new_count, gone_count, success, error_message)
-       VALUES ($1, $2::jsonb, $3, $4, $5, true, NULL) RETURNING id`,
-      [nowIso, JSON.stringify(completeTypes), itemsToUpsert.length, newItems.length, goneItems.length]
+    const activeCountRes = await client.query(
+      `SELECT COUNT(*)::int AS cnt FROM queue_items WHERE active = true AND is_final_closed = false`
     );
-    const runId = runRes.rows?.[0]?.id;
+    const activeTotal = activeCountRes.rows?.[0]?.cnt || 0;
 
     if (runId) {
+      await client.query(
+        `UPDATE crawler_runs
+         SET total_active = $2,
+             new_count = $3,
+             gone_count = $4,
+             details_json = $5::jsonb
+         WHERE id = $1`,
+        [
+          runId,
+          activeTotal,
+          newItems.length,
+          goneItems.length,
+          JSON.stringify({
+            before_count_by_type: beforeCountByType,
+            incoming_count_by_type: incomingCountByType,
+            queue_meta_by_type: queueMetaByType,
+            safe_for_deletion: Array.from(safeForDeletion),
+            deletion_skipped: deletionSkipped,
+            inserted_count: upsertCount,
+            updated_count: updateCount,
+            archived_count: archivedCount,
+            gone_by_type: goneByType,
+          }),
+        ]
+      );
+
       for (const k of newItems) {
         const [queue_type, external_id] = k.split("::");
         await client.query(
@@ -370,9 +575,20 @@ export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
 
     await client.query("COMMIT");
 
-    console.log(
-      `[CRAWLER INGEST] OK: ${itemsToUpsert.length} upserted, ${newItems.length} new, ${goneCount} gone. Types: ${completeTypes.join(", ")}`
-    );
+    // ── DETAILED LOG ──
+    console.log(`[CRAWLER INGEST] === Snapshot Complete ===`);
+    console.log(`[CRAWLER INGEST]   Upserted: ${itemsToUpsert.length} (${upsertCount} new inserts, ${updateCount} updates)`);
+    console.log(`[CRAWLER INGEST]   Removed (marked inactive+final_closed): ${goneCount}`);
+    if (Object.keys(goneByType).length > 0) {
+      for (const [qt, cnt] of Object.entries(goneByType)) {
+        console.log(`[CRAWLER INGEST]     ${qt}: ${cnt} tickets removed`);
+      }
+    }
+    console.log(`[CRAWLER INGEST]   Archived to expired_tickets: ${archivedCount}`);
+    if (Object.keys(deletionSkipped).length > 0) {
+      console.warn(`[CRAWLER INGEST]   Deletion SKIPPED for: ${JSON.stringify(deletionSkipped)}`);
+    }
+    console.log(`[CRAWLER INGEST]   Run ID: ${runId || '(none)'}`);
 
     return {
       processed:      itemsToUpsert.length,
@@ -380,6 +596,11 @@ export async function persistSnapshot(itemsToUpsert, completeTypes, nowIso) {
       new_count:      newItems.length,
       gone_count:     goneCount,
       complete_types: completeTypes,
+      updated_count:  updateCount,
+      inserted_count: upsertCount,
+      archived_count: archivedCount,
+      deletion_skipped: Object.keys(deletionSkipped).length > 0 ? deletionSkipped : undefined,
+      gone_by_type:   Object.keys(goneByType).length > 0 ? goneByType : undefined,
     };
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch { /* ignore */ }

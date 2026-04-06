@@ -41,14 +41,16 @@ import { CRAWLER_MAX_AGE_MS } from '../constants.js';
  * @param {string} [options.modeOverride] - Override mode
  * @returns {object} Run summary
  */
-export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
+export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawlerCheck } = {}) {
   let run = null;
   const decisions = [];
+  let summaryExtras = {};
 
   try {
     // 1. Load settings
     const settings = await assignmentSettingsService.getEngineConfig();
     const mode = modeOverride || settings.mode;
+    const executionSettings = { ...settings, mode, executionMode: mode };
 
     // Live mode safety: only allow if explicitly enabled
     if (mode === 'live') {
@@ -63,11 +65,14 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     console.log(`[ASSIGNMENT] Run #${run.id} started (mode: ${mode}, triggered by: ${triggeredBy || 'system'})`);
 
     // 3. CRAWLER STALENESS CHECK — Global Safety Rule
+    // Can be skipped for dry-run/shadow mode when explicitly requested
     const lastCrawlerTimestamp = await loadLastCrawlerTimestamp();
-    const maxAgeMs = (parseInt(settings.crawlerMaxAgeMinutes) || 10) * 60 * 1000;
+    const maxAgeMs = (parseInt(executionSettings.crawlerMaxAgeMinutes) || 10) * 60 * 1000;
     const freshness = checkCrawlerFreshness(lastCrawlerTimestamp, Date.now(), maxAgeMs);
 
-    if (!freshness.fresh) {
+    const crawlerOverrideActive = skipCrawlerCheck && (mode === 'shadow' || mode === 'dry-run');
+
+    if (!freshness.fresh && !crawlerOverrideActive) {
       console.warn(`[ASSIGNMENT] CRAWLER STALE: ${freshness.reason}`);
       decisions.push({
         ticketId: '_crawler_guard',
@@ -78,6 +83,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
         failureReason: 'Crawler-Daten zu alt – die zuletzt empfangenen Ticketdaten überschreiten das erlaubte Maximalalter.',
         failureStep: 'crawler_freshness_check',
         errorCategory: 'controlled_stop',
+        summaryExtras,
       });
       return {
         runId: run.id,
@@ -87,7 +93,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
         crawlerReason: freshness.reason,
         totalTickets: 0,
         decisions,
-        summary: buildRunSummary(decisions),
+        summary: buildRunSummary(decisions, summaryExtras),
       };
     }
 
@@ -97,19 +103,25 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
       WHERE active = true
       ORDER BY id
       LIMIT $1
-    `, [parseInt(settings.maxTicketsPerRun) || 500]);
+    `, [parseInt(executionSettings.maxTicketsPerRun) || 500]);
 
     console.log(`[ASSIGNMENT] Loaded ${rawTickets.length} raw tickets`);
 
     if (rawTickets.length === 0) {
-      await persistAssignmentRun(run.id, [], 'completed');
+      console.warn(`[ASSIGNMENT] Run #${run.id}: 0 active tickets in queue_items — nothing to process`);
+      await persistAssignmentRun(run.id, [], 'completed', { summaryExtras });
       return {
         runId: run.id,
         mode,
         status: 'completed',
+        persisted: false,
+        simulation: mode !== 'live',
         totalTickets: 0,
+        relevantTickets: 0,
+        notRelevantTickets: 0,
         decisions: [],
-        summary: buildRunSummary([]),
+        summary: buildRunSummary([], summaryExtras),
+        warnings: ['Keine aktiven Tickets in der Datenbank gefunden — prüfe ob der Crawler aktuelle Daten geliefert hat'],
       };
     }
 
@@ -129,7 +141,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     const relevant = [];
     const notRelevant = [];
     for (const ticket of routed) {
-      const rel = checkRelevance(ticket, settings);
+      const rel = checkRelevance(ticket, executionSettings);
       if (rel.relevant) {
         relevant.push(ticket);
       } else {
@@ -146,6 +158,14 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     const allWorkers = await loadCandidateWorkers();
     const candidatePool = buildCandidatePool(allWorkers);
     const workerTicketsMap = await loadWorkerCurrentTickets(candidatePool);
+
+    summaryExtras = {
+      rawQueueTicketCount: rawTickets.length,
+      loadedEmployeesFromWeeklyPlan: allWorkers.length,
+      loadedRolesFromWeeklyPlan: allWorkers.filter(worker => !!worker.weekplanRole).length,
+      loadedCandidatesInCurrentWindow: candidatePool.filter(worker => worker.shiftActive !== false).length,
+      unmappedWeeklyPlanEmployees: allWorkers.filter(worker => worker.userMapped === false).length,
+    };
 
     console.log(`[ASSIGNMENT] ${allWorkers.length} workers loaded, ${candidatePool.length} in candidate pool`);
 
@@ -164,21 +184,22 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     }
 
     // Process relevant tickets in priority order
-    const stopOnError = settings.stopOnCriticalError === 'true';
+    const stopOnError = executionSettings.stopOnCriticalError === 'true';
     for (const ticket of sorted) {
       try {
-        const decision = await processTicket(ticket, candidatePool, settings, run.id, workerTicketsMap, exclusionList, subtypeExclusionList);
+        const decision = await processTicket(ticket, candidatePool, executionSettings, run.id, workerTicketsMap, exclusionList, subtypeExclusionList);
         decisions.push(decision);
       } catch (err) {
         console.error(`[ASSIGNMENT] Critical error processing ticket ${ticket.id}:`, err.message);
         decisions.push({ ticketId: ticket.id, result: 'error', errorMessage: err.message });
         if (stopOnError) {
           console.warn(`[ASSIGNMENT] Stopping run due to stopOnCriticalError`);
-          const summary = buildRunSummary(decisions);
+          const summary = buildRunSummary(decisions, summaryExtras);
           await persistAssignmentRun(run.id, decisions, 'failed', {
             failureReason: `Run wegen kritischem Fehler gestoppt: ${err.message}`,
             failureStep: 'ticket_processing',
             errorCategory: 'critical_error_stop',
+            summaryExtras,
           });
           return {
             runId: run.id,
@@ -194,19 +215,46 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
     }
 
     // 12. Finalize run
-    const summary = buildRunSummary(decisions);
-    await persistAssignmentRun(run.id, decisions, 'completed');
+    const summary = buildRunSummary(decisions, summaryExtras);
+    await persistAssignmentRun(run.id, decisions, 'completed', { summaryExtras });
 
-    console.log(`[ASSIGNMENT] Run #${run.id} completed: ${JSON.stringify(summary)}`);
+    // Determine honest success evaluation
+    const isSimulation = mode === 'shadow' || mode === 'dry-run';
+    const hasAssignments = summary.assigned > 0;
+    const hasErrors = summary.error > 0;
+    const qualifiedStatus = hasErrors && !hasAssignments ? 'completed_with_errors' : 'completed';
+
+    console.log(`[ASSIGNMENT] Run #${run.id} completed (${mode}): ${JSON.stringify(summary)}`);
+    if (isSimulation) {
+      console.log(`[ASSIGNMENT] Mode "${mode}" — decisions logged but NO ticket assignments persisted to queue_items`);
+    }
+    if (!hasAssignments && relevant.length > 0) {
+      console.warn(`[ASSIGNMENT] WARNING: ${relevant.length} relevant tickets but 0 assigned — check eligibility rules and candidate pool`);
+    }
 
     return {
       runId: run.id,
       mode,
-      status: 'completed',
+      status: qualifiedStatus,
+      persisted: mode === 'live',
+      simulation: isSimulation,
+      simulationNote: isSimulation
+        ? `${mode === 'shadow' ? 'Shadow' : 'Dry-Run'}-Modus: Entscheidungen wurden protokolliert, aber KEINE Ticketzuweisungen in queue_items geschrieben.`
+        : undefined,
+      crawlerOverride: crawlerOverrideActive || false,
+      crawlerOverrideWarning: crawlerOverrideActive
+        ? 'Crawler-Aktualitätsprüfung wurde übersprungen. Ergebnisse basieren möglicherweise auf veralteten Daten.'
+        : undefined,
       totalTickets: rawTickets.length,
       relevantTickets: relevant.length,
+      notRelevantTickets: notRelevant.length,
       decisions,
       summary,
+      warnings: [
+        ...((!hasAssignments && relevant.length > 0) ? [`Keine Zuweisungen trotz ${relevant.length} relevanter Tickets — prüfe Kandidatenpool und Berechtigungsregeln`] : []),
+        ...(hasErrors ? [`${summary.error} Tickets mit Fehlern`] : []),
+        ...((rawTickets.length === 0) ? ['Keine aktiven Tickets in der Datenbank gefunden'] : []),
+      ].filter(Boolean),
     };
 
   } catch (err) {
@@ -217,6 +265,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride } = {}) {
           failureReason: err.message,
           failureStep: 'engine_execution',
           errorCategory: 'technical_error',
+          summaryExtras,
         });
       } catch (_) { /* best effort */ }
     }

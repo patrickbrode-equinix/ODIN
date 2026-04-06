@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OES Jarvis Queue Crawler",
-  "version": "1.2.0",
-  "description": "Extracts SmartHands, TroubleTickets, CC Installs and Deinstalls and uploads them to ODIN (configurable target URL).",
+  "version": "1.3.0",
+  "description": "Extracts SmartHands, TroubleTickets, CC Installs and Deinstalls and uploads them to ODIN (configurable target URL). Supports queue selection, backend preflight, and robust wait logic.",
   "permissions": [
     "alarms",
     "tabs",

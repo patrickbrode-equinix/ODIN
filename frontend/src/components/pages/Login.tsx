@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { Eye, EyeOff, Info } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -37,6 +38,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   /* ------------------------------------------------ */
   /* LOGIN HANDLER                                   */
@@ -102,12 +104,22 @@ export default function Login() {
           </CardHeader>
 
           <CardContent className="space-y-6">
+            {/* Login hint */}
+            <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 border border-blue-400/20 p-3">
+              <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-200/80">
+                Melde dich mit deiner <strong>Firmen-E-Mail-Adresse</strong> an.
+                Falls du noch kein Konto hast, kannst du dich unten registrieren.
+              </p>
+            </div>
+
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email">E-Mail</Label>
                 <Input
                   id="email"
                   type="email"
+                  placeholder="vorname.nachname@firma.de"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -118,18 +130,32 @@ export default function Login() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Passwort</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 text-center">{error}</p>
+                <div className="rounded-lg bg-red-500/10 border border-red-400/20 p-3">
+                  <p className="text-sm text-red-400 text-center">{error}</p>
+                </div>
               )}
 
               <Button

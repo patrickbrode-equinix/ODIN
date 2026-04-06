@@ -167,6 +167,97 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // keep message channel open for async sendResponse
   }
 
+  // ✅ Preflight check: verify backend is reachable before scraping
+  if (msg?.type === "OES_PREFLIGHT_CHECK") {
+    (async () => {
+      const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
+      const rawBase = (stored?.odin_base_url || "http://fr2lxcops01.corp.equinix.com:8001").replace(/\/$/, "");
+      const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
+
+      log("[Preflight] Checking backend reachability...");
+
+      let healthUrl;
+      try {
+        healthUrl = new URL("/api/queue/snapshot", rawBase).toString();
+      } catch (urlErr) {
+        err("[Preflight] Invalid odin_base_url:", rawBase, urlErr);
+        sendResponse({ ok: false, error: `Invalid odin_base_url: ${rawBase}` });
+        return;
+      }
+
+      try {
+        // Use OPTIONS or a small HEAD-like request to the snapshot endpoint
+        // Many APIs don't support HEAD/OPTIONS, so we use a GET to a health-style path first,
+        // and fall back to the snapshot endpoint with a minimal probe.
+        let probeUrl;
+        try {
+          probeUrl = new URL("/api/health", rawBase).toString();
+        } catch {
+          probeUrl = healthUrl;
+        }
+
+        log(`[Preflight] Trying health endpoint: ${probeUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        let res;
+        try {
+          res = await fetch(probeUrl, {
+            method: "GET",
+            headers: { "X-OES-INGEST-KEY": ingestKey },
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          // If /api/health doesn't exist, try the snapshot endpoint with OPTIONS
+          if (probeUrl !== healthUrl) {
+            log(`[Preflight] Health endpoint failed (${fetchErr?.message}), trying snapshot endpoint...`);
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 8000);
+            try {
+              res = await fetch(healthUrl, {
+                method: "OPTIONS",
+                headers: { "X-OES-INGEST-KEY": ingestKey },
+                signal: controller2.signal
+              });
+              clearTimeout(timeoutId2);
+            } catch (fetchErr2) {
+              clearTimeout(timeoutId2);
+              throw fetchErr2;
+            }
+          } else {
+            throw fetchErr;
+          }
+        }
+
+        // Check that the response is not an HTML error page
+        const contentType = res.headers.get("content-type") || "";
+        const bodyText = await res.text().catch(() => "");
+
+        if (bodyText.includes("<!DOCTYPE") || bodyText.includes("<html")) {
+          err(`[Preflight] Backend returned HTML error page (status=${res.status}). Not a valid API response.`);
+          sendResponse({ ok: false, error: `Backend returned HTML error page (status=${res.status})` });
+          return;
+        }
+
+        // Accept 2xx, 3xx, 404 (endpoint exists but no GET), 405 (Method Not Allowed = endpoint exists)
+        if (res.status >= 200 && res.status < 500) {
+          log(`[Preflight] Backend reachable: status=${res.status} contentType=${contentType}`);
+          sendResponse({ ok: true, status: res.status, baseUrl: rawBase });
+        } else {
+          err(`[Preflight] Backend returned server error: status=${res.status}`);
+          sendResponse({ ok: false, error: `Backend server error: status=${res.status}` });
+        }
+      } catch (e) {
+        err(`[Preflight] Backend NOT reachable: ${e?.message || e}`);
+        sendResponse({ ok: false, error: `Backend not reachable: ${e?.message || e}` });
+      }
+    })();
+
+    return true; // keep message channel open for async sendResponse
+  }
+
   // default response (optional)
   // sendResponse({ ok: true });
 });

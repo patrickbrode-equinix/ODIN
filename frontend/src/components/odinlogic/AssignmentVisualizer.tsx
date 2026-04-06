@@ -8,6 +8,7 @@ import { CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight, Users, 
 import { AssignmentApi } from "../../api/assignment";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import type { AssignmentRun, AssignmentDecision, CandidateRef, ExcludedCandidate } from "../../types/assignment";
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId } from "../../utils/assignmentTicketDisplay";
 
 /* ---- Result styles ---- */
 const RESULT_STYLES: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
@@ -48,11 +49,14 @@ export default function AssignmentVisualizer({ runs }: Props) {
 
   // Filter decisions
   const filtered = decisions.filter(d => {
+    const displayTicketNumber = getAssignmentDisplayTicketNumber(d).toLowerCase();
+    const internalTicketId = getAssignmentInternalTicketId(d)?.toLowerCase() || '';
     if (resultFilter !== "all" && d.result !== resultFilter) return false;
     if (search) {
       const s = search.toLowerCase();
       return (
-        d.ticket_id?.toLowerCase().includes(s) ||
+        displayTicketNumber.includes(s) ||
+        internalTicketId.includes(s) ||
         d.assigned_worker_name?.toLowerCase().includes(s) ||
         d.ticket_type?.toLowerCase().includes(s) ||
         d.external_id?.toLowerCase().includes(s)
@@ -189,6 +193,8 @@ export default function AssignmentVisualizer({ runs }: Props) {
 function DecisionCard({ decision: d, expanded, onToggle }: { decision: AssignmentDecision; expanded: boolean; onToggle: () => void }) {
   const style = RESULT_STYLES[d.result] || RESULT_STYLES.error;
   const Icon = style.icon;
+  const displayTicketNumber = getAssignmentDisplayTicketNumber(d);
+  const internalTicketId = getAssignmentInternalTicketId(d);
 
   return (
     <div className={`rounded-lg border ${style.bg} overflow-hidden`}>
@@ -199,7 +205,10 @@ function DecisionCard({ decision: d, expanded, onToggle }: { decision: Assignmen
         </span>
         <Icon className={`w-4 h-4 shrink-0 ${style.color}`} />
         <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="font-mono text-xs text-foreground font-semibold">{d.ticket_id}</span>
+          <span className="font-mono text-xs text-foreground font-semibold">{displayTicketNumber}</span>
+          {internalTicketId && internalTicketId !== displayTicketNumber && (
+            <span className="text-[10px] text-muted-foreground">DB-ID {internalTicketId}</span>
+          )}
           {d.ticket_type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-muted-foreground">{d.ticket_type}</span>}
           {d.ticket_priority && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-muted-foreground">{d.ticket_priority}</span>}
           {d.ticket_site && <span className="text-[10px] text-muted-foreground">Site: {d.ticket_site}</span>}
@@ -261,6 +270,7 @@ function DecisionCard({ decision: d, expanded, onToggle }: { decision: Assignmen
                   <div key={c.id} className="text-xs px-2 py-1 rounded bg-white/5 flex items-center gap-1.5">
                     <User className="w-3 h-3 text-blue-400" />
                     <span>{c.name}</span>
+                    {(c.shiftCode || c.weekplanRole || c.role) && <span className="text-[10px] text-muted-foreground">{[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>}
                     <span className="text-muted-foreground text-[10px]">#{c.id}</span>
                   </div>
                 )) || <div className="text-xs text-muted-foreground">Keine Daten</div>}
@@ -278,6 +288,7 @@ function DecisionCard({ decision: d, expanded, onToggle }: { decision: Assignmen
                     <div className="flex items-center gap-1.5">
                       <XCircle className="w-3 h-3 text-red-400 shrink-0" />
                       <span>{c.name}</span>
+                      {(c.shiftCode || c.weekplanRole || c.role) && <span className="text-[10px] text-red-300/70">{[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>}
                     </div>
                     <div className="text-[10px] text-red-300/70 ml-4.5 mt-0.5">
                       {c.rule && <span className="font-mono mr-1">[{c.rule}]</span>}
@@ -305,6 +316,7 @@ function DecisionCard({ decision: d, expanded, onToggle }: { decision: Assignmen
                     >
                       <User className={`w-3 h-3 ${isWinner ? "text-green-400" : "text-muted-foreground"}`} />
                       <span>{c.name}</span>
+                      {(c.shiftCode || c.weekplanRole || c.role) && <span className="text-[10px] text-muted-foreground">{[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>}
                       {isWinner && <span className="text-[10px] text-green-400 ml-auto">★ Zugewiesen</span>}
                     </div>
                   );

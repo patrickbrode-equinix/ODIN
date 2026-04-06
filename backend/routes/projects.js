@@ -6,12 +6,13 @@
 import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { broadcast } from "./sse.js";
 
 const router = express.Router();
 
 /* GET /api/projects */
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAuth, requirePageAccess("dashboard", "view"), async (req, res) => {
   try {
     const { status } = req.query;
     let query = "SELECT * FROM projects";
@@ -33,7 +34,7 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 /* GET /api/projects/:id */
-router.get("/:id", requireAuth, async (req, res) => {
+router.get("/:id", requireAuth, requirePageAccess("dashboard", "view"), async (req, res) => {
   try {
     const { rows } = await db.query("SELECT * FROM projects WHERE id = $1", [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
@@ -44,7 +45,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 });
 
 /* POST /api/projects */
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, requirePageAccess("dashboard", "write"), async (req, res) => {
   try {
     const { name, creator, responsible, expected_done, progress = 0, description } = req.body;
     if (!name || !creator) {
@@ -68,7 +69,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 /* PATCH /api/projects/:id */
-router.patch("/:id", requireAuth, async (req, res) => {
+router.patch("/:id", requireAuth, requirePageAccess("dashboard", "write"), async (req, res) => {
   try {
     const { name, responsible, expected_done, progress, description, status } = req.body;
     const { rows } = await db.query(
@@ -94,7 +95,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
 });
 
 /* DELETE /api/projects/:id */
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", requireAuth, requirePageAccess("dashboard", "write"), async (req, res) => {
   try {
     await db.query("DELETE FROM projects WHERE id = $1", [req.params.id]);
     res.json({ success: true });

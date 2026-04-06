@@ -23,6 +23,7 @@ const router = express.Router();
 
 /* All assignment routes require auth */
 router.use(requireAuth);
+router.use(requirePageAccess('odin_logic', 'view'));
 
 /* ------------------------------------------------ */
 /* HEALTH                                           */
@@ -140,15 +141,104 @@ router.post('/engine/stop', requirePageAccess('settings', 'write'), async (req, 
 
 router.post('/runs/execute', requirePageAccess('settings', 'write'), async (req, res) => {
   try {
+    const { mode, skipCrawlerCheck } = req.body || {};
     const result = await runAssignmentCycle({
       triggeredBy: req.user?.email || 'manual',
-      modeOverride: req.body?.mode,
+      modeOverride: mode,
+      skipCrawlerCheck: skipCrawlerCheck === true,
     });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+/* Detailed run report with full decision breakdown */
+router.get('/runs/:runId/report', async (req, res) => {
+  try {
+    const runId = parseInt(req.params.runId);
+    const run = await assignmentRunRepository.findById(runId);
+    if (!run) return res.status(404).json({ ok: false, error: 'Run not found' });
+
+    // Load all decisions for this run
+    const decisions = await assignmentDecisionRepository.findAll({ runId, limit: 1000 });
+
+    // Categorize decisions
+    const assigned = decisions.filter(d => d.result === 'assigned');
+    const unassigned = decisions.filter(d => d.result !== 'assigned' && d.result !== 'not_relevant');
+    const notRelevant = decisions.filter(d => d.result === 'not_relevant');
+
+    // Build summary
+    const summary = {};
+    for (const d of decisions) {
+      summary[d.result] = (summary[d.result] || 0) + 1;
+    }
+
+    // Validate ticket counts
+    const totalProcessed = decisions.length;
+    const totalAssigned = assigned.length;
+    const totalUnassigned = unassigned.length;
+    const totalNotRelevant = notRelevant.length;
+    const countConsistent = totalProcessed === (totalAssigned + totalUnassigned + totalNotRelevant);
+
+    res.json({
+      ok: true,
+      report: {
+        runId: run.id,
+        mode: run.mode,
+        status: run.status,
+        triggeredBy: run.triggered_by,
+        startedAt: run.started_at,
+        completedAt: run.completed_at,
+        crawlerOverride: run.crawler_override || false,
+        summary,
+        validation: {
+          totalProcessed,
+          totalAssigned,
+          totalUnassigned,
+          totalNotRelevant,
+          countConsistent,
+          warning: !countConsistent ? `Inkonsistenz: ${totalProcessed} ≠ ${totalAssigned} + ${totalUnassigned} + ${totalNotRelevant}` : null,
+        },
+        assigned: assigned.map(d => ({
+          ticketId: d.ticket_external_id,
+          queueType: d.queue_type,
+          assignedTo: d.assigned_to,
+          reason: d.selection_reason || d.rule_path?.join(' → ') || 'Regelbasierte Zuweisung',
+          candidates: d.candidates_evaluated,
+          exclusionReasons: d.exclusion_reasons,
+        })),
+        unassigned: unassigned.map(d => ({
+          ticketId: d.ticket_external_id,
+          queueType: d.queue_type,
+          result: d.result,
+          reason: d.selection_reason || d.exclusion_reasons?.[0]?.reason || resultToGerman(d.result),
+          details: d.exclusion_reasons,
+        })),
+        notRelevant: notRelevant.map(d => ({
+          ticketId: d.ticket_external_id,
+          queueType: d.queue_type,
+          reason: 'Nicht relevant für automatische Zuweisung',
+        })),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+function resultToGerman(result) {
+  const map = {
+    manual_review: 'Manuelle Prüfung erforderlich',
+    no_candidate: 'Kein geeigneter Mitarbeiter verfügbar',
+    blocked: 'Ticket manuell blockiert',
+    error: 'Fehler bei der Verarbeitung',
+    crawler_stale: 'Crawler-Daten veraltet',
+    not_relevant: 'Nicht relevant',
+    assigned: 'Zugewiesen',
+  };
+  return map[result] || result;
+}
 
 router.get('/runs', async (req, res) => {
   try {
@@ -291,6 +381,28 @@ router.get('/exclusions', async (req, res) => {
   }
 });
 
+router.get('/exclusions/available', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      WITH current_system_names AS (
+        SELECT btrim(system_name) AS system_name
+        FROM queue_items
+        WHERE active = true
+          AND is_final_closed = false
+          AND system_name IS NOT NULL
+          AND btrim(system_name) <> ''
+      )
+      SELECT MIN(system_name) AS system_name
+      FROM current_system_names
+      GROUP BY LOWER(system_name)
+      ORDER BY LOWER(system_name)
+    `);
+    res.json({ ok: true, systemNames: rows.map((row) => row.system_name) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 router.post('/exclusions', requirePageAccess('settings', 'write'), async (req, res) => {
   try {
     const { systemName, reason } = req.body;
@@ -323,6 +435,86 @@ router.delete('/exclusions/:id', requirePageAccess('settings', 'write'), async (
     const result = await assignmentExclusionService.remove(parseInt(req.params.id));
     if (!result) return res.status(404).json({ ok: false, error: 'Entry not found' });
     res.json({ ok: true, entry: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* SUBTYPE EXCLUSION LIST                           */
+/* ------------------------------------------------ */
+
+router.get('/exclusions/subtypes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM subtype_exclusions ORDER BY subtype`
+    );
+    res.json({ ok: true, exclusions: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/exclusions/subtypes/available', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      WITH subtype_candidates AS (
+        SELECT btrim(customer_trouble_type) AS subtype
+        FROM queue_items
+        WHERE active = true
+          AND is_final_closed = false
+          AND customer_trouble_type IS NOT NULL
+          AND btrim(customer_trouble_type) <> ''
+        UNION
+        SELECT btrim(subtype) AS subtype
+        FROM queue_items
+        WHERE active = true
+          AND is_final_closed = false
+          AND subtype IS NOT NULL
+          AND btrim(subtype) <> ''
+      )
+      SELECT MIN(subtype) AS subtype
+      FROM subtype_candidates
+      GROUP BY LOWER(subtype)
+      ORDER BY LOWER(subtype)
+    `);
+    res.json({ ok: true, subtypes: rows.map((row) => row.subtype) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/exclusions/subtypes', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { subtype, reason } = req.body;
+    if (!subtype || !subtype.trim()) {
+      return res.status(400).json({ ok: false, error: 'subtype is required' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO subtype_exclusions (subtype, reason, created_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (subtype) DO UPDATE
+       SET reason = EXCLUDED.reason,
+           created_by = EXCLUDED.created_by
+       RETURNING *`,
+      [subtype.trim(), reason || null, req.user?.email || 'unknown']
+    );
+
+    res.json({ ok: true, entry: rows[0] });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+router.delete('/exclusions/subtypes/:id', requirePageAccess('settings', 'write'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM subtype_exclusions WHERE id = $1 RETURNING *`,
+      [parseInt(req.params.id)]
+    );
+    if (rows.length === 0) return res.status(404).json({ ok: false, error: 'Entry not found' });
+    res.json({ ok: true, entry: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

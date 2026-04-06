@@ -1,6 +1,6 @@
 # Environment Variables Matrix (ODIN)
 
-Diese Tabelle listet alle Umgebungsvariablen auf, die von Docker/Podman Compose und den Services (postgres, pgadmin, backend, frontend) ausgewertet werden. 
+Diese Tabelle listet alle Umgebungsvariablen auf, die von Docker/Podman Compose und den Services (postgres, backend, frontend) ausgewertet werden. 
 
 Da in den Compose-Dateien **kein `env_file`** mehr verwendet wird, müssen diese Variablen für Produktionsumgebungen direkt im Portainer-UI (unter "Env") als Key-Value-Paare eingetragen werden.
 
@@ -11,8 +11,6 @@ Da in den Compose-Dateien **kein `env_file`** mehr verwendet wird, müssen diese
 | `DB_USER` | postgres, backend | Ja (`postgres`) | **Ja** (Sicherheit) | `odin_db_admin` |
 | `DB_PASSWORD` | postgres, backend | Ja (`postgres`) | **Ja** (Sicherheit) | `SuperSecretDBPass!` |
 | `DB_PORT` | backend | Ja (`5432`) | Nein | `5432` |
-| `PGADMIN_EMAIL` | pgadmin | Ja (`admin@admin.com`) | **Ja** (Sicherheit) | `admin@firma.de` |
-| `PGADMIN_PASSWORD` | pgadmin | Ja (`admin`) | **Ja** (Sicherheit) | `PgAdminSecurePass!` |
 | `PORT` | backend | Ja (`8001`) | Nein | `8001` |
 | `NODE_ENV` | backend, frontend | Ja (`production`) | Nein | `production` |
 | `JWT_SECRET` | backend | Ja (`dev-only-insecure-secret`) | **Ja** (Zwingend für Token) | `e7b3c9d2f...` (Crypto Hex) |

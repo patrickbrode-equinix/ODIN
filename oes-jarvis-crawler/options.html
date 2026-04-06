@@ -136,6 +136,26 @@
       font-weight: 400;
     }
     .quick-btn:hover { background: #2d3748; color: #e2e8f0; border-color: #00d8ff; }
+
+    .queue-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .cb-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+    .cb-label input[type="checkbox"] {
+      accent-color: #00d8ff;
+      width: 16px;
+      height: 16px;
+    }
   </style>
 </head>
 <body>
@@ -157,6 +177,17 @@
     <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com:8080">VM :8080</button>
     <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com">VM (no port)</button>
   </div>
+
+  <label>Enabled Queues</label>
+  <div class="queue-checkboxes" id="queueCheckboxes">
+    <label class="cb-label"><input type="checkbox" id="q_smartHands" checked /> Smart Hands</label>
+    <label class="cb-label"><input type="checkbox" id="q_troubleTickets" checked /> Trouble Tickets</label>
+    <label class="cb-label"><input type="checkbox" id="q_ccInstalls" checked /> CC Installs</label>
+    <label class="cb-label"><input type="checkbox" id="q_deinstalls" checked /> Deinstalls</label>
+  </div>
+  <p class="field-hint">
+    Uncheck a queue to skip it during crawling. Useful for temporarily disabling problematic queues (e.g. Deinstalls).
+  </p>
 
   <label for="ingestKey">Ingest Key (X-OES-INGEST-KEY)</label>
   <input type="password" id="ingestKey"

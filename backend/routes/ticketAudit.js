@@ -6,17 +6,12 @@
 import express from "express";
 import { query } from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 
 const router = express.Router();
 
-/* ── Admin-only guard ────────────────────────────── */
-function requireAdmin(req, res, next) {
-  if (req.user?.is_root === true) return next();
-  return res.status(403).json({ error: "Admin access required" });
-}
-
 router.use(requireAuth);
-router.use(requireAdmin);
+router.use(requirePageAccess("ticket_audit", "view"));
 
 /* ------------------------------------------------ */
 /* HELPER: Parse time range from query params       */

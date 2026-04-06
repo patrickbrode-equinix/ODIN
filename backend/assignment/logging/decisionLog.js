@@ -2,6 +2,55 @@
 /* Assignment Engine — Decision Logging             */
 /* ================================================ */
 
+function snapshotCandidate(candidate) {
+  if (!candidate) return candidate;
+
+  const snapshot = {
+    id: candidate.id,
+    name: candidate.name,
+  };
+
+  if (candidate.role != null) snapshot.role = candidate.role;
+  if (candidate.weekplanRole != null) snapshot.weekplanRole = candidate.weekplanRole;
+  if (candidate.shiftCode != null) snapshot.shiftCode = candidate.shiftCode;
+  if (candidate.shiftActive != null) snapshot.shiftActive = candidate.shiftActive;
+  if (candidate.planningSource != null) snapshot.planningSource = candidate.planningSource;
+  if (candidate.userMapped != null) snapshot.userMapped = candidate.userMapped;
+  if (candidate.plannedEmployeeName != null) snapshot.plannedEmployeeName = candidate.plannedEmployeeName;
+
+  return snapshot;
+}
+
+function getDisplayTicketNumber(source) {
+  const normalized = source.normalizedTicket || source.normalized_ticket || {};
+  const raw = source.rawTicket || source.raw_ticket || {};
+
+  return (
+    source.displayTicketNumber ||
+    source.externalId ||
+    source.external_id ||
+    normalized.externalId ||
+    raw.external_id ||
+    raw.ticketNumber ||
+    raw.ticket ||
+    raw.Ticket ||
+    raw.activity_no ||
+    raw.ACTIVITY_NO ||
+    raw['Activity #'] ||
+    source.ticketId ||
+    source.ticket_id ||
+    normalized.id ||
+    raw.id ||
+    null
+  );
+}
+
+function getQueueOrigin(source) {
+  const normalized = source.normalizedTicket || source.normalized_ticket || {};
+  const raw = source.rawTicket || source.raw_ticket || {};
+  return source.queueOrigin || normalized.queue || raw.queue_type || raw.queue || raw.type || null;
+}
+
 /**
  * Build a decision log entry for a single ticket.
  */
@@ -29,9 +78,13 @@ export function buildDecisionLog({
     selectionReason: selectionReason || null,
     shortReason: buildShortReason(result, assignedWorker, selectionReason),
     rulePath: rulePath || [],
-    initialCandidates: (initialCandidates || []).map(c => ({ id: c.id, name: c.name })),
-    excludedCandidates: excludedCandidates || [],
-    remainingCandidates: (remainingCandidates || []).map(c => ({ id: c.id, name: c.name })),
+    initialCandidates: (initialCandidates || []).map(snapshotCandidate),
+    excludedCandidates: (excludedCandidates || []).map(candidate => ({
+      ...snapshotCandidate(candidate),
+      reason: candidate.reason,
+      rule: candidate.rule || null,
+    })),
+    remainingCandidates: (remainingCandidates || []).map(snapshotCandidate),
     normalizationWarnings: ticket.normalizationWarnings || [],
     normalizedTicket: ticket,
     rawTicket: ticket.raw || {},
@@ -47,9 +100,9 @@ function buildShortReason(result, assignedWorker, selectionReason) {
     case 'assigned':
       return `Zugewiesen an ${assignedWorker?.name || 'Unbekannt'}: ${selectionReason || 'regelbasiert'}`;
     case 'manual_review':
-      return 'Manuelle Prüfung erforderlich';
+      return selectionReason || 'Manuelle Prüfung erforderlich';
     case 'no_candidate':
-      return 'Kein geeigneter Kandidat verfügbar';
+      return selectionReason || 'Kein geeigneter Kandidat verfügbar';
     case 'not_relevant':
       return 'Ticket nicht relevant für Zuweisung';
     case 'blocked':
@@ -64,7 +117,7 @@ function buildShortReason(result, assignedWorker, selectionReason) {
 /**
  * Build a human-readable summary for a full run.
  */
-export function buildRunSummary(decisions) {
+export function buildRunSummary(decisions, extras = {}) {
   const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0 };
   for (const d of decisions) {
     if (counts[d.result] !== undefined) {
@@ -74,6 +127,7 @@ export function buildRunSummary(decisions) {
   return {
     totalDecisions: decisions.length,
     ...counts,
+    ...extras,
   };
 }
 
@@ -83,10 +137,21 @@ export function buildRunSummary(decisions) {
  */
 export function buildTicketExplanation(decision) {
   const lines = [];
+  const displayTicketNumber = getDisplayTicketNumber(decision) || decision.ticketId || decision.ticket_id;
+  const internalTicketId = decision.ticketId || decision.ticket_id;
+  const queueOrigin = getQueueOrigin(decision);
+  const normalizedTicket = decision.normalizedTicket || decision.normalized_ticket || null;
+  const rawTicket = decision.rawTicket || decision.raw_ticket || null;
 
-  lines.push(`## Ticket ${decision.ticketId || decision.ticket_id}`);
+  lines.push(`## Ticket ${displayTicketNumber}`);
+  if (internalTicketId && String(internalTicketId) !== String(displayTicketNumber)) {
+    lines.push(`Interne ID: ${internalTicketId}`);
+  }
   if (decision.externalId || decision.external_id) {
     lines.push(`Externe ID: ${decision.externalId || decision.external_id}`);
+  }
+  if (queueOrigin) {
+    lines.push(`Queue: ${queueOrigin}`);
   }
   lines.push('');
 
@@ -101,6 +166,7 @@ export function buildTicketExplanation(decision) {
   lines.push(`- Status: ${decision.ticketStatus || decision.ticket_status || 'N/A'}`);
   lines.push(`- Priorität: ${decision.ticketPriority || decision.ticket_priority || 'N/A'}`);
   lines.push(`- Site: ${decision.ticketSite || decision.ticket_site || 'N/A'}`);
+  if (queueOrigin) lines.push(`- Queue: ${queueOrigin}`);
   lines.push('');
 
   // Normalization warnings
@@ -117,7 +183,10 @@ export function buildTicketExplanation(decision) {
   if (initial.length === 0) {
     lines.push('Keine Kandidaten geladen.');
   } else {
-    for (const c of initial) lines.push(`- ${c.name} (ID: ${c.id})`);
+    for (const c of initial) {
+      const details = [c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ');
+      lines.push(`- ${c.name} (ID: ${c.id})${details ? ` [${details}]` : ''}`);
+    }
   }
   lines.push('');
 
@@ -126,7 +195,8 @@ export function buildTicketExplanation(decision) {
   if (excluded.length > 0) {
     lines.push(`### Ausgeschlossene Kandidaten (${excluded.length})`);
     for (const e of excluded) {
-      lines.push(`- ❌ ${e.name || 'ID:' + e.id}: ${e.reason}`);
+      const details = [e.shiftCode, e.weekplanRole || e.role].filter(Boolean).join(' | ');
+      lines.push(`- ❌ ${e.name || 'ID:' + e.id}${details ? ` [${details}]` : ''}: ${e.reason}`);
     }
     lines.push('');
   }
@@ -137,7 +207,10 @@ export function buildTicketExplanation(decision) {
   if (remaining.length === 0) {
     lines.push('Keine Kandidaten übrig.');
   } else {
-    for (const c of remaining) lines.push(`- ✅ ${c.name} (ID: ${c.id})`);
+    for (const c of remaining) {
+      const details = [c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ');
+      lines.push(`- ✅ ${c.name} (ID: ${c.id})${details ? ` [${details}]` : ''}`);
+    }
   }
   lines.push('');
 
@@ -165,11 +238,29 @@ export function buildTicketExplanation(decision) {
     lines.push(decision.errorMessage || decision.error_message);
   }
 
+  if (normalizedTicket) {
+    lines.push('');
+    lines.push('### Normalisiertes Ticket');
+    lines.push('```json');
+    lines.push(JSON.stringify(normalizedTicket, null, 2));
+    lines.push('```');
+  }
+
+  if (rawTicket) {
+    lines.push('');
+    lines.push('### Raw Ticket');
+    lines.push('```json');
+    lines.push(JSON.stringify(rawTicket, null, 2));
+    lines.push('```');
+  }
+
   return {
     markdown: lines.join('\n'),
     structured: {
+      displayTicketNumber,
       ticketId: decision.ticketId || decision.ticket_id,
       externalId: decision.externalId || decision.external_id,
+      queueOrigin,
       result: decision.result,
       shortReason: decision.shortReason || decision.short_reason,
       ticketType: decision.ticketType || decision.ticket_type,
@@ -185,6 +276,8 @@ export function buildTicketExplanation(decision) {
       selectionReason: decision.selectionReason || decision.selection_reason,
       rulePath,
       errorMessage: decision.errorMessage || decision.error_message,
+      normalizedTicket,
+      rawTicket,
     },
   };
 }

@@ -4,7 +4,12 @@
     "private": true,
     "scripts": {
         "install:all": "npm install && npm install --prefix Backend && npm install --prefix Frontend && npm install --prefix teams-bot/odin",
-        "dev": "concurrently -k -n \"BACKEND,FRONTEND,BOT\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:bot\"",
+        "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:backend:with-db\" \"npm run dev:frontend\"",
+        "dev:app": "npm run dev",
+        "dev:full": "concurrently -k -n \"BACKEND,FRONTEND,BOT\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:backend:with-db\" \"npm run dev:frontend\" \"npm run dev:bot\"",
+        "dev:db": "node ./scripts/dev-db.mjs ensure",
+        "dev:db:down": "node ./scripts/dev-db.mjs stop",
+        "dev:backend:with-db": "npm run dev:db && npm run dev:backend",
         "dev:frontend": "npm run dev --prefix Frontend",
         "dev:backend": "npm run dev --prefix Backend",
         "dev:bot": "npm run dev --prefix teams-bot/odin"

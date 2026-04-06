@@ -9,7 +9,57 @@
 const OES_DEBUG = true;
 let OES_IS_RUNNING = false;
 
+// Canonical queue identifiers (must match options.js ALL_QUEUE_IDS)
+const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Load enabled queues from chrome.storage.local.
+ * Returns array of canonical queue IDs. Defaults to all queues if unset.
+ */
+async function getEnabledQueues() {
+  try {
+    const stored = await chrome.storage.local.get(["odin_enabled_queues"]);
+    const raw = stored?.odin_enabled_queues;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      log("[Config] No queue selection stored — defaulting to ALL queues.");
+      return [...ALL_QUEUE_IDS];
+    }
+    // Validate: only keep known queue IDs
+    const valid = raw.filter((q) => ALL_QUEUE_IDS.includes(q));
+    const unknown = raw.filter((q) => !ALL_QUEUE_IDS.includes(q));
+    if (unknown.length > 0) {
+      warn(`[Config] Unknown queue IDs in config (ignored): ${JSON.stringify(unknown)}`);
+    }
+    if (valid.length === 0) {
+      warn("[Config] All configured queue IDs are unknown — defaulting to ALL queues.");
+      return [...ALL_QUEUE_IDS];
+    }
+    return valid;
+  } catch (e) {
+    warn("[Config] Failed to read enabled queues:", e?.message || e);
+    return [...ALL_QUEUE_IDS];
+  }
+}
+
+/**
+ * Backend preflight check via background.js.
+ * Verifies the ODIN backend is reachable before starting expensive scraping.
+ */
+function preflightBackendCheck() {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: "OES_PREFLIGHT_CHECK" }, (resp) => {
+      if (chrome.runtime.lastError) {
+        return reject(new Error(chrome.runtime.lastError.message));
+      }
+      if (!resp?.ok) {
+        return reject(new Error(resp?.error || "Backend preflight failed"));
+      }
+      resolve(resp);
+    });
+  });
+}
 
 function log(...args) {
   if (OES_DEBUG) console.log("[ODIN Crawler]", ...args);
@@ -100,18 +150,69 @@ function getCellValue(cell) {
  * Wait until ag-grid root is present after switching queues.
  * Fixes: "ag-grid root not found (no .ag-root / .ag-root-wrapper)"
  */
-async function waitForAgGridRoot(timeoutMs = 20000) {
+async function waitForAgGridRoot(timeoutMs = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const root = document.querySelector(".ag-root") || document.querySelector(".ag-root-wrapper");
-    if (root) return root;
-    await sleep(250);
+    if (root) {
+      // Additionally wait for loading overlays to disappear
+      const loadingOverlay = root.querySelector(".ag-overlay-loading-wrapper, .ag-loading");
+      if (!loadingOverlay || loadingOverlay.offsetParent === null) {
+        return root;
+      }
+      log("[Wait] ag-grid root found but loading overlay still visible, waiting...");
+    }
+    await sleep(300);
   }
-  throw new Error("ag-grid root not found after waiting");
+  throw new Error(`ag-grid root not found after ${timeoutMs}ms`);
 }
 
 async function getAgGridRootAsync() {
-  return await waitForAgGridRoot(20000);
+  return await waitForAgGridRoot(30000);
+}
+
+/**
+ * Wait until rows are actually rendered in the grid (not just the grid root).
+ * Prevents reading empty grids after navigation.
+ */
+async function waitForRowsRendered(timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const rows = document.querySelectorAll(".ag-center-cols-container .ag-row");
+    if (rows.length > 0) {
+      log(`[Wait] ${rows.length} rows rendered after ${Date.now() - start}ms`);
+      return rows.length;
+    }
+    await sleep(300);
+  }
+  warn(`[Wait] No rows rendered after ${timeoutMs}ms`);
+  return 0;
+}
+
+/**
+ * Wait until the DOM is stable (no rapid changes in row count).
+ * More robust than a fixed sleep.
+ */
+async function waitForDomStable(checkIntervalMs = 200, requiredStableChecks = 4, timeoutMs = 12000) {
+  const start = Date.now();
+  let lastCount = -1;
+  let stableHits = 0;
+  while (Date.now() - start < timeoutMs) {
+    const rows = document.querySelectorAll(".ag-center-cols-container .ag-row");
+    const count = rows.length;
+    if (count === lastCount && count >= 0) {
+      stableHits++;
+    } else {
+      stableHits = 0;
+    }
+    lastCount = count;
+    if (stableHits >= requiredStableChecks) {
+      log(`[Wait] DOM stable (${count} rows, ${stableHits} checks) after ${Date.now() - start}ms`);
+      return;
+    }
+    await sleep(checkIntervalMs);
+  }
+  warn(`[Wait] DOM stability timeout after ${timeoutMs}ms (last count: ${lastCount})`);
 }
 
 function getGridViewport(root) {
@@ -273,14 +374,15 @@ async function collectAllRowsByScrolling({ keyColId }) {
   const waitStable = async () => {
     let last = -1;
     let stable = 0;
-    for (let t = 0; t < 30; t++) {
+    for (let t = 0; t < 50; t++) {
       const n = root.querySelectorAll(".ag-center-cols-container .ag-row").length;
       if (n === last && n > 0) stable++;
       else stable = 0;
       last = n;
-      if (stable >= 3) return;
-      await sleep(120);
+      if (stable >= 5) return;
+      await sleep(200);
     }
+    warn("[Scroll] Row count did not stabilize within timeout.");
   };
 
   await waitStable();
@@ -288,22 +390,31 @@ async function collectAllRowsByScrolling({ keyColId }) {
   let lastScrollTop = -1;
   let sameScrollCount = 0;
   let noNewCount = 0;
+  const MAX_SCROLL_ITERATIONS = 2000;
+  const scrollStartTime = Date.now();
+  const MAX_SCROLL_TIME_MS = 120000; // 2 minutes hard timeout
 
   // Larger step size + earlier stopping conditions = faster.
-  for (let i = 0; i < 2500; i++) {
+  for (let i = 0; i < MAX_SCROLL_ITERATIONS; i++) {
+    // Hard time-based timeout
+    if (Date.now() - scrollStartTime > MAX_SCROLL_TIME_MS) {
+      warn(`[Scroll] Hard timeout reached (${MAX_SCROLL_TIME_MS}ms). Collected ${byKey.size} rows so far.`);
+      break;
+    }
+
     // 2-pass horizontal scroll: left=0 captures key column, left=max captures Owner/Sched. Start
     if (hViewport) hViewport.scrollLeft = 0;
-    await sleep(15);
+    await sleep(50);
     const left = readVisibleRows(root);
 
     let right = [];
     if (hViewport && hViewport.scrollWidth > hViewport.clientWidth) {
       hViewport.scrollLeft = hViewport.scrollWidth;
-      await sleep(25);
+      await sleep(80);
       right = readVisibleRows(root);
       // Reset scroll to left so key column stays in DOM for next vertical step
       hViewport.scrollLeft = 0;
-      await sleep(10);
+      await sleep(30);
     }
 
     const merged = left.concat(right);
@@ -325,20 +436,31 @@ async function collectAllRowsByScrolling({ keyColId }) {
     if (addedThisLoop === 0) noNewCount++;
     else noNewCount = 0;
 
+    // Progress logging every 50 iterations
+    if (i > 0 && i % 50 === 0) {
+      log(`[Scroll] Progress: iteration=${i}, collected=${byKey.size}, noNewStreak=${noNewCount}`);
+    }
+
     // Early stop if we already captured everything (when aria-rowcount is available).
     // aria-rowcount includes header + rows in some ag-grid setups; we tolerate +/- 2.
     if (totalRowsHint && byKey.size >= Math.max(0, totalRowsHint - 2)) break;
 
     lastScrollTop = viewport.scrollTop;
     viewport.scrollTop = viewport.scrollTop + viewport.clientHeight * 1.25;
-    await sleep(35);
+    await sleep(80);
 
     if (viewport.scrollTop === lastScrollTop) sameScrollCount++;
     else sameScrollCount = 0;
 
     // Stop quickly if we are not discovering new keys anymore.
-    if (noNewCount >= 8) break;
-    if (sameScrollCount >= 5) break;
+    if (noNewCount >= 10) {
+      log(`[Scroll] Stopping: ${noNewCount} iterations without new rows.`);
+      break;
+    }
+    if (sameScrollCount >= 5) {
+      log(`[Scroll] Stopping: scroll position stuck for ${sameScrollCount} iterations.`);
+      break;
+    }
   }
 
   // Remove helper marker
@@ -427,15 +549,23 @@ async function openQueueByCardTitle(title) {
     throw new Error(`Queue Card not found: ${title}. Found cards: ${JSON.stringify(preview)}`);
   }
 
-  log(`Open queue: "${title}"`);
+  log(`[Nav] Opening queue: "${title}"`);
   card.click();
 
-  // allow navigation/render
-  await sleep(550);
+  // Allow navigation/render — increased from 550ms
+  await sleep(800);
 
-  // ensure grid exists before scraping
-  await waitForAgGridRoot(20000);
-  // additional wait is handled by the grid-stability check in the collector
+  // Ensure grid exists before scraping — increased timeout
+  log(`[Nav] Waiting for ag-grid root after clicking "${title}"...`);
+  await waitForAgGridRoot(30000);
+
+  // Wait for rows to actually render
+  await waitForRowsRendered(15000);
+
+  // Wait for DOM stability
+  await waitForDomStable(200, 4, 8000);
+
+  log(`[Nav] Queue "${title}" ready.`);
 }
 
 /**
@@ -491,12 +621,13 @@ async function navigateToDeinstalls() {
       log(`[Deinstall] Found nav element via "${selector}":`, match.tagName, match.className,
         `"${(match.innerText || "").trim().substring(0, 60)}"`);
       match.click();
-      await sleep(1200);
-      try { await waitForAgGridRoot(25000); } catch (e) {
+      await sleep(1500);
+      try { await waitForAgGridRoot(30000); } catch (e) {
         warn("[Deinstall] ag-grid not found after nav click:", e?.message);
         return false;
       }
-      await sleep(500);
+      await waitForRowsRendered(10000);
+      await waitForDomStable(200, 3, 6000);
       return true;
     }
   }
@@ -511,12 +642,13 @@ async function navigateToDeinstalls() {
   if (match2) {
     log("[Deinstall] Found nav element via broad search:", match2.tagName, match2.className);
     match2.click();
-    await sleep(1200);
-    try { await waitForAgGridRoot(25000); } catch (e) {
+    await sleep(1500);
+    try { await waitForAgGridRoot(30000); } catch (e) {
       warn("[Deinstall] ag-grid not found after nav click:", e?.message);
       return false;
     }
-    await sleep(500);
+    await waitForRowsRendered(10000);
+    await waitForDomStable(200, 3, 6000);
     return true;
   }
 
@@ -672,12 +804,22 @@ function getDeinstallPaginationNext() {
 async function collectAllDeinstallRowsPaginated(keyColId, expectedTotal) {
   const allRows = new Map();
   let pageNum = 0;
-  const maxPages = Math.ceil(expectedTotal / 10) + 10; // generous safety margin
+  const maxPages = Math.min(Math.ceil(expectedTotal / 10) + 10, 200); // hard cap at 200 pages
   let consecutiveNoNew = 0;
   const maxConsecutiveNoNew = 3;
   let lastPageRowKeys = new Set();
+  const paginationStartTime = Date.now();
+  const MAX_PAGINATION_TIME_MS = 180000; // 3 minutes hard timeout
+
+  log(`[Deinstall] Starting pagination: expectedTotal=${expectedTotal}, maxPages=${maxPages}`);
 
   while (pageNum < maxPages) {
+    // Hard time-based timeout
+    if (Date.now() - paginationStartTime > MAX_PAGINATION_TIME_MS) {
+      warn(`[Deinstall] Pagination hard timeout reached (${MAX_PAGINATION_TIME_MS}ms). Collected ${allRows.size} rows across ${pageNum} pages.`);
+      break;
+    }
+
     pageNum++;
     log(`[Deinstall] === Page ${pageNum} ===`);
 
@@ -754,10 +896,18 @@ async function collectAllDeinstallRowsPaginated(keyColId, expectedTotal) {
     // Wait until grid content actually changes (deterministic page transition check)
     let contentChanged = false;
     const waitStart = Date.now();
-    while (Date.now() - waitStart < 8000) {
-      await sleep(300);
+    const PAGE_TRANSITION_TIMEOUT = 10000;
+    while (Date.now() - waitStart < PAGE_TRANSITION_TIMEOUT) {
+      await sleep(400);
       try {
         const root = await getAgGridRootAsync();
+
+        // Check for loading overlays
+        const loadingOverlay = root.querySelector(".ag-overlay-loading-wrapper, .ag-loading");
+        if (loadingOverlay && loadingOverlay.offsetParent !== null) {
+          continue; // still loading, keep waiting
+        }
+
         const newVisible = readVisibleRows(root);
         const newFirstKeys = new Set();
         for (const r of newVisible.slice(0, 5)) {
@@ -772,12 +922,18 @@ async function collectAllDeinstallRowsPaginated(keyColId, expectedTotal) {
     }
 
     if (!contentChanged) {
-      warn(`[Deinstall] Grid content did not change after Next on page ${pageNum}. Retrying wait...`);
+      warn(`[Deinstall] Grid content did not change after Next on page ${pageNum}. Possible stuck pagination.`);
+      // Count this as a no-new page to trigger the consecutive limit
+      consecutiveNoNew++;
+      if (consecutiveNoNew >= maxConsecutiveNoNew) {
+        warn(`[Deinstall] Breaking out: ${maxConsecutiveNoNew} stuck page transitions.`);
+        break;
+      }
       await sleep(1500);
     }
 
-    // Stabilization
-    await sleep(300);
+    // Stabilization — wait for DOM to settle after page change
+    await waitForDomStable(200, 3, 5000);
   }
 
   const root = await getAgGridRootAsync();
@@ -879,23 +1035,54 @@ async function scrapeAllQueuesAndUpload() {
   }
 
   OES_IS_RUNNING = true;
+  const runStartTime = Date.now();
   try {
-    log("Starting scrape run (ALL queues -> DB upload via background)...");
+    // ── Step 0: Read enabled queues configuration ──
+    const enabledQueues = await getEnabledQueues();
+    log("========================================");
+    log(`[Run] Starting scrape run at ${new Date().toISOString()}`);
+    log(`[Run] Enabled queues: ${JSON.stringify(enabledQueues)}`);
+    log(`[Run] Disabled queues: ${JSON.stringify(ALL_QUEUE_IDS.filter(q => !enabledQueues.includes(q)))}`);
+    log("========================================");
 
-    // Read expected totals from Jarvis UI (card numbers).
-    // Assumption from you: "All" is active and there are no filters.
-    const expected = {
-      smartHands: getExpectedCountFromCard("Smart Hands"),
-      troubleTickets: getExpectedCountFromCard("Trouble Tickets"),
-      ccInstalls: getExpectedCountFromCard("CC Installs"),
-    };
-    log("Expected counts:", expected);
+    if (enabledQueues.length === 0) {
+      warn("[Run] No queues enabled. Aborting scrape run.");
+      return;
+    }
 
-    // If we fail to read expected counts, do not risk a destructive sync.
-    if (!Number.isFinite(expected.smartHands) || !Number.isFinite(expected.troubleTickets) || !Number.isFinite(expected.ccInstalls)) {
-      throw new Error(
-        `Could not read expected counts from Jarvis UI. Expected={SH:${expected.smartHands}, TT:${expected.troubleTickets}, CC:${expected.ccInstalls}}`
-      );
+    // ── Step 1: Backend preflight check ──
+    log("[Preflight] Checking backend reachability before scraping...");
+    try {
+      const preflightResult = await preflightBackendCheck();
+      log(`[Preflight] SUCCESS — Backend reachable (status=${preflightResult.status}, url=${preflightResult.baseUrl})`);
+    } catch (preflightErr) {
+      err(`[Preflight] FAILED — Backend not reachable: ${preflightErr?.message || preflightErr}`);
+      err("[Preflight] Aborting scrape run. No Jarvis navigation will be performed.");
+      try {
+        chrome.runtime.sendMessage({ type: "OES_SCRAPE_ERROR", url: location.href, message: `Preflight failed: ${preflightErr?.message}` });
+      } catch (_) { }
+      return;
+    }
+
+    // ── Step 2: Read expected totals from Jarvis UI (card numbers) ──
+    // Only read expected counts for enabled card-based queues
+    const expected = {};
+    const cardQueues = ["smartHands", "troubleTickets", "ccInstalls"];
+    const cardTitles = { smartHands: "Smart Hands", troubleTickets: "Trouble Tickets", ccInstalls: "CC Installs" };
+    const enabledCardQueues = cardQueues.filter(q => enabledQueues.includes(q));
+
+    for (const q of enabledCardQueues) {
+      expected[q] = getExpectedCountFromCard(cardTitles[q]);
+    }
+    log("[Run] Expected counts:", expected);
+
+    // If we fail to read expected counts for enabled card queues, do not risk a destructive sync.
+    for (const q of enabledCardQueues) {
+      if (!Number.isFinite(expected[q])) {
+        throw new Error(
+          `Could not read expected count from Jarvis UI for "${cardTitles[q]}". Value: ${expected[q]}`
+        );
+      }
     }
 
     // Retry wrapper: for each queue, re-scrape up to N times until actual_count matches expected_count.
@@ -904,7 +1091,7 @@ async function scrapeAllQueuesAndUpload() {
         const out = await fnScrape();
         const actualCount = Array.isArray(out) ? out.length : 0;
         const ok = isCompleteRun(expectedCount, actualCount);
-        log(`${name}: attempt ${attempt}/${maxAttempts} -> actual=${actualCount}, expected=${expectedCount}, complete=${ok}`);
+        log(`[${name}] Attempt ${attempt}/${maxAttempts}: actual=${actualCount}, expected=${expectedCount}, complete=${ok}`);
         if (ok) return { rows: out, actualCount, expectedCount, complete: true, attempts: attempt };
 
         // Last attempt -> return incomplete
@@ -918,73 +1105,123 @@ async function scrapeAllQueuesAndUpload() {
       return { rows: [], actualCount: 0, expectedCount, complete: false, attempts: maxAttempts };
     };
 
-    // 1) Smart Hands
-    const shResult = await scrapeQueueWithRetry(
-      "SmartHands",
-      async () => {
-        await openQueueByCardTitle("Smart Hands");
-        const shKey = await detectKeyColIdByHeaderText("ACT_NUM", "Activity #");
-        log(`SmartHands detected key col-id: "${shKey}"`);
-        const sh = await collectWithFallbackKeys(shKey, ["ACT_NUM", "ACTIVITY_NO", "ACT_NUMB"]);
-        return normalizeRows(sh.headerMap, sh.rows);
-      },
-      expected.smartHands,
-      3
-    );
+    const results = {};
 
-    // 2) Trouble Tickets
-    const ttResult = await scrapeQueueWithRetry(
-      "TroubleTickets",
-      async () => {
-        await openQueueByCardTitle("Trouble Tickets");
-        const ttKey = await detectKeyColIdByHeaderText("TICKET_ID", "Ticket ID");
-        log(`TroubleTickets detected key col-id: "${ttKey}"`);
-        const tt = await collectWithFallbackKeys(ttKey, ["TICKET_NO", "CASE_ID", "ID"]);
-        return normalizeRows(tt.headerMap, tt.rows);
-      },
-      expected.troubleTickets,
-      3
-    );
+    // ── Step 3: Scrape enabled queues sequentially ──
 
-    // 3) CC Installs
-    const ccResult = await scrapeQueueWithRetry(
-      "CCInstalls",
-      async () => {
-        await openQueueByCardTitle("CC Installs");
-        const ccKey = await detectKeyColIdByHeaderText("ACT_NUM", "Activity #");
-        log(`CCInstalls detected key col-id: "${ccKey}"`);
-        const cc = await collectWithFallbackKeys(ccKey, ["ACT_NUM", "ORDER_NUM", "ORDER_ID"]);
-        return normalizeRows(cc.headerMap, cc.rows);
-      },
-      expected.ccInstalls,
-      3
-    );
-
-    // 4) Deinstalls (separate section with pagination)
-    let diResult = { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: 0 };
-    try {
-      diResult = await scrapeDeinstallQueue(3);
-    } catch (e) {
-      err("[Deinstall] Scrape failed (non-blocking):", e?.message || e);
+    // 3a) Smart Hands
+    if (enabledQueues.includes("smartHands")) {
+      log("[Run] ── Starting queue: Smart Hands ──");
+      try {
+        results.smartHands = await scrapeQueueWithRetry(
+          "SmartHands",
+          async () => {
+            await openQueueByCardTitle("Smart Hands");
+            const shKey = await detectKeyColIdByHeaderText("ACT_NUM", "Activity #");
+            log(`[SmartHands] Detected key col-id: "${shKey}"`);
+            const sh = await collectWithFallbackKeys(shKey, ["ACT_NUM", "ACTIVITY_NO", "ACT_NUMB"]);
+            return normalizeRows(sh.headerMap, sh.rows);
+          },
+          expected.smartHands,
+          3
+        );
+        log(`[Run] Smart Hands done: ${results.smartHands.actualCount}/${results.smartHands.expectedCount} (complete=${results.smartHands.complete})`);
+      } catch (e) {
+        err("[Run] Smart Hands scrape error (non-blocking):", e?.message || e);
+        results.smartHands = { rows: [], actualCount: 0, expectedCount: expected.smartHands, complete: false, attempts: 0, error: String(e?.message || e) };
+      }
+    } else {
+      log("[Run] SKIPPING Smart Hands (disabled)");
     }
 
-    const meta = {
-      smartHands: { expected: shResult.expectedCount, actual: shResult.actualCount, complete: shResult.complete, attempts: shResult.attempts },
-      troubleTickets: { expected: ttResult.expectedCount, actual: ttResult.actualCount, complete: ttResult.complete, attempts: ttResult.attempts },
-      ccInstalls: { expected: ccResult.expectedCount, actual: ccResult.actualCount, complete: ccResult.complete, attempts: ccResult.attempts },
-      deinstalls: { expected: diResult.expectedCount, actual: diResult.actualCount, complete: diResult.complete, attempts: diResult.attempts },
-    };
+    // 3b) Trouble Tickets
+    if (enabledQueues.includes("troubleTickets")) {
+      log("[Run] ── Starting queue: Trouble Tickets ──");
+      try {
+        results.troubleTickets = await scrapeQueueWithRetry(
+          "TroubleTickets",
+          async () => {
+            await openQueueByCardTitle("Trouble Tickets");
+            const ttKey = await detectKeyColIdByHeaderText("TICKET_ID", "Ticket ID");
+            log(`[TroubleTickets] Detected key col-id: "${ttKey}"`);
+            const tt = await collectWithFallbackKeys(ttKey, ["TICKET_NO", "CASE_ID", "ID"]);
+            return normalizeRows(tt.headerMap, tt.rows);
+          },
+          expected.troubleTickets,
+          3
+        );
+        log(`[Run] Trouble Tickets done: ${results.troubleTickets.actualCount}/${results.troubleTickets.expectedCount} (complete=${results.troubleTickets.complete})`);
+      } catch (e) {
+        err("[Run] Trouble Tickets scrape error (non-blocking):", e?.message || e);
+        results.troubleTickets = { rows: [], actualCount: 0, expectedCount: expected.troubleTickets, complete: false, attempts: 0, error: String(e?.message || e) };
+      }
+    } else {
+      log("[Run] SKIPPING Trouble Tickets (disabled)");
+    }
+
+    // 3c) CC Installs
+    if (enabledQueues.includes("ccInstalls")) {
+      log("[Run] ── Starting queue: CC Installs ──");
+      try {
+        results.ccInstalls = await scrapeQueueWithRetry(
+          "CCInstalls",
+          async () => {
+            await openQueueByCardTitle("CC Installs");
+            const ccKey = await detectKeyColIdByHeaderText("ACT_NUM", "Activity #");
+            log(`[CCInstalls] Detected key col-id: "${ccKey}"`);
+            const cc = await collectWithFallbackKeys(ccKey, ["ACT_NUM", "ORDER_NUM", "ORDER_ID"]);
+            return normalizeRows(cc.headerMap, cc.rows);
+          },
+          expected.ccInstalls,
+          3
+        );
+        log(`[Run] CC Installs done: ${results.ccInstalls.actualCount}/${results.ccInstalls.expectedCount} (complete=${results.ccInstalls.complete})`);
+      } catch (e) {
+        err("[Run] CC Installs scrape error (non-blocking):", e?.message || e);
+        results.ccInstalls = { rows: [], actualCount: 0, expectedCount: expected.ccInstalls, complete: false, attempts: 0, error: String(e?.message || e) };
+      }
+    } else {
+      log("[Run] SKIPPING CC Installs (disabled)");
+    }
+
+    // 3d) Deinstalls (separate section with pagination)
+    if (enabledQueues.includes("deinstalls")) {
+      log("[Run] ── Starting queue: Deinstalls ──");
+      try {
+        results.deinstalls = await scrapeDeinstallQueue(3);
+        log(`[Run] Deinstalls done: ${results.deinstalls.actualCount}/${results.deinstalls.expectedCount} (complete=${results.deinstalls.complete})`);
+      } catch (e) {
+        err("[Run] Deinstall scrape error (non-blocking):", e?.message || e);
+        results.deinstalls = { rows: [], actualCount: 0, expectedCount: null, complete: false, attempts: 0, error: String(e?.message || e) };
+      }
+    } else {
+      log("[Run] SKIPPING Deinstalls (disabled)");
+    }
+
+    // ── Step 4: Build meta and upload ──
+    const meta = {};
+    for (const q of enabledQueues) {
+      if (results[q]) {
+        meta[q] = {
+          expected: results[q].expectedCount,
+          actual: results[q].actualCount,
+          complete: results[q].complete,
+          attempts: results[q].attempts,
+        };
+      }
+    }
 
     // Only upload queues that are complete. Incomplete queues are omitted, preventing destructive overwrites.
     const queuesToUpload = {};
-    if (shResult.complete) queuesToUpload.smartHands = shResult.rows;
-    if (ttResult.complete) queuesToUpload.troubleTickets = ttResult.rows;
-    if (ccResult.complete) queuesToUpload.ccInstalls = ccResult.rows;
-    if (diResult.complete) queuesToUpload.deinstalls = diResult.rows;
+    for (const q of enabledQueues) {
+      if (results[q]?.complete) {
+        queuesToUpload[q] = results[q].rows;
+      }
+    }
 
     const hasAnyComplete = Object.keys(queuesToUpload).length > 0;
     if (!hasAnyComplete) {
-      warn("No complete queues in this run. Skipping upload.", meta);
+      warn("[Run] No complete queues in this run. Skipping upload.", meta);
       try {
         chrome.runtime.sendMessage({ type: "OES_SCRAPE_INCOMPLETE", url: location.href, meta });
       } catch (_) { }
@@ -999,7 +1236,7 @@ async function scrapeAllQueuesAndUpload() {
       queues: queuesToUpload,
     };
 
-    log("Uploading snapshot (via background)...", {
+    log("[Run] Uploading snapshot (via background)...", {
       meta,
       uploaded: {
         smartHands: queuesToUpload.smartHands ? queuesToUpload.smartHands.length : 0,
@@ -1017,7 +1254,8 @@ async function scrapeAllQueuesAndUpload() {
     }
 
     const resp = await uploadSnapshotViaBackground(payload);
-    log("Upload OK:", resp);
+    log("[Run] Upload OK:", resp);
+    log(`[Run] ======== Scrape run complete (${((Date.now() - runStartTime) / 1000).toFixed(1)}s) ========`);
   } finally {
     OES_IS_RUNNING = false;
   }

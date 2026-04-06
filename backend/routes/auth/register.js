@@ -63,13 +63,14 @@ router.post("/register", async (req, res) => {
           email,
           password_hash,
           is_root,
+          is_admin,
           approved,
           user_group,
           ibx,
           department
         )
       VALUES
-        ($1,$2,$3,$4,$5,false,false,$6,$7,$8)
+        ($1,$2,$3,$4,$5,false,false,false,$6,$7,$8)
       `,
       [
         firstName,

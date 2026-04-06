@@ -83,8 +83,8 @@ router.post("/snapshot", async (req, res) => {
   }
 
   try {
-    const { itemsToUpsert, completeTypes } = normalizePayload(body);
-    const result = await persistSnapshot(itemsToUpsert, completeTypes, nowIso);
+    const { itemsToUpsert, completeTypes, queueMetaByType } = normalizePayload(body);
+    const result = await persistSnapshot(itemsToUpsert, completeTypes, nowIso, { queueMetaByType });
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error("QUEUE SNAPSHOT ERROR:", err);

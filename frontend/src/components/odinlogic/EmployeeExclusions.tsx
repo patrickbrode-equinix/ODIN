@@ -1,12 +1,23 @@
 /* ------------------------------------------------ */
 /* Employee Exclusions – Dauerhafte Ausschlüsse     */
 /* Mitarbeiter dauerhaft von Ticketzuweisung         */
-/* ausschließen                                      */
+/* ausschließen  – inkl. Drag & Drop                */
 /* ------------------------------------------------ */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Plus, Trash2, RefreshCw, UserX, Calendar, ShieldOff, Search, ChevronDown } from "lucide-react";
+import { Plus, Trash2, RefreshCw, UserX, Calendar, ShieldOff, Search, ChevronDown, ArrowRight, ArrowLeft, GripVertical } from "lucide-react";
 import { api } from "../../api/api";
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensors,
+  useSensor,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 
 interface EmployeeExclusion {
   id: number;
@@ -42,6 +53,44 @@ function formatDateTime(iso: string): string {
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/* ------------------------------------------------ */
+/* DnD helper components                            */
+/* ------------------------------------------------ */
+
+function DraggableEmployee({ id, name, side }: { id: string; name: string; side: 'available' | 'excluded' }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `${side}::${id}`,
+    data: { name, side },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm cursor-grab select-none transition-colors
+        ${side === 'excluded' ? 'bg-rose-500/10 border border-rose-500/20 text-rose-300' : 'bg-accent/40 border border-border/30 text-foreground/90 hover:bg-accent/70'}
+        ${isDragging ? 'opacity-30' : ''}`}
+    >
+      <GripVertical className="w-3 h-3 text-muted-foreground shrink-0" />
+      <span className="truncate">{name}</span>
+    </div>
+  );
+}
+
+function DroppablePanel({ id, children, isOver }: { id: string; children: React.ReactNode; isOver?: boolean }) {
+  const { setNodeRef, isOver: over } = useDroppable({ id });
+  const active = isOver ?? over;
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex-1 min-h-[200px] max-h-[320px] overflow-y-auto rounded-lg border-2 border-dashed p-2 space-y-1 transition-colors
+        ${active ? 'border-blue-500/60 bg-blue-500/5' : 'border-border/30 bg-background/40'}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function EmployeeExclusions() {
   const [exclusions, setExclusions] = useState<EmployeeExclusion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +110,11 @@ export default function EmployeeExclusions() {
   const [empSearch, setEmpSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // DnD state
+  const [dndSearch, setDndSearch] = useState('');
+  const [draggedName, setDraggedName] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,6 +163,63 @@ export default function EmployeeExclusions() {
       (!q || name.toLowerCase().includes(q))
     );
   }, [availableEmployees, empSearch, employeeName, excludedNames]);
+
+  // DnD: available employees for DnD panel (not yet excluded)
+  const dndAvailable = useMemo(() => {
+    const q = dndSearch.toLowerCase().trim();
+    return availableEmployees
+      .filter(n => !excludedNames.has(n.toLowerCase()))
+      .filter(n => !q || n.toLowerCase().includes(q));
+  }, [availableEmployees, excludedNames, dndSearch]);
+
+  // DnD: Quick-exclude (creates exclusion with default reason 'admin_override')
+  const handleQuickExclude = async (name: string) => {
+    setError(null);
+    try {
+      await api.post('/assignment/employee-exclusions', {
+        employee_name: name.trim(),
+        reason: 'admin_override',
+      });
+      load();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // DnD: Quick-remove (deactivate exclusion)
+  const handleQuickRemove = async (name: string) => {
+    const exc = exclusions.find(e => e.is_active && e.employee_name.toLowerCase() === name.toLowerCase());
+    if (!exc) return;
+    setError(null);
+    try {
+      await api.patch(`/assignment/employee-exclusions/${exc.id}/deactivate`);
+      load();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // DnD handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setDraggedName((event.active.data?.current as any)?.name ?? null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggedName(null);
+    const { active, over } = event;
+    if (!over) return;
+    const data = active.data?.current as { name: string; side: 'available' | 'excluded' } | undefined;
+    if (!data) return;
+    const targetPanel = over.id as string;
+    // Drag from available -> excluded_panel = exclude
+    if (data.side === 'available' && targetPanel === 'excluded_panel') {
+      handleQuickExclude(data.name);
+    }
+    // Drag from excluded -> available_panel = re-include
+    if (data.side === 'excluded' && targetPanel === 'available_panel') {
+      handleQuickRemove(data.name);
+    }
+  };
 
   const handleAdd = async () => {
     if (!employeeName.trim()) return;
@@ -186,11 +297,113 @@ export default function EmployeeExclusions() {
         </div>
       )}
 
+      {/* ---- Drag & Drop Dual Panel ---- */}
+      {availableEmployees.length > 0 && (
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="rounded-xl border border-border/30 bg-background/30 p-4 space-y-3">
+            <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
+              <GripVertical className="w-3.5 h-3.5" />
+              Schnell-Ausschluss — Mitarbeiter per Drag & Drop oder Klick verschieben
+            </div>
+
+            {/* Search filter for DnD available list */}
+            <div className="relative max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Mitarbeiter filtern…"
+                value={dndSearch}
+                onChange={(e) => setDndSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-md border border-border/40 bg-background/80 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500/50"
+              />
+            </div>
+
+            <div className="flex gap-4 items-stretch">
+              {/* LEFT: Available */}
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-green-400 mb-1.5">
+                  Verfügbar ({dndAvailable.length})
+                </div>
+                <DroppablePanel id="available_panel">
+                  {dndAvailable.length === 0 && (
+                    <div className="text-xs text-muted-foreground text-center py-6">
+                      {dndSearch ? 'Keine Treffer' : 'Alle Mitarbeiter sind ausgeschlossen'}
+                    </div>
+                  )}
+                  {dndAvailable.map(name => (
+                    <div key={name} className="flex items-center gap-1">
+                      <div className="flex-1 min-w-0">
+                        <DraggableEmployee id={name} name={name} side="available" />
+                      </div>
+                      <button
+                        onClick={() => handleQuickExclude(name)}
+                        className="shrink-0 p-1 rounded hover:bg-rose-500/20 text-muted-foreground hover:text-rose-400 transition"
+                        title={`${name} ausschließen`}
+                      >
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </DroppablePanel>
+              </div>
+
+              {/* CENTER: Arrows hint */}
+              <div className="flex flex-col items-center justify-center gap-2 px-1">
+                <ArrowRight className="w-4 h-4 text-muted-foreground/50" />
+                <span className="text-[9px] text-muted-foreground/40 select-none">Drag</span>
+                <ArrowLeft className="w-4 h-4 text-muted-foreground/50" />
+              </div>
+
+              {/* RIGHT: Excluded */}
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-rose-400 mb-1.5">
+                  Ausgeschlossen ({activeExclusions.length})
+                </div>
+                <DroppablePanel id="excluded_panel">
+                  {activeExclusions.length === 0 && (
+                    <div className="text-xs text-muted-foreground text-center py-6">
+                      Keine Ausschlüsse — Mitarbeiter hierher ziehen
+                    </div>
+                  )}
+                  {activeExclusions.map(exc => (
+                    <div key={exc.id} className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleQuickRemove(exc.employee_name)}
+                        className="shrink-0 p-1 rounded hover:bg-green-500/20 text-muted-foreground hover:text-green-400 transition"
+                        title={`${exc.employee_name} wieder einschließen`}
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <DraggableEmployee id={String(exc.id)} name={exc.employee_name} side="excluded" />
+                      </div>
+                    </div>
+                  ))}
+                </DroppablePanel>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground/60">
+              Schnell-Ausschlüsse verwenden Grund „Admin-Vorgabe". Für spezifische Gründe / Zeiträume das Formular unten nutzen.
+            </p>
+          </div>
+
+          {/* DragOverlay */}
+          <DragOverlay>
+            {draggedName ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm bg-blue-600/80 text-white border border-blue-400/40 shadow-lg pointer-events-none">
+                <GripVertical className="w-3 h-3" />
+                {draggedName}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
+
       {/* Add Form */}
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
         <div className="text-xs font-semibold text-blue-400 flex items-center gap-1.5 mb-2">
           <Plus className="w-3.5 h-3.5" />
-          Neuen Ausschluss hinzufügen
+          Neuen Ausschluss hinzufügen (mit Grund / Zeitraum)
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Searchable employee dropdown */}

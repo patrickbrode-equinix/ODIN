@@ -103,10 +103,15 @@ export default function ShiftplanControlCenter() {
   const [activeDraft, setActiveDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingYear, setGeneratingYear] = useState(false);
+  const [yearResult, setYearResult] = useState<{ year: number; generated: any[]; errors: any[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmActivate, setConfirmActivate] = useState(false);
   const [planningBasis, setPlanningBasis] = useState<any>(null);
   const [basisLoading, setBasisLoading] = useState(false);
+
+  // Year derived from selected month
+  const selectedYear = parseInt(selectedMonth.split('-')[0]);
 
   // Generate month options (full year: current month -2 to +13 → ~15 months)
   const monthOptions = (() => {
@@ -117,6 +122,16 @@ export default function ShiftplanControlCenter() {
       opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
     return opts;
+  })();
+
+  // Available years for year-generation
+  const yearOptions = (() => {
+    const now = new Date();
+    const years: number[] = [];
+    for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 2; y++) {
+      years.push(y);
+    }
+    return years;
   })();
 
   const loadDrafts = useCallback(async () => {
@@ -166,6 +181,22 @@ export default function ShiftplanControlCenter() {
       setError(e?.response?.data?.error || e.message);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleGenerateYear = async () => {
+    if (!confirm(`Schichtpläne für alle 12 Monate des Jahres ${selectedYear} generieren? Dies erstellt für jeden Monat einen neuen Draft.`)) return;
+    setGeneratingYear(true);
+    setError(null);
+    setYearResult(null);
+    try {
+      const res = await api.post('/shiftplan-control/drafts/generate-year', { year: selectedYear });
+      setYearResult(res.data);
+      await loadDrafts();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setGeneratingYear(false);
     }
   };
 
@@ -261,14 +292,28 @@ export default function ShiftplanControlCenter() {
               ))}
             </select>
 
-            {/* Generate Button */}
+            {/* Generate Month Button */}
             <button
               onClick={handleGenerate}
-              disabled={generating}
+              disabled={generating || generatingYear}
               className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50 font-medium"
             >
               <Play className="w-3.5 h-3.5" />
               {generating ? 'Wird generiert...' : 'Draft generieren'}
+            </button>
+
+            {/* Separator */}
+            <div className="w-px h-8 bg-border/40" />
+
+            {/* Generate Full Year Button */}
+            <button
+              onClick={handleGenerateYear}
+              disabled={generating || generatingYear}
+              className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 font-medium"
+              title={`Schichtpläne für alle 12 Monate von ${selectedYear} generieren`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              {generatingYear ? `${selectedYear} wird generiert...` : `Ganzes Jahr ${selectedYear}`}
             </button>
           </div>
         }
@@ -280,6 +325,34 @@ export default function ShiftplanControlCenter() {
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span className="flex-1">{error}</span>
           <button onClick={() => setError(null)} className="text-xs underline hover:text-red-300">Schließen</button>
+        </div>
+      )}
+
+      {/* Year Generation Result */}
+      {yearResult && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Jahresplanung {yearResult.year}: {yearResult.generated.length}/12 Monate generiert
+            </h4>
+            <button onClick={() => setYearResult(null)} className="text-xs text-muted-foreground underline hover:text-foreground">Schließen</button>
+          </div>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+            {yearResult.generated.map((g: any) => (
+              <div key={g.month} className="text-xs rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1">
+                <span className="font-medium text-foreground">{monthLabel(g.month)}</span>
+                <span className="text-muted-foreground ml-1">v{g.version}</span>
+                <span className="text-emerald-400 ml-1">{g.shifts} Schichten</span>
+                {g.conflicts > 0 && <span className="text-amber-400 ml-1">{g.conflicts} Konflikte</span>}
+              </div>
+            ))}
+          </div>
+          {yearResult.errors?.length > 0 && (
+            <div className="mt-2 text-xs text-red-400">
+              Fehler: {yearResult.errors.map((e: any) => `${e.month}: ${e.error}`).join(', ')}
+            </div>
+          )}
         </div>
       )}
 

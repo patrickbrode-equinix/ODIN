@@ -14,7 +14,7 @@ import { logSettingsChange } from "../services/settingsAudit.js";
 const router = express.Router();
 
 /* GET /api/app-settings */
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAuth, requirePageAccess("admin_settings", "view"), async (req, res) => {
   try {
     const { rows } = await db.query("SELECT key, value FROM app_settings ORDER BY key");
     // Return as a flat object for convenience

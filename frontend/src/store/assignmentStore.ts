@@ -45,7 +45,7 @@ interface AssignmentState {
   stopEngine: () => Promise<void>;
   fetchRuns: (params?: { limit?: number; offset?: number }) => Promise<void>;
   selectRun: (runId: number) => Promise<void>;
-  executeRun: (mode?: AssignmentMode) => Promise<void>;
+  executeRun: (mode?: AssignmentMode, skipCrawlerCheck?: boolean) => Promise<void>;
   fetchDecisions: (params?: { limit?: number; offset?: number; result?: string; runId?: number }) => Promise<void>;
   selectDecision: (decisionId: number) => Promise<void>;
   fetchTicketExplanation: (ticketId: string, runId?: number) => Promise<void>;
@@ -158,16 +158,22 @@ export const useAssignmentStore = create<AssignmentState>()((set, get) => ({
     }
   },
 
-  executeRun: async (mode) => {
+  executeRun: async (mode, skipCrawlerCheck) => {
     set({ executing: true, error: null });
     try {
-      await AssignmentApi.executeRun(mode);
+      const result = await AssignmentApi.executeRun(mode, skipCrawlerCheck);
       // Reload runs
       const filters = get().filters;
       const { runs, total } = await AssignmentApi.getRuns({ mode: filters.runMode, status: filters.runStatus });
       set({ runs, runsTotal: total, executing: false });
       // Reload health
       try { const health = await AssignmentApi.getHealth(); set({ health }); } catch (_) {}
+      // Show warnings from run result in error field (non-blocking)
+      const warnings = (result as any)?.warnings;
+      if (Array.isArray(warnings) && warnings.length > 0) {
+        const modeLabel = (result as any)?.simulation ? `[${(result as any)?.mode || mode || 'shadow'} – Simulation]` : `[${(result as any)?.mode || mode}]`;
+        set({ error: `${modeLabel} ${warnings.join(' | ')}` });
+      }
     } catch (err: any) {
       set({ error: err.message || 'Failed to execute run', executing: false });
     }

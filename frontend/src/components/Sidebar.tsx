@@ -40,13 +40,18 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
 
   const group = normalizeGroup(user.group);
   const teamLabel = groupLabel(group);
+  const shiftplanChildPaths = new Set(["/shiftplan-control", "/shift-admin-settings"]);
 
   /* ———————————————————————————————— */
   /* FILTERED NAV (FINAL)               */
   /* ———————————————————————————————— */
 
   const topItems = NAV_TOP.filter((item) =>
-    canAccess(item.pageKey, "view")
+    canAccess(item.pageKey, "view") && !shiftplanChildPaths.has(item.to)
+  );
+
+  const shiftplanChildItems = NAV_TOP.filter((item) =>
+    shiftplanChildPaths.has(item.to) && canAccess(item.pageKey, "view")
   );
 
   const bottomItems = NAV_BOTTOM.filter((item) =>
@@ -62,7 +67,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
     return weekNo;
   };
   const currentKW = isoWeek(new Date());
-  const isShiftplanActive = location.pathname.startsWith("/shiftplan");
+  const isShiftplanActive = location.pathname.startsWith("/shiftplan")
+    || shiftplanChildItems.some((item) => location.pathname.startsWith(item.to));
   const isDashActive = location.pathname.startsWith("/dashboard");
   const isProtokollActive = location.pathname.startsWith("/protokoll");
 
@@ -214,6 +220,20 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                     >
                       Wochenplanung
                     </NavLink>
+                    {shiftplanChildItems.map((child) => (
+                      <NavLink
+                        key={child.to}
+                        to={child.to}
+                        className={({ isActive }) =>
+                          `block px-4 py-2 rounded-lg text-sm transition ${isActive
+                            ? "bg-blue-500/20 border border-blue-400/20 text-blue-100"
+                            : "bg-blue-500/10 border border-blue-400/10 text-sidebar-foreground/65 hover:bg-blue-500/20 hover:border-blue-400/20 hover:text-blue-100 transition-all duration-200 ease-out"
+                          }`
+                        }
+                      >
+                        {child.label}
+                      </NavLink>
+                    ))}
                   </div>
                 ) : null}
               </div>

@@ -4,6 +4,8 @@
 
 import express from "express";
 import db from "../db.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 
 const router = express.Router();
 
@@ -12,7 +14,7 @@ const router = express.Router();
 /* (auth + role wird in server.js enforced)          */
 /* ------------------------------------------------ */
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, requirePageAccess("admin_settings", "view"), async (req, res) => {
   const start = Date.now();
 
   try {

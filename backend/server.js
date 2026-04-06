@@ -47,6 +47,7 @@ import eventsRoutes from "./routes/events.js";
 import assignmentRoutes from "./routes/assignment.js";
 import feedbackRoutes from "./routes/feedback.js";
 import shiftplanControlRoutes from "./routes/shiftplanControl.js";
+import shiftConfigRoutes from "./routes/shiftConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -205,6 +206,9 @@ app.use("/api/assignment", assignmentRoutes);
 
 // Shiftplan Control Center (Draft generation, activation, Excel)
 app.use("/api/shiftplan-control", shiftplanControlRoutes);
+
+// Shift Configuration (definitions, rotation rules, fairness, exclusions, preferences)
+app.use("/api/shift-config", shiftConfigRoutes);
 
 // Feedback (email via SMTP)
 app.use("/api/feedback", feedbackRoutes);

@@ -33,26 +33,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── pgAdmin ────────────────────────────────────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: odin-pgadmin
-    restart: unless-stopped
-    ports:
-      - "8003:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
-    networks:
-      - shift-net
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
     build:
@@ -124,7 +104,6 @@ services:
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data: # persistent DB data — survives container restarts
-  pgadmin_data: # persistent pgAdmin data
   uploads_data: # persistent backend uploads
 
 # ── Networks ─────────────────────────────────────────────────────────────────

@@ -4,12 +4,11 @@
 #  Bridge networking via odin-net. Use this file for Portainer stacks.
 #  NOTE: host port 8000 is reserved by Portainer/Chisel — frontend uses 8080.
 #
-#  Services:  postgres | pgadmin | backend | frontend
+#  Services:  postgres | backend | frontend
 #  Host ports:
 #    - PostgreSQL:  5432  (internal only — remove port mapping if not needed)
 #    - Backend:     8001
 #    - Frontend:    8080  → container 8000
-#    - pgAdmin:     8003
 #
 #  Usage (Portainer stack):
 #    Paste this file; set env vars from .env.example.
@@ -48,39 +47,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-
-  # ── pgAdmin ────────────────────────────────────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: odin-pgadmin
-    restart: unless-stopped
-    ports:
-      - "8003:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin:z
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json:ro,z
-    networks:
-      odin-net:
-        aliases:
-          - pgadmin
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/misc/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
 
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
@@ -169,7 +135,6 @@ services:
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
-  pgadmin_data:
   uploads_data:
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:

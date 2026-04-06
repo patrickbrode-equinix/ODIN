@@ -4,6 +4,8 @@
 
 import express from "express";
 import os from "os";
+import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 
 const router = express.Router();
 
@@ -51,7 +53,7 @@ async function sampleCpuUsagePct(sampleMs = 200) {
 /* GET /api/metrics                                  */
 /* ------------------------------------------------ */
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, requirePageAccess("dashboard", "view"), async (req, res) => {
   const mem = process.memoryUsage();
 
   const total = os.totalmem();

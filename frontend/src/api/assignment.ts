@@ -14,6 +14,23 @@ import type {
   AssignmentMode,
 } from '../types/assignment';
 
+export interface AssignmentExclusionEntry {
+  id: number;
+  system_name: string;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+  active?: boolean;
+}
+
+export interface AssignmentSubtypeExclusionEntry {
+  id: number;
+  subtype: string;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+}
+
 export const AssignmentApi = {
   /* ---- Health ---- */
   async getHealth(): Promise<AssignmentHealth> {
@@ -45,9 +62,17 @@ export const AssignmentApi = {
   },
 
   /* ---- Runs ---- */
-  async executeRun(mode?: AssignmentMode): Promise<{ runId: number; summary: Record<string, unknown> }> {
-    const res = await api.post('/assignment/runs/execute', mode ? { mode } : {});
+  async executeRun(mode?: AssignmentMode, skipCrawlerCheck?: boolean): Promise<{ runId: number; summary: Record<string, unknown> }> {
+    const body: any = {};
+    if (mode) body.mode = mode;
+    if (skipCrawlerCheck) body.skipCrawlerCheck = true;
+    const res = await api.post('/assignment/runs/execute', body);
     return asObject(res.data, 'AssignmentApi.executeRun') as { runId: number; summary: Record<string, unknown> };
+  },
+
+  async getRunReport(runId: number): Promise<any> {
+    const res = await api.get(`/assignment/runs/${runId}/report`);
+    return asObject(res.data, 'AssignmentApi.getRunReport');
   },
 
   async getRuns(params?: { limit?: number; offset?: number; mode?: string; status?: string }): Promise<{ runs: AssignmentRun[]; total: number }> {
@@ -102,5 +127,48 @@ export const AssignmentApi = {
   async deactivateOverride(id: number): Promise<AssignmentOverride> {
     const res = await api.patch(`/assignment/overrides/${id}/deactivate`);
     return asObject(res.data, 'AssignmentApi.deactivateOverride').override;
+  },
+
+  /* ---- Exclusions ---- */
+  async getExclusions(activeOnly = true): Promise<AssignmentExclusionEntry[]> {
+    const res = await api.get('/assignment/exclusions', { params: { active: activeOnly } });
+    const data = asObject(res.data, 'AssignmentApi.getExclusions');
+    return asArray(data.exclusions, 'AssignmentApi.getExclusions.exclusions') as AssignmentExclusionEntry[];
+  },
+
+  async getAvailableSystemNames(): Promise<string[]> {
+    const res = await api.get('/assignment/exclusions/available');
+    const data = asObject(res.data, 'AssignmentApi.getAvailableSystemNames');
+    return asArray(data.systemNames, 'AssignmentApi.getAvailableSystemNames.systemNames') as string[];
+  },
+
+  async addExclusion(systemName: string, reason?: string): Promise<AssignmentExclusionEntry> {
+    const res = await api.post('/assignment/exclusions', { systemName, reason });
+    return asObject(res.data, 'AssignmentApi.addExclusion').entry as AssignmentExclusionEntry;
+  },
+
+  async deleteExclusion(id: number): Promise<void> {
+    await api.delete(`/assignment/exclusions/${id}`);
+  },
+
+  async getSubtypeExclusions(): Promise<AssignmentSubtypeExclusionEntry[]> {
+    const res = await api.get('/assignment/exclusions/subtypes');
+    const data = asObject(res.data, 'AssignmentApi.getSubtypeExclusions');
+    return asArray(data.exclusions, 'AssignmentApi.getSubtypeExclusions.exclusions') as AssignmentSubtypeExclusionEntry[];
+  },
+
+  async getAvailableSubtypes(): Promise<string[]> {
+    const res = await api.get('/assignment/exclusions/subtypes/available');
+    const data = asObject(res.data, 'AssignmentApi.getAvailableSubtypes');
+    return asArray(data.subtypes, 'AssignmentApi.getAvailableSubtypes.subtypes') as string[];
+  },
+
+  async addSubtypeExclusion(subtype: string, reason?: string): Promise<AssignmentSubtypeExclusionEntry> {
+    const res = await api.post('/assignment/exclusions/subtypes', { subtype, reason });
+    return asObject(res.data, 'AssignmentApi.addSubtypeExclusion').entry as AssignmentSubtypeExclusionEntry;
+  },
+
+  async deleteSubtypeExclusion(id: number): Promise<void> {
+    await api.delete(`/assignment/exclusions/subtypes/${id}`);
   },
 };

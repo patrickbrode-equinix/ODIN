@@ -4,6 +4,7 @@
 
 import type { TicketExplanation, ExcludedCandidate, CandidateRef } from '../../types/assignment';
 import { CheckCircle, XCircle, AlertTriangle, Info, ListOrdered, Users, UserCheck } from 'lucide-react';
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId, getAssignmentQueueOrigin } from '../../utils/assignmentTicketDisplay';
 
 interface Props {
   explanation: TicketExplanation;
@@ -30,6 +31,9 @@ export function AssignmentExplanationCard({ explanation }: Props) {
   };
   const rs = resultStyles[s.result] || resultStyles.error;
   const ResultIcon = rs.icon;
+  const displayTicketNumber = getAssignmentDisplayTicketNumber(s);
+  const internalTicketId = getAssignmentInternalTicketId(s);
+  const queueOrigin = getAssignmentQueueOrigin(s);
 
   return (
     <div className="space-y-4">
@@ -45,9 +49,11 @@ export function AssignmentExplanationCard({ explanation }: Props) {
       {/* Ticket Details */}
       <Section title="Ticket-Details" icon={Info}>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Ticket-ID</dt>
-          <dd className="font-mono">{s.ticketId}</dd>
+          <dt className="text-muted-foreground">Ticketnummer</dt>
+          <dd className="font-mono">{displayTicketNumber}</dd>
+          {internalTicketId && internalTicketId !== displayTicketNumber && (<><dt className="text-muted-foreground">Interne ID</dt><dd className="font-mono">{internalTicketId}</dd></>)}
           {s.externalId && (<><dt className="text-muted-foreground">Externe ID</dt><dd className="font-mono">{s.externalId}</dd></>)}
+          {queueOrigin && (<><dt className="text-muted-foreground">Queue</dt><dd>{queueOrigin}</dd></>)}
           <dt className="text-muted-foreground">Typ</dt>
           <dd>{s.ticketType || '–'}</dd>
           <dt className="text-muted-foreground">Status</dt>
@@ -82,6 +88,9 @@ export function AssignmentExplanationCard({ explanation }: Props) {
             {s.initialCandidates.map((c: CandidateRef) => (
               <li key={c.id} className="text-xs text-foreground/80">
                 {c.name} <span className="text-muted-foreground">(ID: {c.id})</span>
+                {(c.shiftCode || c.weekplanRole || c.role) && (
+                  <span className="text-muted-foreground"> • {[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -98,6 +107,9 @@ export function AssignmentExplanationCard({ explanation }: Props) {
                 <div>
                   <span className="font-medium text-foreground/80">{e.name || `ID: ${e.id}`}</span>
                   <span className="text-muted-foreground"> — {e.reason}</span>
+                  {(e.shiftCode || e.weekplanRole || e.role) && (
+                    <span className="text-muted-foreground"> • {[e.shiftCode, e.weekplanRole || e.role].filter(Boolean).join(' | ')}</span>
+                  )}
                 </div>
               </li>
             ))}
@@ -114,6 +126,9 @@ export function AssignmentExplanationCard({ explanation }: Props) {
             {s.remainingCandidates.map((c: CandidateRef) => (
               <li key={c.id} className="text-xs text-green-400/80">
                 ✓ {c.name} <span className="text-muted-foreground">(ID: {c.id})</span>
+                {(c.shiftCode || c.weekplanRole || c.role) && (
+                  <span className="text-muted-foreground"> • {[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -154,6 +169,18 @@ export function AssignmentExplanationCard({ explanation }: Props) {
           <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded p-2">
             {s.errorMessage}
           </div>
+        </Section>
+      )}
+
+      {s.normalizedTicket && (
+        <Section title="Normalisierte Ticketdaten" icon={Info}>
+          <pre className="text-[11px] leading-5 whitespace-pre-wrap break-all text-foreground/75">{JSON.stringify(s.normalizedTicket, null, 2)}</pre>
+        </Section>
+      )}
+
+      {s.rawTicket && (
+        <Section title="Raw Ticket" icon={Info}>
+          <pre className="text-[11px] leading-5 whitespace-pre-wrap break-all text-foreground/75">{JSON.stringify(s.rawTicket, null, 2)}</pre>
         </Section>
       )}
     </div>

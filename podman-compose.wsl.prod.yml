@@ -29,23 +29,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # ── pgAdmin ────────────────────────────────────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: odin-pgadmin
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_LISTEN_PORT: 8003
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./backend/pgadmin-servers.json:/pgadmin4/servers.json
-    depends_on:
-      - postgres
-
   # ── Backend — PRODUCTION IMAGE ────────────────────────────────────────────
   backend:
     image: localhost/odin-backend:prod
@@ -95,5 +78,4 @@ services:
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
-  pgadmin_data:
   uploads_data:

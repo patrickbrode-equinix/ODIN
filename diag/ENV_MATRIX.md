@@ -7,8 +7,6 @@
 | `DB_PASSWORD` | Postgres, Backend | `postgres` | **Yes** | `superSecret123!` |
 | `DB_HOST` | Backend Compose | `postgres` | Optional (default works) | `postgres` (Service Name) |
 | `DB_PORT` | Backend Compose | `5432` | Optional (default works) | `5432` |
-| `PGADMIN_EMAIL` | pgAdmin | `admin@admin.com` | Optional (default works) | `admin@company.com` |
-| `PGADMIN_PASSWORD` | pgAdmin | `admin` | **Yes** | `secureMdPassword` |
 | `PORT` | Backend | `8001` | Optional (default works) | `8001` |
 | `NODE_ENV` | Backend, Frontend | `production` | Optional (default works) | `production` |
 | `JWT_SECRET` | Backend Auth | `dev-only-insecure-secret` | **Yes** | `aLongRandomHexString32Bytes` |

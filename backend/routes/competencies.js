@@ -6,11 +6,12 @@
 import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 
 const router = express.Router();
 
 /* GET /api/competencies?employee=<name> */
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAuth, requirePageAccess("shiftplan", "view"), async (req, res) => {
   try {
     const { employee } = req.query;
     let query, params;
@@ -40,7 +41,7 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 /* GET /api/competencies/employee/:name — full profile */
-router.get("/employee/:name", requireAuth, async (req, res) => {
+router.get("/employee/:name", requireAuth, requirePageAccess("shiftplan", "view"), async (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name);
 
@@ -66,7 +67,7 @@ router.get("/employee/:name", requireAuth, async (req, res) => {
 });
 
 /* POST /api/competencies */
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, requirePageAccess("shiftplan", "write"), async (req, res) => {
   try {
     const { employee_name, capability, level = 1, notes } = req.body;
     if (!employee_name || !capability) {
@@ -90,7 +91,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 /* DELETE /api/competencies/:id */
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", requireAuth, requirePageAccess("shiftplan", "write"), async (req, res) => {
   try {
     await db.query("DELETE FROM employee_competencies WHERE id = $1", [req.params.id]);
     res.json({ success: true });
@@ -102,7 +103,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 /* ---- CUSTOMER ACCESS ---- */
 
 /* GET /api/competencies/customer-access/:employee */
-router.get("/customer-access/:name", requireAuth, async (req, res) => {
+router.get("/customer-access/:name", requireAuth, requirePageAccess("shiftplan", "view"), async (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name);
     const { rows } = await db.query(
@@ -116,7 +117,7 @@ router.get("/customer-access/:name", requireAuth, async (req, res) => {
 });
 
 /* POST /api/competencies/customer-access */
-router.post("/customer-access", requireAuth, async (req, res) => {
+router.post("/customer-access", requireAuth, requirePageAccess("shiftplan", "write"), async (req, res) => {
   try {
     const { employee_name, customer_name, approved = true, valid_until } = req.body;
     if (!employee_name || !customer_name) {
@@ -139,7 +140,7 @@ router.post("/customer-access", requireAuth, async (req, res) => {
 });
 
 /* DELETE /api/competencies/customer-access/:id */
-router.delete("/customer-access/:id", requireAuth, async (req, res) => {
+router.delete("/customer-access/:id", requireAuth, requirePageAccess("shiftplan", "write"), async (req, res) => {
   try {
     await db.query("DELETE FROM employee_customer_access WHERE id = $1", [req.params.id]);
     res.json({ success: true });

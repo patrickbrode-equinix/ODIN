@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Eye, EyeOff, Info, CheckCircle2 } from "lucide-react";
 
 import { api } from "../../api/api";
 
@@ -40,6 +41,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   /* ------------------------------------------------ */
   /* HANDLER                                          */
@@ -111,6 +113,15 @@ export default function Register() {
           </CardHeader>
 
           <CardContent className="space-y-6">
+            {/* Registration info */}
+            <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 border border-blue-400/20 p-3">
+              <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+              <div className="text-xs text-blue-200/80 space-y-1">
+                <p>Verwende deine <strong>Firmen-E-Mail-Adresse</strong> (z.B. vorname.nachname@firma.de).</p>
+                <p>Nach der Registrierung muss ein Admin dein Konto freigeben, bevor du dich einloggen kannst.</p>
+              </div>
+            </div>
+
             <form onSubmit={handleRegister} className="space-y-4">
               {/* NAME */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -140,6 +151,7 @@ export default function Register() {
                 <Label>E-Mail</Label>
                 <Input
                   type="email"
+                  placeholder="vorname.nachname@firma.de"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -195,24 +207,48 @@ export default function Register() {
               {/* PASSWORD */}
               <div className="space-y-2">
                 <Label>Passwort</Label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Mindestens 8 Zeichen mit Groß-/Kleinbuchstaben und einer Zahl.
+                </p>
               </div>
 
               {/* FEEDBACK */}
               {error && (
-                <p className="text-sm text-red-500">{error}</p>
+                <div className="rounded-lg bg-red-500/10 border border-red-400/20 p-3">
+                  <p className="text-sm text-red-400">{error}</p>
+                </div>
               )}
 
               {success && (
-                <p className="text-sm text-green-500">
-                  Registrierung erfolgreich – bitte auf Freigabe warten.
-                </p>
+                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-400/20 p-3">
+                  <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+                  <div className="text-sm text-green-300">
+                    <p className="font-medium">Registrierung erfolgreich!</p>
+                    <p className="text-xs text-green-300/70 mt-1">
+                      Dein Konto wurde angelegt. Ein Admin wird dein Konto freigeben —
+                      du erhältst dann Zugang zum System.
+                    </p>
+                  </div>
+                </div>
               )}
 
               <Button

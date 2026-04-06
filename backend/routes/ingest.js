@@ -4,11 +4,13 @@
 
 import express from "express";
 import db from "../db.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { broadcast } from "./sse.js";
 
 const router = express.Router();
 
+router.use(requireAuth);
 router.use(requirePageAccess("tickets", "write"));
 
 function pick(obj, keys) {

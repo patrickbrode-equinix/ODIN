@@ -7,26 +7,42 @@
 
 ## 1. Project Structure
 
-```
-Merged/
-├── backend/                → Node.js + Express + PostgreSQL
+```text
+ODIN_APP/
+├── Backend/                → Node.js + Express + PostgreSQL
 │   ├── config/index.js     ← single config source of truth
 │   ├── routes/
 │   ├── db.js
 │   ├── server.js
 │   ├── Dockerfile
-│   ├── .env.example        ← copy to .env and fill in values
-│   └── .env.production.example
+│   └── db/migrations/
 │
-├── frontend/               → React + Vite + Tailwind
+├── Frontend/               → React + Vite + Tailwind
 │   ├── src/
 │   ├── vite.config.ts      ← proxy reads BACKEND_URL env var
 │   └── Dockerfile
 │
-├── docker-compose.yml      ← dev: all 3 services (postgres, backend, frontend)
-├── docker-compose.prod.yml ← prod overrides (built images, no hot-reload)
+├── docs/
+│   ├── setup/              → local/VM deployment guides
+│   ├── reference/          → environment and inventory docs
+│   └── reports/            → change and diagnostic reports
+├── diag/                   → diagnostics, baselines, investigation notes
+├── archives/               → exported zip archives and snapshots
+├── oes-jarvis-crawler/     → browser extension crawler
+├── docker-compose.yml      ← dev/runtime compose
+├── docker-compose.prod.yml ← prod overrides
+├── podman-compose*.yml     ← podman variants
 └── README.md
 ```
+
+## 1.1 Documentation Map
+
+- Local development: `docs/setup/LOCAL_DEV.md`
+- Oracle Linux / Portainer / Podman deployment: `docs/setup/INSTALL_ORACLE_LINUX_PORTAINER_PODMAN.md`
+- Environment variable overview: `docs/reference/ENV_MATRIX.md`
+- Project inventory: `docs/reference/INVENTORY.md`
+- Rename/change report: `docs/reports/RENAME_REPORT_SAFE.md`
+- Crawler 401 fix report: `docs/reports/CRAWLER_401_FIX.txt`
 
 ---
 
@@ -70,9 +86,9 @@ Key variables:
 
 ---
 
-## 4. Run Locally (No Docker)
+## 4. Run Locally
 
-Requires: Node.js 20, PostgreSQL 15 running locally.
+Requires: Node.js 20 and either a local PostgreSQL on `localhost:5432` or Docker/Podman for automatic Postgres bootstrap.
 
 ```bash
 # 1. IClone the repo and configure your environment variables:
@@ -94,23 +110,26 @@ cp .env.example .env
 
 ```bash
 # 2. Install dependencies
-cd backend && npm install
-cd ../frontend && npm install
+npm run install:all
 
-# 3. Start backend (terminal 1)
-cd backend && npm run dev
-# → listening on http://localhost:8001
-# → startup log shows: DB connected ✅
+# 3. Start frontend + backend from the repo root
+npm run dev
+# → starts/reuses Postgres on localhost:5432
+# → frontend on http://localhost:5173
+# → backend on http://localhost:5055
 
-# 4. Start frontend (terminal 2)
-cd frontend && npm run dev
-# → http://localhost:8000
-# → /api/* proxied to http://127.0.0.1:8001 via vite.config.ts
+# Optional: also start the Teams bot
+npm run dev:full
+
+# Optional: stop the Postgres container started for dev
+npm run dev:db:down
 ```
+
+`npm run dev` reuses an already running local Postgres instance. If nothing is listening on `localhost:5432`, it starts a Postgres container that is aligned with `Backend/.env`.
 
 **Verify:**
 ```bash
-curl http://localhost:8001/api/health
+curl http://localhost:5055/api/health
 # → {"status":"ok","db":"connected"}
 ```
 
@@ -118,7 +137,7 @@ curl http://localhost:8001/api/health
 
 ## 5. Run with Docker or Podman (Local)
 
-All services start together: **postgres → pgadmin → backend → frontend** (in dependency order).
+All services start together: **postgres → backend → frontend** (in dependency order).
 This project is fully compatible with both Docker Compose and Podman Compose.
 
 ```bash
@@ -142,7 +161,6 @@ docker compose logs -f postgres
 | Service | Container | Port |
 |---------|-----------|------|
 | postgres | `odin-postgres` | `localhost:8002` |
-| pgadmin | `odin-pgadmin` | `localhost:8003` (Login: `admin@admin.com` / `admin`) |
 | backend | `odin-backend` | `localhost:8001` |
 | frontend | `odin-frontend` | `localhost:8000` |
 

@@ -37,7 +37,6 @@ This document provides a comprehensive fundstellen-liste (search hit list) for l
 | `backend/docs/swagger.js` | `title: "Dispatcher Console API"` | **A) Branding** |
 | `frontend/src/components/pages/Login.tsx`, etc. | `alt="Dispatcher Console"` | **A) Branding** |
 | `docker-compose.yml`, `podman-compose.yml` | `container_name: dispatcher-postgres` | **B) Deployment** |
-| `docker-compose.yml`, `podman-compose.yml` | `container_name: dispatcher-pgadmin` | **B) Deployment** |
 | `docker-compose.yml`, `podman-compose.yml` | `image: dispatcher-backend:prod`, `container_name: dispatcher-backend` | **B) Deployment** |
 | `docker-compose.yml`, `podman-compose.yml`, `docker-compose.prod.yml` | `image: dispatcher-frontend:prod`, `container_name: dispatcher-frontend` | **B) Deployment** |
 | `frontend/src/App.tsx` | Route path: `path="dispatcher"` | **C) Risk** (Route) |
@@ -77,4 +76,3 @@ This document provides a comprehensive fundstellen-liste (search hit list) for l
 | **8000** | Production Frontend | `docker-compose.yml`, `podman-compose.yml`, `README.md`, `.env.example` |
 | **8001** | Production Backend | `docker-compose.yml`, `podman-compose.yml`, `README.md` |
 | **8002** | Production Postgres | `docker-compose.yml`, `podman-compose.yml`, `README.md` |
-| **8003** | Production pgAdmin | `docker-compose.yml`, `podman-compose.yml`, `README.md` |
