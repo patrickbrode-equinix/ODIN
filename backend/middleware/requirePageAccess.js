@@ -1,10 +1,8 @@
 /* ———————————————————————————————— */
 /* RBAC – PAGE ACCESS ENFORCEMENT                   */
-/* Source of truth: group policy + user override    */
+/* Source of truth: resolved user accessPolicy      */
 /* Levels: none | view | write                      */
 /* ———————————————————————————————— */
-
-import { canRoleAccess } from "../auth/accessControl.js";
 
 /* ———————————————————————————————— */
 /* ACCESS LEVEL ORDER                               */
@@ -46,10 +44,6 @@ export function requirePageAccess(pageKey, minLevel = "view") {
         return next();
       }
 
-      if (user.is_admin === true) {
-        return next();
-      }
-
       /* --- Nicht approved: block --- */
       if (user.approved !== true) {
         return res.status(403).json({
@@ -59,8 +53,9 @@ export function requirePageAccess(pageKey, minLevel = "view") {
       }
 
       const required = normalizeLevel(minLevel);
+      const current = normalizeLevel(user.accessPolicy?.[pageKey]);
 
-      if (!canRoleAccess(user.role, pageKey, required)) {
+      if (!meets(current, required)) {
         return res.status(403).json({
           code: "INSUFFICIENT_PERMISSION",
           message: `Access denied (${pageKey}:${required})`,

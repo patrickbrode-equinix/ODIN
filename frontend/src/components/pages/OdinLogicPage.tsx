@@ -14,12 +14,10 @@ import { InfoTooltip } from '../ui/InfoTooltip';
 import { Play, RotateCcw, ChevronDown, ChevronUp, AlertCircle, Power, PowerOff, Shield, StopCircle, Zap, Clock, Brain, FileText, SkipForward } from 'lucide-react';
 import { EnterprisePageShell, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
 
-const OdinExclusions = lazy(() => import('../odinlogic/OdinExclusions'));
 const OdinLogicTree = lazy(() => import('../odinlogic/OdinLogicTree'));
 const AssignmentVisualizer = lazy(() => import('../odinlogic/AssignmentVisualizer'));
-const EmployeeExclusions = lazy(() => import('../odinlogic/EmployeeExclusions'));
 
-type TabKey = 'runs' | 'decisions' | 'report' | 'settings' | 'exclusions' | 'employeeExclusions' | 'logicTree' | 'visualizer';
+type TabKey = 'runs' | 'decisions' | 'report' | 'settings' | 'logicTree' | 'visualizer';
 
 /* ---- Safety Confirmation Dialog ---- */
 function ConfirmDialog({ open, title, message, confirmLabel, cancelLabel, variant, onConfirm, onCancel }: {
@@ -115,6 +113,10 @@ export default function OdinLogicPage() {
     }
   }, [selectedRun, filters.decisionResult]);
 
+  useEffect(() => {
+    setRunReport(null);
+  }, [selectedRun?.id]);
+
   const lastRun = runs.length > 0 ? runs[0] : null;
   const engineEnabled = health?.enabled === true;
   const engineMode = health?.mode || 'shadow';
@@ -159,8 +161,6 @@ export default function OdinLogicPage() {
     { key: 'report', label: selectedRun ? `Run-Report (#${selectedRun.id})` : 'Run-Report' },
     { key: 'logicTree', label: 'Logikbaum' },
     { key: 'visualizer', label: 'Zuweisungsfluss' },
-    { key: 'exclusions', label: 'Manuelle Ausnahmeliste' },
-    { key: 'employeeExclusions', label: 'Dauerhafte Ausschlüsse' },
     { key: 'settings', label: 'Einstellungen' },
   ];
 
@@ -392,22 +392,6 @@ export default function OdinLogicPage() {
 
         {!loading && tab === 'decisions' && <AssignmentDecisionTable decisions={decisions} />}
 
-        {!loading && tab === 'exclusions' && (
-          <div className="p-4">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>}>
-              <OdinExclusions />
-            </Suspense>
-          </div>
-        )}
-
-        {!loading && tab === 'employeeExclusions' && (
-          <div className="p-4">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>}>
-              <EmployeeExclusions />
-            </Suspense>
-          </div>
-        )}
-
         {!loading && tab === 'logicTree' && (
           <div className="p-4">
             <Suspense fallback={<div className="flex items-center justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>}>
@@ -493,6 +477,8 @@ export default function OdinLogicPage() {
                           <table className="w-full text-xs">
                             <thead><tr className="bg-background/60 text-muted-foreground">
                               <th className="px-3 py-1.5 text-left">Ticket</th>
+                              <th className="px-3 py-1.5 text-left">System</th>
+                              <th className="px-3 py-1.5 text-left">Kategorie</th>
                               <th className="px-3 py-1.5 text-left">Queue</th>
                               <th className="px-3 py-1.5 text-left">Zugewiesen an</th>
                               <th className="px-3 py-1.5 text-left">Begründung</th>
@@ -500,7 +486,9 @@ export default function OdinLogicPage() {
                             <tbody>
                               {runReport.assigned.map((d: any, i: number) => (
                                 <tr key={i} className="border-t border-border/10 hover:bg-green-500/5">
-                                  <td className="px-3 py-1.5 font-mono">{d.ticketId}</td>
+                                  <td className="px-3 py-1.5 font-mono">{d.displayTicketNumber}</td>
+                                  <td className="px-3 py-1.5">{d.systemName || '–'}</td>
+                                  <td className="px-3 py-1.5">{d.ticketCategory || '–'}</td>
                                   <td className="px-3 py-1.5">{d.queueType}</td>
                                   <td className="px-3 py-1.5 font-medium text-green-400">{d.assignedTo}</td>
                                   <td className="px-3 py-1.5 text-muted-foreground">{d.reason}</td>
@@ -520,6 +508,8 @@ export default function OdinLogicPage() {
                           <table className="w-full text-xs">
                             <thead><tr className="bg-background/60 text-muted-foreground">
                               <th className="px-3 py-1.5 text-left">Ticket</th>
+                              <th className="px-3 py-1.5 text-left">System</th>
+                              <th className="px-3 py-1.5 text-left">Kategorie</th>
                               <th className="px-3 py-1.5 text-left">Queue</th>
                               <th className="px-3 py-1.5 text-left">Status</th>
                               <th className="px-3 py-1.5 text-left">Grund</th>
@@ -527,7 +517,9 @@ export default function OdinLogicPage() {
                             <tbody>
                               {runReport.unassigned.map((d: any, i: number) => (
                                 <tr key={i} className="border-t border-border/10 hover:bg-red-500/5">
-                                  <td className="px-3 py-1.5 font-mono">{d.ticketId}</td>
+                                  <td className="px-3 py-1.5 font-mono">{d.displayTicketNumber}</td>
+                                  <td className="px-3 py-1.5">{d.systemName || '–'}</td>
+                                  <td className="px-3 py-1.5">{d.ticketCategory || '–'}</td>
                                   <td className="px-3 py-1.5">{d.queueType}</td>
                                   <td className="px-3 py-1.5 text-amber-400">{d.result}</td>
                                   <td className="px-3 py-1.5 text-muted-foreground">{d.reason}</td>

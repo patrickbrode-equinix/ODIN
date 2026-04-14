@@ -23,17 +23,20 @@ function normalizeGroupFromQueueType(queueType) {
   if (queueType === "SmartHands") return "FR2-Smart hands";
   if (queueType === "CCInstalls") return "FR2-Cross Connects";
   if (queueType === "TroubleTickets") return "Trouble Tickets";
+  if (queueType === "Deinstall") return "";
   return "";
 }
 
 function canonicalizeQueueType(v) {
   const s = String(v || "").trim();
   if (!s) return "";
+  const lower = s.toLowerCase();
   // Allow a few legacy/alt spellings from older extension builds
-  if (s === "SMART_HANDS" || s.toLowerCase() === "smarthands") return "SmartHands";
-  if (s === "CC_INSTALLS" || s.toLowerCase() === "ccinstalls") return "CCInstalls";
-  if (s === "TROUBLE_TICKETS" || s.toLowerCase() === "troubletickets") return "TroubleTickets";
-  return s;
+  if (s === "SMART_HANDS" || lower === "smarthands") return "SmartHands";
+  if (s === "CC_INSTALLS" || lower === "ccinstalls") return "CCInstalls";
+  if (s === "TROUBLE_TICKETS" || lower === "troubletickets") return "TroubleTickets";
+  if (s === "DEINSTALL" || lower === "deinstall" || lower === "deinstalls") return "Deinstall";
+  return "";
 }
 
 function isClosedStatus(status) {

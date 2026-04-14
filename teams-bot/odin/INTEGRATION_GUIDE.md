@@ -61,6 +61,7 @@ teams-bot/odin/
 | `NODE_ENV` | Nein | `development` | Umgebung |
 | `CLIENT_ID` | Ja | — | Microsoft App ID |
 | `CLIENT_PASSWORD` | Ja | — | Microsoft App Password |
+| `CLIENT_SECRET` | Nein | — | Bevorzugter Alias für `CLIENT_PASSWORD` |
 | `TENANT_ID` | Ja | — | Azure AD Tenant ID |
 | `BOT_TYPE` | Nein | `MultiTenant` | Bot-Typ |
 | `BOT_INTERNAL_API_KEY` | Ja | — | API-Key für ODIN → Bot Kommunikation |
@@ -70,6 +71,8 @@ teams-bot/odin/
 | `ENABLE_GROUP_NOTIFICATIONS` | Nein | `true` | Gruppen-Benachrichtigungen aktiviert |
 | `ENABLE_SUPERVISOR_APPROVAL` | Nein | `true` | Supervisor-Freigabe aktiviert |
 | `LOG_LEVEL` | Nein | `info` | Log-Level (debug/info/warn/error) |
+
+> Hinweis zur aktuellen Graph-Fallback-Implementierung: Der app-only Pfad braucht fuer `GET /users/{id|upn}` mindestens `User.Read.All`, fuer App-Installationszugriffe `TeamsAppInstallation.ReadWriteForUser.All` und fuer `POST /chats/{chat-id}/messages` app-only `Teamwork.Migrate.All`. `ChatMessage.Send` ist delegiert und `Chat.Create` wird im aktuellen GraphService-Pfad nicht verwendet.
 
 ---
 

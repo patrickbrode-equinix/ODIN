@@ -479,24 +479,34 @@ function buildFinalReasons(selectionReason, tieBreaker) {
 
 router.get("/assignment-trace", async (_req, res) => {
   try {
-    // Get the most recent 'assigned' decision from the latest completed run
+    // Get the most recent assigned decision that is still backed by an active queue ticket.
     const decisionRes = await query(`
       SELECT d.*,
              r.started_at AS run_started_at,
-             r.status AS run_status
+             r.status AS run_status,
+             q.id AS live_queue_id
       FROM assignment_ticket_decisions d
       JOIN assignment_runs r ON r.id = d.run_id
+      LEFT JOIN queue_items q
+        ON q.active = TRUE
+       AND (
+         q.external_id = d.external_id
+         OR q.external_id = d.ticket_id
+         OR q.id::text = d.ticket_id
+       )
       WHERE d.result = 'assigned'
         AND r.status = 'completed'
       ORDER BY d.decided_at DESC
-      LIMIT 1
+      LIMIT 25
     `);
 
-    if (decisionRes.rows.length === 0) {
+    const liveDecision = decisionRes.rows.find((row) => row.live_queue_id != null) || null;
+
+    if (!liveDecision) {
       return res.json({ available: false, trace: null });
     }
 
-    const d = decisionRes.rows[0];
+    const d = liveDecision;
 
     // Parse JSONB fields
     const normalizedTicket = typeof d.normalized_ticket === 'string' ? JSON.parse(d.normalized_ticket) : (d.normalized_ticket || {});
@@ -646,7 +656,12 @@ router.get("/teams-status", async (_req, res) => {
   try {
     const hasWebhook = !!(process.env.TEAMS_CHANNEL_WEBHOOK || process.env.TEAMS_PERSONAL_WEBHOOK);
     const hasBotKey = !!process.env.BOT_INTERNAL_API_KEY;
-    const hasGraph = !!(process.env.GRAPH_CLIENT_ID && process.env.GRAPH_CLIENT_SECRET);
+    const hasGraph = !!(
+      (process.env.GRAPH_CLIENT_ID || process.env.CLIENT_ID || process.env.BOT_ID)
+      && (process.env.GRAPH_CLIENT_SECRET || process.env.CLIENT_SECRET || process.env.CLIENT_PASSWORD)
+      && (process.env.GRAPH_TENANT_ID || process.env.TENANT_ID || process.env.BOT_TENANT_ID)
+      && (process.env.BOT_APP_ID || process.env.TEAMS_APP_ID)
+    );
     const configured = hasWebhook || hasBotKey || hasGraph;
 
     let sentToday = 0;

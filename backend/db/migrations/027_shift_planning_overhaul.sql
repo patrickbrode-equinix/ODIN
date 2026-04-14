@@ -51,14 +51,16 @@ CREATE TABLE IF NOT EXISTS shift_rotation_rules (
   min_hours_between_shifts  INT     NOT NULL DEFAULT 11,     -- minimum rest hours
   max_nights_per_month      INT     NOT NULL DEFAULT 7,      -- max night shifts per month
   max_weekends_per_month    INT     NOT NULL DEFAULT 2,      -- max weekend shifts per month
+  free_days_after_night     INT     NOT NULL DEFAULT 2,
+  free_days_after_weekend   INT     NOT NULL DEFAULT 1,
   weekend_rule              VARCHAR(20) DEFAULT 'balanced',  -- balanced, minimize, none
   is_active                 BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Seed default rotation rules
-INSERT INTO shift_rotation_rules (id, max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule)
-VALUES (1, 5, 6, 1, TRUE, TRUE, 11, 7, 2, 'balanced')
+INSERT INTO shift_rotation_rules (id, max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, free_days_after_night, free_days_after_weekend, weekend_rule)
+VALUES (1, 5, 6, 1, TRUE, TRUE, 11, 7, 2, 2, 1, 'balanced')
 ON CONFLICT (id) DO NOTHING;
 
 /* ================================================ */
@@ -91,13 +93,14 @@ CREATE TABLE IF NOT EXISTS shift_planning_config (
   soft_wishes_priority      INT     NOT NULL DEFAULT 50,     -- 0-100 weight
   fairness_priority         INT     NOT NULL DEFAULT 80,     -- 0-100 weight
   admin_override_priority   INT     NOT NULL DEFAULT 90,     -- 0-100 weight
+  monthly_target_hours      NUMERIC(6,2) NOT NULL DEFAULT 174,
   planning_mode             VARCHAR(20) DEFAULT 'month',     -- month, year
   is_active                 BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO shift_planning_config (id, respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority)
-VALUES (1, TRUE, 100, 50, 80, 90)
+INSERT INTO shift_planning_config (id, respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours)
+VALUES (1, TRUE, 100, 50, 80, 90, 174)
 ON CONFLICT (id) DO NOTHING;
 
 /* ================================================ */

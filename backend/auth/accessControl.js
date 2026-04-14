@@ -9,6 +9,23 @@ const ACCESS_LEVELS = {
   write: 2,
 };
 
+function normalizeAccessLevel(rawLevel) {
+  if (rawLevel === "view" || rawLevel === "write") {
+    return rawLevel;
+  }
+  return "none";
+}
+
+function sanitizeAccessOverride(accessOverride = {}) {
+  const next = {};
+
+  for (const [pageKey, rawLevel] of Object.entries(accessOverride || {})) {
+    next[pageKey] = normalizeAccessLevel(rawLevel);
+  }
+
+  return next;
+}
+
 export const ROLE_POLICIES = {
   user: {
     dashboard: "write",
@@ -21,7 +38,6 @@ export const ROLE_POLICIES = {
     odin_logic: "none",
     settings: "write",
     user_management: "none",
-    car_liste: "view",
     ticket_audit: "none",
     protokoll: "view",
     commit_compliance: "write",
@@ -40,7 +56,6 @@ export const ROLE_POLICIES = {
     odin_logic: "write",
     settings: "write",
     user_management: "write",
-    car_liste: "write",
     ticket_audit: "write",
     protokoll: "write",
     commit_compliance: "write",
@@ -75,8 +90,20 @@ export function canRoleAccess(role, pageKey, minLevel = "view") {
   return ACCESS_LEVELS[current] >= ACCESS_LEVELS[minLevel];
 }
 
-export function buildAccessPolicy(role) {
-  return { ...getRolePolicy(role) };
+export function buildBaseAccessPolicy(role) {
+  const policy = getRolePolicy(role) || {};
+  return { ...policy };
+}
+
+export function applyAccessOverride(basePolicy, accessOverride = {}) {
+  return {
+    ...(basePolicy || {}),
+    ...sanitizeAccessOverride(accessOverride),
+  };
+}
+
+export function buildAccessPolicy(role, accessOverride = {}) {
+  return applyAccessOverride(buildBaseAccessPolicy(role), accessOverride);
 }
 
 export function isAdminRole(role) {

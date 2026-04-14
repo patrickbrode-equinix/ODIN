@@ -4,6 +4,7 @@
 
 export const TICKET_TYPES = ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other', 'Unknown'];
 export const SUPPORTED_TICKET_TYPES = ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
+export const SUPPORTED_QUEUE_ITEM_TYPES = ['SmartHands', 'CCInstalls', 'TroubleTickets', 'Deinstall'];
 
 export const TICKET_STATUSES = ['open', 'active', 'pending', 'closed', 'cancelled', 'unknown'];
 export const ACTIVE_STATUSES = ['open', 'active', 'pending'];
@@ -48,7 +49,7 @@ export const EXCLUDED_ROLES = new Set([
 ]);
 
 /* ---- Crawler staleness ---- */
-export const CRAWLER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+export const CRAWLER_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
 /* ---- System grouping thresholds ---- */
 export const MAX_SH_PER_WORKER_PER_SYSTEM = 3;

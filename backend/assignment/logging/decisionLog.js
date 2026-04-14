@@ -118,7 +118,7 @@ function buildShortReason(result, assignedWorker, selectionReason) {
  * Build a human-readable summary for a full run.
  */
 export function buildRunSummary(decisions, extras = {}) {
-  const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0 };
+  const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0, crawler_stale: 0 };
   for (const d of decisions) {
     if (counts[d.result] !== undefined) {
       counts[d.result]++;

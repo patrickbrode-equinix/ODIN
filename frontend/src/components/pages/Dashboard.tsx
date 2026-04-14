@@ -35,7 +35,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getUserDisplayName } from "../../utils/userDisplay";
 
 /* STORES */
-import { useShiftStore, shiftTypes, type Employee } from "../../store/shiftStore";
+import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, useShiftStore, shiftTypes, type Employee } from "../../store/shiftStore";
 import { useCommitStore } from "../../store/commitStore";
 import { useEmployeeMetaStore } from "../../store/employeeMetaStore";
 import { calcCommitHours } from "../commit/commit.logic";
@@ -1007,8 +1007,8 @@ export default function Dashboard() {
     // ------------------------------------------------
     // PREPARE LISTS
     // ------------------------------------------------
-    const early = employeesAll.filter(e => e.shift === "E1" || e.shift === "E2");
-    const late = employeesAll.filter(e => e.shift === "L1" || e.shift === "L2");
+    const early = employeesAll.filter(e => EARLY_SHIFT_CODES.includes(e.shift as (typeof EARLY_SHIFT_CODES)[number]));
+    const late = employeesAll.filter(e => LATE_SHIFT_CODES.includes(e.shift as (typeof LATE_SHIFT_CODES)[number]));
     // Night is 'nightEmployeesToUse'
 
     // Helper to group by code
@@ -1093,8 +1093,8 @@ export default function Dashboard() {
     };
 
     const groups = [
-      make("Frühschicht", ["E1", "E2"], earlyByCode),
-      make("Spätschicht", ["L1", "L2"], lateByCode),
+      make("Frühschicht", [...EARLY_SHIFT_CODES], earlyByCode),
+      make("Spätschicht", [...LATE_SHIFT_CODES], lateByCode),
       make("Nachtschicht", ["N"], nightByCode),
     ];
 

@@ -6,6 +6,7 @@
 import { PRIORITY_ORDER, PRIORITY_TIERS } from '../constants.js';
 import { evaluateSystemGrouping } from '../rules/systemGrouping.js';
 import { checkQueuePurity } from '../rules/queuePurity.js';
+import { getAssignmentRuntimeRules } from '../services/runtimeRules.js';
 import pool from '../../db.js';
 
 /**
@@ -22,16 +23,19 @@ import pool from '../../db.js';
  * @returns {number} Tier number (lower = higher priority)
  */
 export function getPriorityTier(ticket) {
-  const t = ticket.type;
-  const p = ticket.priority;
+  const runtimeRules = getAssignmentRuntimeRules();
+  const ticketType = String(ticket.type || '').trim();
+  const ticketPriority = String(ticket.priority || 'unknown').trim().toLowerCase();
 
-  if (t === 'TroubleTicket' && (p === 'high' || p === 'critical')) return PRIORITY_TIERS.TT_HIGH;
-  if (t === 'TroubleTicket' && p === 'medium') return PRIORITY_TIERS.TT_MEDIUM;
-  if (t === 'SmartHands' || t === 'CrossConnect') return PRIORITY_TIERS.KPI_QUEUE;
-  if (t === 'Scheduled') return PRIORITY_TIERS.SCHEDULED;
-  if (t === 'TroubleTicket' && p === 'low') return PRIORITY_TIERS.TT_LOW;
-  if (t === 'TroubleTicket') return PRIORITY_TIERS.TT_LOW; // unknown priority TT defaults to low tier
+  for (const rule of runtimeRules.priorityTiers || []) {
+    const typeMatch = (rule.types || []).includes(ticketType);
+    const priorityMatch = !rule.priorities || rule.priorities.length === 0 || rule.priorities.includes(ticketPriority);
+    if (typeMatch && priorityMatch) {
+      return rule.tier;
+    }
+  }
 
+  if (ticketType === 'TroubleTicket') return PRIORITY_TIERS.TT_LOW;
   return PRIORITY_TIERS.OTHER;
 }
 
@@ -150,6 +154,7 @@ async function loadColleaguePreferences(candidates) {
  * @returns {Promise<{ worker: object|null, reason: string, tieBreaker: string|null }>}
  */
 export async function selectWorker(candidates, ticket, settings, workerTicketsMap = new Map(), insufficientResources = false, now = Date.now()) {
+  const runtimeRules = getAssignmentRuntimeRules();
   if (!candidates || candidates.length === 0) {
     return { worker: null, reason: 'No eligible candidates', tieBreaker: null };
   }
@@ -208,12 +213,23 @@ export async function selectWorker(candidates, ticket, settings, workerTicketsMa
       // For debugging
       _groupingReason: grouping.reason,
       _purityReason: purity.reason,
+      maxTicketsReached: Number(runtimeRules.maxTicketsPerWorker || 0) > 0 && currentTickets.length >= Number(runtimeRules.maxTicketsPerWorker || 0),
     };
   });
 
+  // Respect hard caps before applying softer tie-breakers.
+  const withinTicketCap = scored.filter((entry) => !entry.maxTicketsReached);
+  if (Number(runtimeRules.maxTicketsPerWorker || 0) > 0 && withinTicketCap.length === 0) {
+    return {
+      worker: null,
+      reason: `All eligible candidates reached the configured ticket cap (${runtimeRules.maxTicketsPerWorker})`,
+      tieBreaker: 'max-tickets-per-worker',
+    };
+  }
+
   // Remove candidates blocked by system grouping (e.g., SH max 3)
-  const unblocked = scored.filter(s => !s.groupingBlocked);
-  const sortPool = unblocked.length > 0 ? unblocked : scored; // fallback if all blocked
+  const unblocked = withinTicketCap.filter(s => !s.groupingBlocked);
+  const sortPool = unblocked.length > 0 ? unblocked : withinTicketCap;
 
   // Sort by tie-breaking criteria
   sortPool.sort((a, b) => {
@@ -224,7 +240,9 @@ export async function selectWorker(candidates, ticket, settings, workerTicketsMa
     if (a.purityPure !== b.purityPure) return a.purityPure ? -1 : 1;
 
     // 3. Least active workload (fewer tickets = better)
-    if (a.workload !== b.workload) return a.workload - b.workload;
+    if (runtimeRules.loadBalancing?.enabled !== false && runtimeRules.loadBalancing?.mode === 'least_workload' && a.workload !== b.workload) {
+      return a.workload - b.workload;
+    }
 
     // 4. Preferred colleague bonus (higher = better, soft tiebreaker)
     if (a.colleagueScore !== b.colleagueScore) return b.colleagueScore - a.colleagueScore;

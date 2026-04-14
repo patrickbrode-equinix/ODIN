@@ -77,7 +77,7 @@ router.post("/login", async (req, res) => {
     }
 
     const role = resolveUserRole(user);
-    const accessPolicy = buildAccessPolicy(role);
+    const accessPolicy = buildAccessPolicy(role, user.access_override || {});
 
     /* ENSURE SETTINGS */
     await ensureUserSettings(user.id);

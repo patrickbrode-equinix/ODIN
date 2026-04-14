@@ -14,7 +14,7 @@ import {
   format,
 } from "date-fns";
 
-import { useShiftStore } from "../../store/shiftStore";
+import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, useShiftStore } from "../../store/shiftStore";
 import { useDispatcherStore } from "../../store/dispatcherStore";
 
 import { DispatcherHeader } from "../dispatcher/DispatcherHeader";
@@ -37,8 +37,8 @@ function mapShiftplanCodeToFixedShift(code: string): ShiftCode {
   if (c === "N") return "N";
 
   // Früh / Spät
-  if (c === "E1" || c === "E2" || c === "F") return "F";
-  if (c === "L1" || c === "L2" || c === "S") return "S";
+  if (EARLY_SHIFT_CODES.includes(c as (typeof EARLY_SHIFT_CODES)[number]) || c === "F") return "F";
+  if (LATE_SHIFT_CODES.includes(c as (typeof LATE_SHIFT_CODES)[number]) || c === "S") return "S";
 
   return "F";
 }

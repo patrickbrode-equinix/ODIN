@@ -5,6 +5,7 @@
 import jwt from "jsonwebtoken";
 import db from "../db.js";
 import { resolveUserRole } from "../auth/accessControl.js";
+import { buildAccessPolicy } from "../auth/accessControl.js";
 
 /* ———————————————————————————————— */
 /* REQUIRE AUTH                                     */
@@ -38,7 +39,8 @@ export async function requireAuth(req, res, next) {
         approved,
         is_root,
         is_admin,
-        must_change_password
+        must_change_password,
+        access_override
       FROM users
       WHERE id = $1
       `,
@@ -50,7 +52,8 @@ export async function requireAuth(req, res, next) {
     }
 
     const user = result.rows[0];
-  const role = resolveUserRole(user);
+    const role = resolveUserRole(user);
+    const accessPolicy = buildAccessPolicy(role, user.access_override || {});
 
     /* ———————————————————————————————— */
     /* ATTACH USER CONTEXT                */
@@ -65,6 +68,7 @@ export async function requireAuth(req, res, next) {
       is_admin: user.is_admin === true,
       must_change_password: user.must_change_password === true,
       role,
+      accessPolicy,
     };
 
     req.isRoot = user.is_root === true;

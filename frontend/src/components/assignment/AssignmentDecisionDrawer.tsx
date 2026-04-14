@@ -4,8 +4,8 @@
 
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { AssignmentExplanationCard } from './AssignmentExplanationCard';
-import { X, AlertCircle, CheckCircle2, HelpCircle, Ban, AlertTriangle, XCircle } from 'lucide-react';
-import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId } from '../../utils/assignmentTicketDisplay';
+import { X, CheckCircle2, HelpCircle, Ban, AlertTriangle, XCircle } from 'lucide-react';
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId, getAssignmentSystemName, getAssignmentTicketCategory } from '../../utils/assignmentTicketDisplay';
 
 const RESULT_INFO: Record<string, { label: string; color: string; icon: React.ReactNode; description: string }> = {
   assigned: { label: 'Zugewiesen', color: 'text-green-400', icon: <CheckCircle2 className="w-4 h-4 text-green-400" />, description: 'Ticket wurde erfolgreich einem Mitarbeiter zugewiesen.' },
@@ -30,6 +30,8 @@ export function AssignmentDecisionDrawer() {
   const ri = selectedDecision ? (RESULT_INFO[selectedDecision.result] || RESULT_INFO.error) : null;
   const displayTicketNumber = selectedDecision ? getAssignmentDisplayTicketNumber(selectedDecision) : null;
   const internalTicketId = selectedDecision ? getAssignmentInternalTicketId(selectedDecision) : null;
+  const systemName = selectedDecision ? getAssignmentSystemName(selectedDecision) : null;
+  const ticketCategory = selectedDecision ? getAssignmentTicketCategory(selectedDecision) : null;
 
   return (
     <>
@@ -68,6 +70,12 @@ export function AssignmentDecisionDrawer() {
               <span className={`text-sm font-semibold ${ri.color}`}>{ri.label}</span>
             </div>
             <p className="text-xs text-muted-foreground">{ri.description}</p>
+            {(systemName || ticketCategory) && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                {systemName && <span className="rounded-full border border-border/30 bg-background/60 px-2 py-1">System: {systemName}</span>}
+                {ticketCategory && <span className="rounded-full border border-border/30 bg-background/60 px-2 py-1">Kategorie: {ticketCategory}</span>}
+              </div>
+            )}
             {selectedDecision.short_reason && (
               <div className="mt-2 rounded-md bg-background/60 border border-border/30 px-3 py-2">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Hauptgrund</div>

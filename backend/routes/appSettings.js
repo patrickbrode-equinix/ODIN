@@ -13,6 +13,42 @@ import { logSettingsChange } from "../services/settingsAudit.js";
 
 const router = express.Router();
 
+const TICKET_RESET_TABLES = [
+  'assignment_analytics_events',
+  'assignment_ticket_decisions',
+  'assignment_runs',
+  'assignment_overrides',
+  'crawler_run_deltas',
+  'crawler_runs',
+  'expired_tickets',
+  'queue_items',
+  'snapshots',
+  'commit_imports',
+];
+
+async function loadExistingResetTables() {
+  const { rows } = await db.query(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = ANY($1::text[])`,
+    [TICKET_RESET_TABLES]
+  );
+
+  return TICKET_RESET_TABLES.filter((tableName) => rows.some((row) => row.table_name === tableName));
+}
+
+async function loadTableCounts(client, tableNames) {
+  const counts = {};
+
+  for (const tableName of tableNames) {
+    const { rows } = await client.query(`SELECT COUNT(*)::int AS count FROM ${tableName}`);
+    counts[tableName] = rows[0]?.count ?? 0;
+  }
+
+  return counts;
+}
+
 /* GET /api/app-settings */
 router.get("/", requireAuth, requirePageAccess("admin_settings", "view"), async (req, res) => {
   try {
@@ -93,6 +129,57 @@ router.patch("/:key", requireAuth, requirePageAccess("admin_settings", "write"),
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: "Failed to update setting" });
+  }
+});
+
+router.post('/ticket-db/reset', requireAuth, requirePageAccess('admin_settings', 'write'), async (req, res) => {
+  const client = await db.connect();
+
+  try {
+    if (req.body?.confirmReset !== true) {
+      return res.status(400).json({ error: 'confirmReset=true is required' });
+    }
+
+    const actor = req.user?.name || req.user?.email || 'system';
+    const existingTables = await loadExistingResetTables();
+
+    if (existingTables.length === 0) {
+      return res.json({
+        success: true,
+        resetTables: [],
+        deletedRowsByTable: {},
+        totalDeletedRows: 0,
+      });
+    }
+
+    await client.query('BEGIN');
+    const deletedRowsByTable = await loadTableCounts(client, existingTables);
+    const totalDeletedRows = Object.values(deletedRowsByTable).reduce((sum, value) => sum + Number(value || 0), 0);
+
+    await client.query(`TRUNCATE TABLE ${existingTables.join(', ')} RESTART IDENTITY CASCADE`);
+    await client.query('COMMIT');
+
+    await logSettingsChange(
+      'maintenance',
+      'ticket_db.reset',
+      null,
+      JSON.stringify({ tables: existingTables, deletedRowsByTable, totalDeletedRows }),
+      actor,
+      req.body?.changeNote || 'Ticket-Datenbank über Admin-Einstellungen zurückgesetzt'
+    );
+
+    res.json({
+      success: true,
+      resetTables: existingTables,
+      deletedRowsByTable,
+      totalDeletedRows,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('POST /app-settings/ticket-db/reset error', err);
+    res.status(500).json({ error: 'Failed to reset ticket database' });
+  } finally {
+    client.release();
   }
 });
 

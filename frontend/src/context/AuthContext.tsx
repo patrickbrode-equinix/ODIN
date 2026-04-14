@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api/api";
+import { queueApi } from "../api/queue";
 
 /* STORES */
 import { useCommitStore } from "../store/commitStore";
@@ -179,18 +180,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loadCommitBootstrap() {
     try {
-      const res = await api.get("/commit/latest");
-      const payload = res.data;
-
-      let rows: any[] = [];
-
-      if (Array.isArray(payload)) rows = payload;
-      else if (Array.isArray(payload?.data)) rows = payload.data;
-      else if (Array.isArray(payload?.rows)) rows = payload.rows;
-
+      const rows = await queueApi.getTickets();
       useCommitStore.getState().setTickets(rows);
     } catch (err) {
-      console.error("Commit bootstrap load failed:", err);
+      console.error("Live ticket bootstrap load failed:", err);
       useCommitStore.getState().setTickets([]);
     }
   }

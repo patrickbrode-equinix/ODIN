@@ -4,53 +4,131 @@
 /* ------------------------------------------------ */
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import { fetchTvSlideConfig, updateTvSlideConfig, type TvSlideConfig } from "../../api/tvConfig";
 import { fetchSettingsAudit, type SettingsAuditEntry } from "../../api/settingsAudit";
 import { api } from "../../api/api";
+import AssignmentRulesEditor from "./AssignmentRulesEditor";
+import { ShiftPlanningSettingsPanel } from "./ShiftAdminSettings";
+import OdinExclusions from "../odinlogic/OdinExclusions";
+import EmployeeExclusions from "../odinlogic/EmployeeExclusions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../ui/alert-dialog";
 import {
   Tv, Settings, Zap, MessageSquare, Shield, Clock, Save,
-  ToggleLeft, ToggleRight, Loader2, ChevronDown, ChevronRight,
-  History, GripVertical
+  ToggleLeft, ToggleRight, Loader2,
+  History, GripVertical, Brain, Trash2, ShieldBan, UserX, CalendarClock
 } from "lucide-react";
 
-type TabId = "tv" | "thresholds" | "toggles" | "feedback" | "audit";
+type TabId = "shiftplan" | "tv" | "thresholds" | "toggles" | "feedback" | "odin" | "manualExclusions" | "employeeExclusions" | "maintenance" | "audit";
 
-const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "tv",         label: "TV-Modus",             icon: Tv },
-  { id: "thresholds", label: "Schwellenwerte",        icon: Settings },
-  { id: "toggles",    label: "Feature Toggles",       icon: Zap },
-  { id: "feedback",   label: "Feedback",              icon: MessageSquare },
-  { id: "audit",      label: "Änderungsprotokoll",    icon: History },
+const TABS: { id: TabId; label: string; description: string; icon: React.ElementType; accent: string }[] = [
+  { id: "shiftplan", label: "Schichtplan", description: "Definitionen, DBS-Pool und Planungsregeln", icon: CalendarClock, accent: "from-sky-500/25 via-cyan-500/10 to-transparent" },
+  { id: "tv", label: "TV-Modus", description: "Slides, Reihenfolge und Laufzeiten", icon: Tv, accent: "from-indigo-500/25 via-blue-500/10 to-transparent" },
+  { id: "thresholds", label: "Schwellenwerte", description: "Globale Grenzwerte und TV-Parameter", icon: Settings, accent: "from-amber-500/25 via-orange-500/10 to-transparent" },
+  { id: "toggles", label: "Feature Toggles", description: "Funktionen ein- und ausschalten", icon: Zap, accent: "from-emerald-500/25 via-green-500/10 to-transparent" },
+  { id: "feedback", label: "Feedback", description: "Mail-Empfänger und Upload-Regeln", icon: MessageSquare, accent: "from-rose-500/25 via-pink-500/10 to-transparent" },
+  { id: "odin", label: "ODIN-Logik", description: "Zuweisungslogik und Produktivregeln", icon: Brain, accent: "from-violet-500/25 via-fuchsia-500/10 to-transparent" },
+  { id: "manualExclusions", label: "Manuelle Ausnahmen", description: "Systeme und Subtypes zentral sperren", icon: ShieldBan, accent: "from-red-500/25 via-rose-500/10 to-transparent" },
+  { id: "employeeExclusions", label: "Dauerhafte Ausschlüsse", description: "Mitarbeiter dauerhaft aus ODIN herausnehmen", icon: UserX, accent: "from-slate-500/25 via-slate-400/10 to-transparent" },
+  { id: "maintenance", label: "Wartung", description: "Reset- und Bereinigungsaktionen", icon: Trash2, accent: "from-red-600/25 via-orange-500/10 to-transparent" },
+  { id: "audit", label: "Änderungsprotokoll", description: "Alle Konfigurationsänderungen nachverfolgen", icon: History, accent: "from-zinc-500/25 via-slate-500/10 to-transparent" },
 ];
 
+function isTabId(value: string | null): value is TabId {
+  return TABS.some((tab) => tab.id === value);
+}
+
 export default function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<TabId>("tv");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const section = searchParams.get("section");
+    return isTabId(section) ? section : "shiftplan";
+  });
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (isTabId(section) && section !== activeTab) setActiveTab(section);
+  }, [activeTab, searchParams]);
+
+  const selectTab = (tabId: TabId) => {
+    setActiveTab(tabId);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("section", tabId);
+      return next;
+    });
+  };
+
+  const activeMeta = TABS.find((tab) => tab.id === activeTab) || TABS[0];
 
   return (
     <EnterprisePageShell>
-      <EnterpriseHeader title="Admin-Einstellungen" subtitle="Systemkonfiguration und Feature-Flags" />
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
-        {TABS.map(t => (
+      <EnterpriseHeader title="Admin-Einstellungen" subtitle="Zentrale Konfiguration fur Schichtplan, ODIN und Systemfunktionen" />
+
+      <div className="mb-6 rounded-4xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-6 text-slate-100 shadow-[0_24px_60px_rgba(2,6,23,0.35)]">
+        <div className="max-w-3xl">
+          <div className="text-xs uppercase tracking-[0.28em] text-sky-200/70">Kontrollzentrum</div>
+          <h2 className="mt-3 text-2xl font-semibold">Alle administrativen Einstellungen an einem Ort</h2>
+          <p className="mt-2 text-sm text-slate-300">
+            Die Kacheln fuhren direkt in den jeweiligen Konfigurationsbereich. Schichtplaneinstellungen sind jetzt Teil der Admin-Einstellungen und nicht mehr separat ausgelagert.
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {TABS.map((tab) => (
           <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              activeTab === t.id
-                ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            key={tab.id}
+            type="button"
+            onClick={() => selectTab(tab.id)}
+            className={`group rounded-[28px] border p-5 text-left transition-all duration-200 ${
+              activeTab === tab.id
+                ? "border-sky-300/40 bg-slate-950 text-slate-100 shadow-[0_20px_50px_rgba(14,165,233,0.16)]"
+                : "border-white/10 bg-slate-950/55 text-slate-300 hover:border-sky-300/20 hover:bg-slate-950/75 hover:text-slate-100"
             }`}
           >
-            <t.icon className="w-4 h-4" />
-            {t.label}
+            <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${tab.accent} ${activeTab === tab.id ? "text-sky-200" : "text-slate-300 group-hover:text-sky-200"}`}>
+              <tab.icon className="h-5 w-5" />
+            </div>
+            <div className="text-base font-semibold">{tab.label}</div>
+            <div className="mt-2 text-sm text-slate-400 group-hover:text-slate-300">{tab.description}</div>
           </button>
         ))}
       </div>
 
+      <div className="mb-6 rounded-[28px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_16px_45px_rgba(2,6,23,0.22)]">
+        <div className="flex items-start gap-4">
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${activeMeta.accent} text-sky-200`}>
+            <activeMeta.icon className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-lg font-semibold text-slate-100">{activeMeta.label}</div>
+            <div className="mt-1 text-sm text-slate-400">{activeMeta.description}</div>
+          </div>
+        </div>
+      </div>
+
+      {activeTab === "shiftplan" && <ShiftPlanningSettingsPanel embedded />}
       {activeTab === "tv" && <TVSettingsTab />}
       {activeTab === "thresholds" && <ThresholdsTab />}
       {activeTab === "toggles" && <TogglesTab />}
       {activeTab === "feedback" && <FeedbackTab />}
+      {activeTab === "odin" && <OdinRulesTab />}
+      {activeTab === "manualExclusions" && <ManualExclusionsTab />}
+      {activeTab === "employeeExclusions" && <EmployeeExclusionsTab />}
+      {activeTab === "maintenance" && <MaintenanceTab />}
       {activeTab === "audit" && <AuditTab />}
     </EnterprisePageShell>
   );
@@ -92,9 +170,14 @@ function TVSettingsTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const visibleSlides = slides
+    .filter((slide) => slide.slide_id !== "assignment")
+    .sort((a, b) => a.sort_order - b.sort_order);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">Slide-Dauern, Reihenfolge und Sichtbarkeit für den TV-Modus konfigurieren.</p>
+      <p className="text-xs text-blue-500/80">Die ODIN-Transparenz wird nicht mehr als eigener TV-Slide geführt, sondern im Header angezeigt, sobald die Automatisierung aktiv ist und Live-Daten vorliegen.</p>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -109,7 +192,7 @@ function TVSettingsTab() {
             </tr>
           </thead>
           <tbody>
-            {slides.sort((a, b) => a.sort_order - b.sort_order).map(s => (
+            {visibleSlides.map(s => (
               <tr key={s.slide_id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                 <td className="py-2 px-3 text-gray-300"><GripVertical className="w-4 h-4" /></td>
                 <td className="py-2 px-3">
@@ -164,6 +247,154 @@ function TVSettingsTab() {
         )}
       </div>
     </div>
+  );
+}
+
+function OdinRulesTab() {
+  return (
+    <div className="space-y-4">
+      <EnterpriseCard>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">ODIN-Logik</h3>
+          <p className="text-sm text-gray-500">
+            Die Regeln unten steuern die produktive ODIN-Zuweisungslogik. Änderungen werden versioniert und im Änderungsprotokoll festgehalten.
+          </p>
+        </div>
+      </EnterpriseCard>
+      <AssignmentRulesEditor embedded />
+    </div>
+  );
+}
+
+function ManualExclusionsTab() {
+  return (
+    <div className="space-y-4">
+      <EnterpriseCard>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Manuelle Ausnahmeliste</h3>
+          <p className="text-sm text-gray-500">
+            Systemnamen und Ticket-Subtypes, die ODIN nicht automatisch zuweisen darf, werden zentral in den Admin-Einstellungen gepflegt.
+          </p>
+        </div>
+      </EnterpriseCard>
+      <EnterpriseCard>
+        <OdinExclusions />
+      </EnterpriseCard>
+    </div>
+  );
+}
+
+function EmployeeExclusionsTab() {
+  return (
+    <div className="space-y-4">
+      <EnterpriseCard>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Dauerhafte Ausschlüsse</h3>
+          <p className="text-sm text-gray-500">
+            Mitarbeiter, die ODIN dauerhaft oder zeitlich begrenzt nicht automatisch berücksichtigen darf, werden hier zentral verwaltet.
+          </p>
+        </div>
+      </EnterpriseCard>
+      <EnterpriseCard>
+        <EmployeeExclusions />
+      </EnterpriseCard>
+    </div>
+  );
+}
+
+function MaintenanceTab() {
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [confirmPhrase, setConfirmPhrase] = useState("");
+  const [changeNote, setChangeNote] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async () => {
+    if (confirmPhrase !== "RESET TICKETS") return;
+
+    setResetting(true);
+    try {
+      const { data } = await api.post("/app-settings/ticket-db/reset", {
+        confirmReset: true,
+        changeNote: changeNote || undefined,
+      });
+
+      const totalDeletedRows = Number(data?.totalDeletedRows || 0);
+      toast.success(`Ticket-Datenbank zurückgesetzt (${totalDeletedRows} Datensätze entfernt)`);
+      setConfirmPhrase("");
+      setChangeNote("");
+      setResetDialogOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.error || "Ticket-Datenbank konnte nicht zurückgesetzt werden");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <EnterpriseCard>
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">Ticket-Datenbank zurücksetzen</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Löscht die live eingespielten Ticket-, Snapshot- und ODIN-Laufdaten. Manuell gepflegte Stammdaten bleiben erhalten.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-2">
+          <div className="text-sm font-semibold text-red-600 dark:text-red-400">Betroffene Bereiche</div>
+          <div className="text-sm text-red-900/80 dark:text-red-100/70">
+            queue_items, expired_tickets, crawler_runs, crawler_run_deltas, snapshots, commit_imports sowie die daraus abgeleiteten ODIN-Run- und Decision-Logs.
+          </div>
+        </div>
+
+        <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+          <AlertDialogTrigger asChild>
+            <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50">
+              <Trash2 className="w-4 h-4" />
+              Ticket-Datenbank resetten
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ticket-Datenbank wirklich zurücksetzen?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Diese Aktion löscht alle aktuellen Ticket-Snapshots und ODIN-Läufe. Tippe RESET TICKETS ein, um den Reset freizugeben.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="space-y-3 py-2">
+              <input
+                value={confirmPhrase}
+                onChange={(e) => setConfirmPhrase(e.target.value)}
+                placeholder="RESET TICKETS"
+                className="w-full border dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800"
+              />
+              <input
+                value={changeNote}
+                onChange={(e) => setChangeNote(e.target.value)}
+                placeholder="Optionale Notiz für das Audit-Log"
+                className="w-full border dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800"
+              />
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setConfirmPhrase(""); setChangeNote(""); }}>Abbrechen</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleReset();
+                }}
+                disabled={resetting || confirmPhrase !== "RESET TICKETS"}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {resetting ? "Setze zurück..." : "Reset ausführen"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </EnterpriseCard>
   );
 }
 
@@ -443,6 +674,7 @@ function AuditTab() {
           <option value="tv">TV-Modus</option>
           <option value="assignment">ODIN-Logik</option>
           <option value="feedback">Feedback</option>
+          <option value="maintenance">Wartung</option>
           <option value="app">App-Settings</option>
           <option value="threshold">Schwellenwerte</option>
           <option value="feature_toggle">Feature Toggles</option>
@@ -468,8 +700,8 @@ function AuditTab() {
                 <td className="py-2 px-3 whitespace-nowrap text-gray-500">{new Date(e.created_at).toLocaleString("de-DE")}</td>
                 <td className="py-2 px-3"><span className="px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700">{e.domain}</span></td>
                 <td className="py-2 px-3 font-mono text-xs">{e.setting_key}</td>
-                <td className="py-2 px-3 text-xs text-red-500 max-w-[150px] truncate">{e.old_value || "–"}</td>
-                <td className="py-2 px-3 text-xs text-green-600 max-w-[150px] truncate">{e.new_value || "–"}</td>
+                <td className="py-2 px-3 text-xs text-red-500 truncate" style={{ maxWidth: 150 }}>{e.old_value || "–"}</td>
+                <td className="py-2 px-3 text-xs text-green-600 truncate" style={{ maxWidth: 150 }}>{e.new_value || "–"}</td>
                 <td className="py-2 px-3 text-xs">{e.changed_by}</td>
                 <td className="py-2 px-3 text-xs text-gray-400">{e.change_note || "–"}</td>
               </tr>

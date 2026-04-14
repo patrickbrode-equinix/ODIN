@@ -1,8 +1,18 @@
+import { getConfig } from "./src/config/index";
+
 const config = {
-  MicrosoftAppId: process.env.CLIENT_ID,
-  MicrosoftAppType: process.env.BOT_TYPE,
-  MicrosoftAppTenantId: process.env.TENANT_ID,
-  MicrosoftAppPassword: process.env.CLIENT_PASSWORD,
+  get MicrosoftAppId(): string {
+    return getConfig().microsoftAppId;
+  },
+  get MicrosoftAppType(): string {
+    return getConfig().botType;
+  },
+  get MicrosoftAppTenantId(): string {
+    return getConfig().tenantId;
+  },
+  get MicrosoftAppPassword(): string {
+    return getConfig().microsoftAppPassword;
+  },
 };
 
 export default config;

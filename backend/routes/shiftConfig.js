@@ -27,11 +27,12 @@ router.get('/definitions', async (_req, res) => {
 
 router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order } = req.body;
+    const { name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, applicable_days } = req.body;
     const id = parseInt(req.params.id);
+    const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
     const { rows } = await pool.query(
-      `UPDATE shift_definitions SET name=$2, short_name=$3, shift_type=$4, start_time=$5, end_time=$6, duration_hours=$7, min_staff=$8, max_staff=$9, color_hex=$10, is_active=$11, sort_order=$12, updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [id, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order]
+      `UPDATE shift_definitions SET name=$2, short_name=$3, shift_type=$4, start_time=$5, end_time=$6, duration_hours=$7, min_staff=$8, max_staff=$9, color_hex=$10, is_active=$11, sort_order=$12, applicable_days=$13::jsonb, updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [id, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, JSON.stringify(normalizedApplicableDays)]
     );
     if (!rows.length) return res.status(404).json({ ok: false, error: 'Definition nicht gefunden' });
     res.json({ ok: true, definition: rows[0] });
@@ -42,11 +43,12 @@ router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), 
 
 router.post('/definitions', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order } = req.body;
+    const { code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days } = req.body;
     if (!code || !name) return res.status(400).json({ ok: false, error: 'Code und Name erforderlich' });
+    const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
     const { rows } = await pool.query(
-      `INSERT INTO shift_definitions (code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [code, name, short_name || code, shift_type || 'early', start_time, end_time, duration_hours || 8, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0]
+      `INSERT INTO shift_definitions (code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
+      [code, name, short_name || code, shift_type || 'early', start_time, end_time, duration_hours || 8, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0, JSON.stringify(normalizedApplicableDays)]
     );
     res.json({ ok: true, definition: rows[0] });
   } catch (err) {
@@ -66,6 +68,72 @@ router.delete('/definitions/:id', requirePageAccess('shiftplan_control', 'write'
 });
 
 /* ------------------------------------------------ */
+/* SPECIAL SHIFT POOLS                              */
+/* ------------------------------------------------ */
+
+router.get('/special-pools/:shiftCode', async (req, res) => {
+  try {
+    const shiftCode = String(req.params.shiftCode || '').trim().toUpperCase();
+    const { rows } = await pool.query(
+      `SELECT id, shift_code, employee_name, monthly_max_assignments, sort_order, is_active
+       FROM shift_special_pools
+       WHERE shift_code = $1 AND is_active = TRUE
+       ORDER BY sort_order, employee_name`,
+      [shiftCode]
+    );
+    res.json({ ok: true, assignments: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.put('/special-pools/:shiftCode', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const shiftCode = String(req.params.shiftCode || '').trim().toUpperCase();
+    const assignments = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
+
+    await client.query('BEGIN');
+
+    const defRes = await client.query('SELECT code FROM shift_definitions WHERE code = $1', [shiftCode]);
+    if (!defRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: 'Schichtdefinition nicht gefunden' });
+    }
+
+    await client.query('DELETE FROM shift_special_pools WHERE shift_code = $1', [shiftCode]);
+
+    for (let index = 0; index < assignments.length; index++) {
+      const entry = assignments[index] || {};
+      const employeeName = String(entry.employee_name || '').trim();
+      if (!employeeName) continue;
+      const monthlyMaxAssignments = Math.max(Number.parseInt(String(entry.monthly_max_assignments ?? 0), 10) || 0, 0);
+      await client.query(
+        `INSERT INTO shift_special_pools (shift_code, employee_name, monthly_max_assignments, sort_order, is_active)
+         VALUES ($1, $2, $3, $4, TRUE)`,
+        [shiftCode, employeeName, monthlyMaxAssignments, index]
+      );
+    }
+
+    const { rows } = await client.query(
+      `SELECT id, shift_code, employee_name, monthly_max_assignments, sort_order, is_active
+       FROM shift_special_pools
+       WHERE shift_code = $1 AND is_active = TRUE
+       ORDER BY sort_order, employee_name`,
+      [shiftCode]
+    );
+
+    await client.query('COMMIT');
+    res.json({ ok: true, assignments: rows });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+/* ------------------------------------------------ */
 /* ROTATION RULES                                   */
 /* ------------------------------------------------ */
 
@@ -80,10 +148,10 @@ router.get('/rotation-rules', async (_req, res) => {
 
 router.put('/rotation-rules', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule } = req.body;
+    const { max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend } = req.body;
     const { rows } = await pool.query(
-      `UPDATE shift_rotation_rules SET max_consecutive_same=$1, max_consecutive_workdays=$2, min_free_after_streak=$3, night_to_early_forbidden=$4, late_to_early_forbidden=$5, min_hours_between_shifts=$6, max_nights_per_month=$7, max_weekends_per_month=$8, weekend_rule=$9, updated_at=NOW() WHERE id=1 RETURNING *`,
-      [max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule]
+      `UPDATE shift_rotation_rules SET max_consecutive_same=$1, max_consecutive_workdays=$2, min_free_after_streak=$3, night_to_early_forbidden=$4, late_to_early_forbidden=$5, min_hours_between_shifts=$6, max_nights_per_month=$7, max_weekends_per_month=$8, weekend_rule=$9, free_days_after_night=$10, free_days_after_weekend=$11, updated_at=NOW() WHERE id=1 RETURNING *`,
+      [max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend]
     );
     res.json({ ok: true, rules: rows[0] });
   } catch (err) {
@@ -132,10 +200,10 @@ router.get('/planning-config', async (_req, res) => {
 
 router.put('/planning-config', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority } = req.body;
+    const { respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours } = req.body;
     const { rows } = await pool.query(
-      `UPDATE shift_planning_config SET respect_employee_wishes=$1, hard_rules_priority=$2, soft_wishes_priority=$3, fairness_priority=$4, admin_override_priority=$5, updated_at=NOW() WHERE id=1 RETURNING *`,
-      [respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority]
+      `UPDATE shift_planning_config SET respect_employee_wishes=$1, hard_rules_priority=$2, soft_wishes_priority=$3, fairness_priority=$4, admin_override_priority=$5, monthly_target_hours=$6, updated_at=NOW() WHERE id=1 RETURNING *`,
+      [respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours]
     );
     res.json({ ok: true, config: rows[0] });
   } catch (err) {

@@ -8,9 +8,12 @@
 
 const OES_DEBUG = true;
 let OES_IS_RUNNING = false;
+let OES_CONTINUOUS_MODE = false;
+let OES_NEXT_RUN_TIMER = null;
 
 // Canonical queue identifiers (must match options.js ALL_QUEUE_IDS)
 const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
+const CONTINUOUS_LOOP_DELAY_MS = 5000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -96,6 +99,84 @@ function uploadSnapshotViaBackground(payload) {
       resolve(resp.result);
     });
   });
+}
+
+function notifyLoopState(running, reason) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "OES_LOOP_STATE",
+      running,
+      reason,
+      url: location.href,
+    });
+  } catch (_) { }
+}
+
+function clearNextRunTimer() {
+  if (OES_NEXT_RUN_TIMER) {
+    clearTimeout(OES_NEXT_RUN_TIMER);
+    OES_NEXT_RUN_TIMER = null;
+  }
+}
+
+function scheduleNextContinuousRun(reason) {
+  clearNextRunTimer();
+  if (!OES_CONTINUOUS_MODE) return;
+
+  log(`[Loop] Scheduling next continuous run in ${CONTINUOUS_LOOP_DELAY_MS}ms (${reason})`);
+  OES_NEXT_RUN_TIMER = setTimeout(() => {
+    OES_NEXT_RUN_TIMER = null;
+    void runContinuousCycle(`scheduled:${reason}`);
+  }, CONTINUOUS_LOOP_DELAY_MS);
+}
+
+async function runContinuousCycle(reason) {
+  if (!OES_CONTINUOUS_MODE) return;
+  if (OES_IS_RUNNING) {
+    warn(`[Loop] Run already active. Skipping duplicate trigger (${reason})`);
+    return;
+  }
+
+  try {
+    await scrapeAllQueuesAndUpload();
+  } catch (e) {
+    err("OES scrape/upload failed:", e);
+    try {
+      chrome.runtime.sendMessage({
+        type: "OES_SCRAPE_ERROR",
+        message: String(e?.message || e),
+        url: location.href
+      });
+    } catch (_) { }
+  } finally {
+    if (OES_CONTINUOUS_MODE) {
+      scheduleNextContinuousRun(reason);
+    }
+  }
+}
+
+function startContinuousMode(reason = "manual") {
+  if (!isJarvisHost()) {
+    warn("Not a Jarvis host. Continuous mode not started.");
+    return;
+  }
+
+  if (!OES_CONTINUOUS_MODE) {
+    OES_CONTINUOUS_MODE = true;
+    notifyLoopState(true, reason);
+    log(`[Loop] Continuous mode enabled (${reason})`);
+  }
+
+  clearNextRunTimer();
+  void runContinuousCycle(reason);
+}
+
+function stopContinuousMode(reason = "stopped") {
+  if (!OES_CONTINUOUS_MODE) return;
+  OES_CONTINUOUS_MODE = false;
+  clearNextRunTimer();
+  notifyLoopState(false, reason);
+  log(`[Loop] Continuous mode disabled (${reason})`);
 }
 
 /**
@@ -1263,21 +1344,20 @@ async function scrapeAllQueuesAndUpload() {
 
 // Trigger listener from background.js (alarm/timer)
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === "OES_SCRAPE_ALL_QUEUES") {
+  if (msg?.type === "OES_START_CONTINUOUS_SCRAPE" || msg?.type === "OES_SCRAPE_ALL_QUEUES") {
     log("Trigger received in content.js");
     try {
       chrome.runtime.sendMessage({ type: "OES_TRIGGER_RECEIVED", url: location.href });
     } catch (_) { }
 
-    scrapeAllQueuesAndUpload().catch((e) => {
-      err("OES scrape/upload failed:", e);
-      try {
-        chrome.runtime.sendMessage({
-          type: "OES_SCRAPE_ERROR",
-          message: String(e?.message || e),
-          url: location.href
-        });
-      } catch (_) { }
-    });
+    startContinuousMode(msg.reason || msg.type);
   }
 });
+
+window.addEventListener("beforeunload", () => {
+  stopContinuousMode("beforeunload");
+});
+
+if (isJarvisHost()) {
+  startContinuousMode("content_bootstrap");
+}

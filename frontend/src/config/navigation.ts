@@ -14,7 +14,6 @@ import {
   Tv,
   Users as UsersIcon,
   Ticket,
-  Lock,
   ScrollText,
   FileCheck,
   Brain,
@@ -67,13 +66,10 @@ export const NAV_ITEMS: NavItem[] = [
 
   { to: "/tv-dashboard", icon: Tv, label: "TV Dashboard", section: "top", pageKey: "tv_dashboard" },
 
-  { to: "/car-liste", icon: Lock, label: "Car Liste", section: "top", pageKey: "car_liste" },
-
   { to: "/protokoll", icon: ScrollText, label: "Protokoll", section: "top", pageKey: "protokoll" },
   { to: "/commit-compliance", icon: FileCheck, label: "Commit Compliance", section: "top", pageKey: "commit_compliance" },
   { to: "/odin-logic", icon: Brain, label: "ODIN-Logik", section: "top", pageKey: "odin_logic" },
   { to: "/shiftplan-control", icon: CalendarClock, label: "Schichtplaner", section: "top", pageKey: "shiftplan_control" },
-  { to: "/shift-admin-settings", icon: SlidersHorizontal, label: "Schichtplaneinstellungen", section: "top", pageKey: "shiftplan_control" },
   { to: "/teams-center", icon: MessageSquare, label: "Teams Center", section: "top", pageKey: "teams_center" },
   { to: "/admin-settings", icon: Shield, label: "Admin Settings", section: "top", pageKey: "admin_settings" },
   { to: "/users", icon: UsersIcon, label: "User Management", section: "top", pageKey: "user_management" },
@@ -94,7 +90,6 @@ export const PAGE_DEFS = [
   { key: "tickets", label: "Tickets" },
 
   { key: "tv_dashboard", label: "TV Dashboard" },
-  { key: "car_liste", label: "Car Liste" },
   { key: "protokoll", label: "Protokoll" },
   { key: "commit_compliance", label: "Commit Compliance" },
   { key: "settings", label: "Settings" },

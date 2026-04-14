@@ -13,10 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
-import { TVAssignmentHeroSlide } from "./TVAssignmentHeroSlide";
 import type { DashboardInfoEntry } from "../../api/dashboard";
 import type { TvAssignmentTrace, TvAssignmentTraceResponse } from "./tv.assignment.types";
-import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera, Cpu } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera } from "lucide-react";
 import { api } from "../../api/api";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
@@ -28,7 +27,6 @@ const PAUSE_AFTER_MANUAL_MS = 60_000;
 const DEFAULT_SLIDE_DURATION_MS: Partial<Record<string, number>> = {
   "72h":        20_000, // 20 seconds for next-72h-tickets slide
   "handover":   20_000, // 20 seconds for handover slide
-  "assignment": 20_000, // 20 seconds for assignment decision hero slide
 };
 
 /** Fetches slide config from backend, falls back to hardcoded defaults */
@@ -61,7 +59,6 @@ const ALL_SLIDES = [
   { id: "handover",   title: "Handover",                     icon: ArrowRightLeft },
   { id: "projects",   title: "Projekte",                     icon: FolderKanban  },
   { id: "events",     title: "Events",                       icon: Camera        },
-  { id: "assignment", title: "ODIN Assignment Logic",         icon: Cpu           },
 ] as const;
 
 type SlideId = typeof ALL_SLIDES[number]["id"];
@@ -132,10 +129,35 @@ function buildShiftTiming(now: Date): { label: string; color: string }[] {
 interface TeamsStatus { configured: boolean; active: boolean; sentToday: number }
 interface AutomationStatus { enabled: boolean; mode: string }
 
-function SlideHeader({ now, title, icon: Icon, crawlerLastUpdate, shiftplanLastUpload, crawlerStale, teamsStatus, automationStatus }: {
+function AssignmentHeaderBanner({ trace }: { trace: TvAssignmentTrace }) {
+  const ticketLabel = trace.ticket.externalId || trace.ticket.id || "Unbekannt";
+  const decidedAt = trace.decidedAt
+    ? new Date(trace.decidedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 max-w-full">
+      <span className="shrink-0 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
+        ODIN Live
+      </span>
+      <div className="min-w-0 text-right">
+        <div className="text-xs font-semibold text-cyan-100 truncate">
+          {ticketLabel} → {trace.selectedCandidate?.employeeName || "Keine Zuweisung"}
+        </div>
+        <div className="text-[11px] text-cyan-100/70 truncate">
+          {trace.ticket.activity || trace.ticket.systemName || "Live-Zuweisung"}
+          {trace.finalReasons?.length ? ` • ${trace.finalReasons.slice(0, 2).join(" • ")}` : ""}
+          {decidedAt ? ` • ${decidedAt}` : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlideHeader({ now, title, icon: Icon, crawlerLastUpdate, shiftplanLastUpload, crawlerStale, teamsStatus, automationStatus, assignmentTrace }: {
   now: Date; title: string; icon: React.FC<any>;
   crawlerLastUpdate?: string | null; shiftplanLastUpload?: string | null; crawlerStale?: boolean;
-  teamsStatus?: TeamsStatus | null; automationStatus?: AutomationStatus | null;
+  teamsStatus?: TeamsStatus | null; automationStatus?: AutomationStatus | null; assignmentTrace?: TvAssignmentTrace | null;
 }) {
   const shiftInfo = useMemo(() => buildShiftTiming(now), [now]);
 
@@ -236,6 +258,9 @@ function SlideHeader({ now, title, icon: Icon, crawlerLastUpdate, shiftplanLastU
           )}
           <span className="whitespace-nowrap">Dienstplan: {formatUpdateTime(shiftplanLastUpload)}</span>
         </div>
+        {automationStatus?.enabled && assignmentTrace && (
+          <AssignmentHeaderBanner trace={assignmentTrace} />
+        )}
       </div>
 
       <div className="flex items-center gap-3 text-lg text-muted-foreground shrink-0">
@@ -318,7 +343,7 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
                   className={`w-full flex items-start gap-6 px-6 py-5 rounded-2xl bg-[#0f172a]/80 backdrop-blur-md border ${getProjectGlow(p.progress)}`}
                 >
                   {/* Left: Progress badge */}
-                  <span className="shrink-0 mt-0.5 px-3 py-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 text-lg font-black tabular-nums min-w-[4rem] text-center">
+                  <span className="shrink-0 mt-0.5 px-3 py-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 text-lg font-black tabular-nums min-w-16 text-center">
                     {p.progress}%
                   </span>
 
@@ -684,24 +709,8 @@ export function TvLayout({
   useEffect(() => {
     const load = async () => {
       try {
-        // /api/tv/tickets is public (no auth), /api/commit/latest requires auth –
-        // fall back gracefully so TV works without login.
-        const [tvTicketsRes, commitRes] = await Promise.all([
-          fetch("/api/tv/tickets").then(r => r.ok ? r.json() : []).catch(() => []),
-          api.get("/commit/latest").then(r => r.data).catch(() => []),
-        ]);
-
-        const tvRows: any[] = Array.isArray(tvTicketsRes) ? tvTicketsRes : [];
-        let commitRows: any[] = [];
-        if (Array.isArray(commitRes)) commitRows = commitRes;
-        else if (Array.isArray(commitRes?.data)) commitRows = commitRes.data;
-        else if (Array.isArray(commitRes?.rows)) commitRows = commitRes.rows;
-
-        const map = new Map();
-        tvRows.forEach(t => map.set(t.external_id || t.id, t));
-        commitRows.forEach(t => map.set(t.external_id || t.ticketNumber || t.id, t));
-
-        setAllTickets(Array.from(map.values()));
+        const tvTicketsRes = await fetch("/api/tv/tickets").then(r => r.ok ? r.json() : []).catch(() => []);
+        setAllTickets(Array.isArray(tvTicketsRes) ? tvTicketsRes : []);
       } catch (e) {
         console.error("Failed to load TV tickets", e);
       }
@@ -842,10 +851,9 @@ export function TvLayout({
       if (s.id === "handover")   return handoverCount > 0;
       if (s.id === "projects")   return activeProjects.length > 0;
       if (s.id === "events")     return eventImages.length > 0;
-      if (s.id === "assignment") return assignmentTrace !== null;
       return true;
     });
-  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages, assignmentTrace]);
+  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages]);
 
   /* Keep ref in sync for stale-closure-safe auto-rotate */
   useEffect(() => {
@@ -874,6 +882,7 @@ export function TvLayout({
         crawlerStale={crawlerStale}
         teamsStatus={teamsStatus}
         automationStatus={automationStatus}
+        assignmentTrace={assignmentTrace}
       />
 
       {/* SLIDE CONTENT */}
@@ -943,7 +952,7 @@ export function TvLayout({
                     </div>
                     <div className="font-semibold text-sm text-foreground/90 truncate">{activity}</div>
                     <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-                      {system && <span className="bg-white/5 border border-white/5 px-1.5 py-0.5 rounded break-words whitespace-normal" title={system}>{system}</span>}
+                      {system && <span className="bg-white/5 border border-white/5 px-1.5 py-0.5 rounded wrap-break-word whitespace-normal" title={system}>{system}</span>}
                       {owner && owner !== "–" && <span>{owner}</span>}
                       {status && <span className="border border-border px-1 py-0.5 rounded">{status}</span>}
                       {schedStart && <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded flex items-center gap-1"><Clock className="w-2.5 h-2.5" />Start: {schedFormatted}</span>}
@@ -969,13 +978,6 @@ export function TvLayout({
 
         {/* Events */}
         {currentSlideId === "events" && <EventsSlide images={eventImages} />}
-
-        {/* Assignment Decision Flow Hero Slide */}
-        {currentSlideId === "assignment" && assignmentTrace && (
-          <div className="h-full overflow-hidden">
-            <TVAssignmentHeroSlide trace={assignmentTrace} />
-          </div>
-        )}
       </div>
 
       {/* SLIDE NAVIGATION */}

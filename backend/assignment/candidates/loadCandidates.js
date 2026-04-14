@@ -4,6 +4,7 @@
 
 import pool from '../../db.js';
 import { findBestMatch, normalizeName } from '../../lib/nameNorm.js';
+import { SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
 
 /**
  * Weekplan role ↔ engine role mapping.
@@ -268,10 +269,11 @@ export async function loadWorkerCurrentTickets(candidates) {
         qi.remaining_hours
       FROM queue_items qi
       WHERE qi.active = true
+        AND qi.queue_type = ANY($1::text[])
         AND qi.owner IS NOT NULL
         AND qi.owner <> ''
       ORDER BY qi.id
-    `);
+    `, [SUPPORTED_QUEUE_ITEM_TYPES]);
 
     for (const row of rows) {
       const ownerKey = normalizeName(row.owner);

@@ -50,7 +50,7 @@ import { createInternalRoutes } from "./src/routes/index";
   logGraphConfig();
   const cfg = getConfig();
   if (!cfg.botAppId) {
-    logger.warn("BOT_APP_ID could not be auto-resolved — please provide manually");
+    logger.warn("BOT_APP_ID could not be auto-resolved — please provide manually or via TEAMS_APP_ID");
   }
 
   // 3. Create services
@@ -71,7 +71,7 @@ import { createInternalRoutes } from "./src/routes/index";
     });
     logger.info("Graph service initialized (proactive messaging via email enabled)");
   } else {
-    logger.info("Graph service NOT configured — proactive messaging via email disabled. Set GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID, BOT_APP_ID to enable.");
+    logger.info("Graph service NOT configured — proactive messaging via email disabled. Set GRAPH_* or reuse CLIENT_ID/CLIENT_SECRET/TENANT_ID plus BOT_APP_ID/TEAMS_APP_ID to enable.");
   }
 
   const notificationService = new NotificationService(app, convRefRepo, userMappingRepo, graphService);

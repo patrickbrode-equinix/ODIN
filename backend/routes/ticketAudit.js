@@ -13,6 +13,17 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requirePageAccess("ticket_audit", "view"));
 
+function buildAssignedDecisionMatchClause(queueAlias = "qi", decisionAlias = "atd") {
+  return `(
+    ${decisionAlias}.ticket_id = ${queueAlias}.id::text
+    OR (
+      ${decisionAlias}.external_id IS NOT NULL
+      AND ${decisionAlias}.external_id = ${queueAlias}.external_id
+      AND (${decisionAlias}.ticket_type IS NULL OR ${decisionAlias}.ticket_type = ${queueAlias}.queue_type)
+    )
+  )`;
+}
+
 /* ------------------------------------------------ */
 /* HELPER: Parse time range from query params       */
 /* range = day | week | month | year | custom       */
@@ -54,6 +65,7 @@ function parseDateRange(q) {
 router.get("/summary", async (req, res) => {
   try {
     const { from, to } = parseDateRange(req.query);
+    const assignedDecisionMatch = buildAssignedDecisionMatchClause();
 
     // 1. Total tickets with owner in range
     const totalOwned = await query(`
@@ -66,7 +78,7 @@ router.get("/summary", async (req, res) => {
 
     // 2. Tickets auto-assigned by ODIN in range
     const autoAssigned = await query(`
-      SELECT COUNT(DISTINCT atd.ticket_id) AS count
+      SELECT COUNT(DISTINCT COALESCE(NULLIF(atd.external_id, ''), atd.ticket_id)) AS count
       FROM assignment_ticket_decisions atd
       WHERE atd.result = 'assigned'
         AND atd.decided_at >= $1::date
@@ -82,7 +94,7 @@ router.get("/summary", async (req, res) => {
         AND qi.first_seen_at < $2::date + INTERVAL '1 day'
         AND NOT EXISTS (
           SELECT 1 FROM assignment_ticket_decisions atd
-          WHERE atd.ticket_id = qi.external_id
+          WHERE ${assignedDecisionMatch}
             AND atd.result = 'assigned'
         )
     `, [from, to]);
@@ -96,7 +108,7 @@ router.get("/summary", async (req, res) => {
         AND qi.first_seen_at < $2::date + INTERVAL '1 day'
         AND NOT EXISTS (
           SELECT 1 FROM assignment_ticket_decisions atd
-          WHERE atd.ticket_id = qi.external_id
+          WHERE ${assignedDecisionMatch}
             AND atd.result = 'assigned'
         )
     `, [from, to]);
@@ -131,6 +143,7 @@ router.get("/summary", async (req, res) => {
 router.get("/manual-takeovers", async (req, res) => {
   try {
     const { from, to } = parseDateRange(req.query);
+    const assignedDecisionMatch = buildAssignedDecisionMatchClause();
 
     const result = await query(`
       SELECT
@@ -144,7 +157,7 @@ router.get("/manual-takeovers", async (req, res) => {
         AND qi.first_seen_at < $2::date + INTERVAL '1 day'
         AND NOT EXISTS (
           SELECT 1 FROM assignment_ticket_decisions atd
-          WHERE atd.ticket_id = qi.external_id
+          WHERE ${assignedDecisionMatch}
             AND atd.result = 'assigned'
         )
       GROUP BY qi.owner

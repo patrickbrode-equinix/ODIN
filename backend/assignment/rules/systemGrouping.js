@@ -3,6 +3,7 @@
 /* ================================================ */
 
 import { MAX_SH_PER_WORKER_PER_SYSTEM, SIMILAR_TIME_THRESHOLD_MS } from '../constants.js';
+import { getAssignmentRuntimeRules } from '../services/runtimeRules.js';
 
 /**
  * Evaluate system name grouping for a worker/ticket pair.
@@ -20,6 +21,10 @@ import { MAX_SH_PER_WORKER_PER_SYSTEM, SIMILAR_TIME_THRESHOLD_MS } from '../cons
  * @returns {{ grouped: boolean, score: number, reason: string, blocked?: boolean }}
  */
 export function evaluateSystemGrouping(worker, ticket, workerCurrentTickets = [], now = Date.now()) {
+  const runtimeRules = getAssignmentRuntimeRules();
+  const maxShPerSystem = Number(runtimeRules.maxShPerSystem || MAX_SH_PER_WORKER_PER_SYSTEM);
+  const similarTimeThresholdMs = Number(runtimeRules.similarTimeThresholdMs || SIMILAR_TIME_THRESHOLD_MS);
+
   if (!ticket.systemName) {
     return {
       grouped: false,
@@ -42,18 +47,18 @@ export function evaluateSystemGrouping(worker, ticket, workerCurrentTickets = []
 
   // SmartHands: max 3 per worker per system name
   if (ticket.type === 'SmartHands') {
-    if (systemTickets.length >= MAX_SH_PER_WORKER_PER_SYSTEM) {
+    if (systemTickets.length >= maxShPerSystem) {
       return {
         grouped: false,
         score: -1, // negative = actively blocked
-        reason: `SmartHands limit reached: ${systemTickets.length}/${MAX_SH_PER_WORKER_PER_SYSTEM} for system "${ticket.systemName}"`,
+        reason: `SmartHands limit reached: ${systemTickets.length}/${maxShPerSystem} for system "${ticket.systemName}"`,
         blocked: true,
       };
     }
     return {
       grouped: true,
       score: 10 + systemTickets.length,
-      reason: `SmartHands grouping: ${systemTickets.length}/${MAX_SH_PER_WORKER_PER_SYSTEM} for system "${ticket.systemName}"`,
+      reason: `SmartHands grouping: ${systemTickets.length}/${maxShPerSystem} for system "${ticket.systemName}"`,
     };
   }
 
@@ -72,7 +77,7 @@ export function evaluateSystemGrouping(worker, ticket, workerCurrentTickets = []
     const allSimilar = systemTickets.every(t => {
       if (!t.dueAt) return true;
       const existing = new Date(t.dueAt).getTime() - now;
-      return Math.abs(ticketRemaining - existing) < SIMILAR_TIME_THRESHOLD_MS;
+      return Math.abs(ticketRemaining - existing) < similarTimeThresholdMs;
     });
 
     if (allSimilar) {

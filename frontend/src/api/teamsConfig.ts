@@ -69,15 +69,46 @@ export interface TeamsMessageLog {
 export interface TeamsEmployee {
   employee_name: string;
   email: string | null;
+  email_source?: string | null;
+  is_active?: boolean;
   manual_override: boolean;
   updated_at: string;
   user_id: number | null;
+}
+
+export interface TeamsDiagnosticCheck {
+  key: string;
+  title: string;
+  status: "ok" | "warning" | "failed";
+  category: string;
+  action: string;
+  detail: string;
+  next_step: string | null;
+  data: Record<string, unknown> | null;
+}
+
+export interface TeamsDiagnostics {
+  generated_at: string;
+  ready: boolean;
+  summary: string;
+  blocking_issues: string[];
+  capabilities: {
+    channel_notifications: boolean;
+    graph_lookup: boolean;
+    personal_notifications: boolean;
+  };
+  checks: TeamsDiagnosticCheck[];
 }
 
 /* ---- API Functions ---- */
 
 export async function fetchTeamsStatus(): Promise<TeamsStatus> {
   const { data } = await api.get("/teams-config/status");
+  return data;
+}
+
+export async function fetchTeamsDiagnostics(): Promise<TeamsDiagnostics> {
+  const { data } = await api.get("/teams-config/diagnostics");
   return data;
 }
 

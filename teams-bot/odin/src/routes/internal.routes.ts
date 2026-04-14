@@ -116,19 +116,26 @@ export function createInternalRoutes(deps: InternalRouteDeps): Router {
       res.status(503).json({ error: "Graph service instance not available" });
       return;
     }
-    const steps: Record<string, unknown> = { tokenAcquired: false, userResolved: false, appInstalled: false, chatResolved: false, messageSent: false };
+    const steps: Record<string, unknown> = {
+      tokenAcquired: false,
+      userResolved: false,
+      appInstalled: false,
+      chatResolved: false,
+      messageSent: false,
+      permissionHints: getGraphPermissionHints(),
+    };
     try {
-      // Step 1: Token (implicitly tested via getUserByEmail)
+      // Step 1: Token
+      const token = await (graphService as any).getToken();
+      steps.tokenAcquired = true;
+      steps.tokenDetails = summarizeGraphToken(token);
+
       if (!email) {
-        // Token-only test
-        await (graphService as any).getToken();
-        steps.tokenAcquired = true;
         res.status(200).json({ success: true, steps });
         return;
       }
       // Step 2: Resolve user
       const user = await graphService.getUserByEmail(email);
-      steps.tokenAcquired = true;
       steps.userResolved = { id: user.id, displayName: user.displayName, upn: user.userPrincipalName };
       // Step 3: Ensure app installed
       try {
@@ -198,4 +205,47 @@ function getGraphMissing(): string[] {
   if (!cfg.graphTenantId) missing.push("GRAPH_TENANT_ID");
   if (!cfg.botAppId) missing.push("BOT_APP_ID");
   return missing;
+}
+
+function summarizeGraphToken(token: string): Record<string, unknown> | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+
+  const roles = Array.isArray(payload.roles)
+    ? payload.roles.filter((role): role is string => typeof role === "string")
+    : [];
+
+  return {
+    appId: typeof payload.appid === "string" ? payload.appid : null,
+    tenantId: typeof payload.tid === "string" ? payload.tid : null,
+    audience: typeof payload.aud === "string" ? payload.aud : null,
+    roles,
+    hasRoles: roles.length > 0,
+  };
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getGraphPermissionHints(): Record<string, unknown> {
+  return {
+    userResolve: ["User.Read.All"],
+    appInstallAndLookup: ["TeamsAppInstallation.ReadWriteForUser.All"],
+    appOnlyMessageSend: ["Teamwork.Migrate.All"],
+    notes: [
+      "Chat.Create is not used by the current GraphService flow.",
+      "ChatMessage.Send is delegated-only and does not satisfy app-only POST /chats/{chat-id}/messages.",
+    ],
+  };
 }

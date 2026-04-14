@@ -9,8 +9,20 @@ import { requireAuth } from '../middleware/authMiddleware.js';
 import { requirePageAccess } from '../middleware/requirePageAccess.js';
 import pool from '../db.js';
 import ExcelJS from 'exceljs';
+import { recomputeConstraintsInternal } from './constraints.js';
 import { syncEmployeeContacts } from './employeeContacts.js';
 import { provisionUsersFromShiftplan } from '../services/shiftUserProvisioning.service.js';
+import {
+  formatShiftMonthLabel,
+  monthLabelMatchesYear,
+  parseDraftMonthId,
+} from '../lib/shiftplanMonth.js';
+import {
+  buildDailyShiftSlots,
+  buildShiftSlots,
+  buildStaffingRulesByShiftType,
+  getShiftDurationHours,
+} from '../lib/shiftplanGeneration.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -58,6 +70,85 @@ function deduplicateEmployees(names) {
   return [...seen.values()].sort((a, b) => a.localeCompare(b, 'de'));
 }
 
+async function loadEmployeesForPlanningYear(year) {
+  let yearPlanEmployees = [];
+
+  if (Number(year) === 2027) {
+    try {
+      const { rows: yearPlanRows } = await pool.query(
+        `SELECT DISTINCT employee_name
+         FROM year_plan_2027
+         WHERE employee_name IS NOT NULL AND btrim(employee_name) <> ''`
+      );
+      yearPlanEmployees = yearPlanRows.map((row) => row.employee_name);
+    } catch (error) {
+      console.warn('[SHIFTPLAN CONTROL] year_plan_2027 could not be queried:', error.message);
+    }
+  }
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT month, employee_name
+     FROM shifts
+     WHERE employee_name IS NOT NULL AND btrim(employee_name) <> ''`
+  );
+
+  const yearScopedEmployees = deduplicateEmployees(
+    [...yearPlanEmployees, ...rows
+      .filter((row) => monthLabelMatchesYear(row.month, year))
+      .map((row) => row.employee_name)]
+  );
+
+  if (yearScopedEmployees.length > 0) {
+    return yearScopedEmployees;
+  }
+
+  return deduplicateEmployees([...yearPlanEmployees, ...rows.map((row) => row.employee_name)]);
+}
+
+const WELLBEING_HISTORY_COLUMNS = ['employee_name', 'night_count', 'weekend_count', 'early_count', 'late_count'];
+const WELLBEING_REQUIRED_COLUMNS = new Set(['employee_name', 'night_count', 'weekend_count']);
+
+async function loadWellbeingHistory(year, month) {
+  const params = [String(year), Number(month)];
+
+  try {
+    const result = await pool.query(
+      `SELECT employee_name, night_count, weekend_count, early_count, late_count
+       FROM wellbeing_metrics
+       WHERE year = $1 AND month = $2`,
+      params
+    );
+    return result.rows;
+  } catch (error) {
+    if (error?.code !== '42703') throw error;
+
+    const columnsRes = await pool.query(
+      `SELECT DISTINCT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'wellbeing_metrics'
+         AND column_name = ANY($1::text[])`,
+      [WELLBEING_HISTORY_COLUMNS]
+    );
+    const availableColumns = new Set(columnsRes.rows.map((row) => row.column_name));
+    const selectList = WELLBEING_HISTORY_COLUMNS.map((column) => {
+      if (availableColumns.has(column) || WELLBEING_REQUIRED_COLUMNS.has(column)) {
+        return column;
+      }
+      return `0::integer AS ${column}`;
+    }).join(', ');
+
+    console.warn('[SHIFTPLAN CONTROL] wellbeing_metrics is missing optional legacy columns; using 0 defaults for absent counters');
+
+    const fallbackResult = await pool.query(
+      `SELECT ${selectList}
+       FROM wellbeing_metrics
+       WHERE year = $1 AND month = $2`,
+      params
+    );
+    return fallbackResult.rows;
+  }
+}
+
 /* ------------------------------------------------ */
 /* DETERMINISTIC PLANNING ENGINE                    */
 /* Fully rule-based, reproducible, no randomness    */
@@ -102,6 +193,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
     max_consecutive_same: 5, max_consecutive_workdays: 6, min_free_after_streak: 1,
     night_to_early_forbidden: true, late_to_early_forbidden: true,
     min_hours_between_shifts: 11, max_nights_per_month: 7, max_weekends_per_month: 2, weekend_rule: 'balanced',
+    free_days_after_night: 2, free_days_after_weekend: 1,
   };
 
   const fairRes = await pool.query('SELECT * FROM shift_fairness_rules WHERE id=1');
@@ -113,21 +205,29 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
   const planRes = await pool.query('SELECT * FROM shift_planning_config WHERE id=1');
   const planConfig = planRes.rows[0] || {
     respect_employee_wishes: true, hard_rules_priority: 100, soft_wishes_priority: 50,
-    fairness_priority: 80, admin_override_priority: 90,
+    fairness_priority: 80, admin_override_priority: 90, monthly_target_hours: 174,
   };
+
+  const specialPoolRes = await pool.query(
+    `SELECT shift_code, employee_name, monthly_max_assignments
+     FROM shift_special_pools
+     WHERE is_active = TRUE`
+  );
+  const specialPoolsByShift = new Map();
+  for (const row of specialPoolRes.rows) {
+    const shiftCode = String(row.shift_code || '').trim().toUpperCase();
+    const employeeName = row.employee_name;
+    if (!shiftCode || !employeeName) continue;
+    if (!specialPoolsByShift.has(shiftCode)) specialPoolsByShift.set(shiftCode, new Map());
+    specialPoolsByShift.get(shiftCode).set(employeeName, {
+      monthlyMaxAssignments: Math.max(Number.parseInt(String(row.monthly_max_assignments ?? 0), 10) || 0, 0),
+    });
+  }
 
   const month = `${year}-${String(mon).padStart(2, '0')}`;
 
   // 2. Load employees
-  const empRes = await pool.query(
-    `SELECT DISTINCT employee_name FROM shifts WHERE month LIKE $1 ORDER BY employee_name`,
-    [`${year}-%`]
-  );
-  let employees = deduplicateEmployees(empRes.rows.map(r => r.employee_name));
-  if (employees.length === 0) {
-    const fallback = await pool.query(`SELECT DISTINCT employee_name FROM shifts ORDER BY employee_name LIMIT 100`);
-    employees = deduplicateEmployees(fallback.rows.map(r => r.employee_name));
-  }
+  let employees = await loadEmployeesForPlanningYear(year);
   if (employees.length === 0) {
     throw new Error('Keine Mitarbeiter im System gefunden');
   }
@@ -163,12 +263,10 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
 
   // 6. Load wellbeing metrics (previous month)
   const prevMonth = mon === 1 ? `${year - 1}-12` : `${year}-${String(mon - 1).padStart(2, '0')}`;
-  const wbRes = await pool.query(
-    `SELECT employee_name, night_count, weekend_count, early_count, late_count FROM wellbeing_metrics WHERE year = $1 AND month = $2`,
-    [prevMonth.split('-')[0], parseInt(prevMonth.split('-')[1])]
-  );
+  const prevMonthParts = prevMonth.split('-');
+  const wellbeingRows = await loadWellbeingHistory(prevMonthParts[0], Number.parseInt(prevMonthParts[1], 10));
   const historyMap = new Map();
-  for (const w of wbRes.rows) historyMap.set(w.employee_name, w);
+  for (const w of wellbeingRows) historyMap.set(w.employee_name, w);
 
   // 7. Load preferred colleagues
   const prefRes = await pool.query(
@@ -190,8 +288,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
 
   // 9. Load staffing rules
   const staffRes = await pool.query('SELECT * FROM staffing_rules');
-  const staffingRules = {};
-  for (const r of staffRes.rows) staffingRules[r.shift_type] = r.min_count || 2;
+  const staffingRules = buildStaffingRulesByShiftType(staffRes.rows);
 
   // ================================================================
   // DETERMINISTIC SHIFT GENERATION
@@ -216,15 +313,23 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
   const empDayAssignment = {}; // emp -> { day: shiftCode }
   const empConsecutiveWork = {}; // emp -> current consecutive work days
   const empLastShiftType = {}; // emp -> last assigned shift type
+  const empRequiredFreeDays = {}; // emp -> remaining forced recovery days
+  const empHours = {}; // emp -> actual planned hours
+  const empRecoveryReason = {}; // emp -> reason for pending free days
 
   const activeEmployees = employees.filter(e => !shiftExcludedSet.has(e));
   planReport.activeEmployees = activeEmployees.length;
+  const targetHours = Math.max(Number.parseFloat(String(planConfig.monthly_target_hours ?? 174)) || 174, 1);
+  const baselineShiftSlots = buildShiftSlots(shiftDefs, staffingRules);
 
   for (const emp of activeEmployees) {
-    empStats[emp] = { nights: 0, weekends: 0, earlyCount: 0, lateCount: 0, total: 0 };
+    empStats[emp] = { nights: 0, weekends: 0, earlyCount: 0, lateCount: 0, total: 0, actualHours: 0, targetHours, specialShiftCounts: {} };
     empDayAssignment[emp] = {};
     empConsecutiveWork[emp] = 0;
     empLastShiftType[emp] = null;
+    empRequiredFreeDays[emp] = 0;
+    empHours[emp] = 0;
+    empRecoveryReason[emp] = null;
   }
 
   // Process each day
@@ -243,6 +348,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
         const thisDate = new Date(dateStr);
         if (thisDate >= abStart && thisDate <= abEnd) return false;
       }
+      if (empRequiredFreeDays[emp] > 0) return false;
       // Check max consecutive workdays
       if (empConsecutiveWork[emp] >= rotation.max_consecutive_workdays) return false;
       return true;
@@ -250,10 +356,28 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
 
     // Track who gets assigned today
     const assignedToday = new Set();
+    const shiftSlots = buildDailyShiftSlots({
+      shiftDefinitions: shiftDefs,
+      staffingRules,
+      activeEmployees,
+      employeeHours: empHours,
+      monthlyTargetHours: targetHours,
+      day,
+      numDays,
+      dayOfWeek: dow,
+    }).sort((left, right) => {
+      const leftPriority = specialPoolsByShift.has(left.code) ? 0 : 1;
+      const rightPriority = specialPoolsByShift.has(right.code) ? 0 : 1;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      const leftSort = Number.parseInt(String(left.sort_order ?? 0), 10) || 0;
+      const rightSort = Number.parseInt(String(right.sort_order ?? 0), 10) || 0;
+      if (leftSort !== rightSort) return leftSort - rightSort;
+      return String(left.code || '').localeCompare(String(right.code || ''), 'de');
+    });
 
     // Process each shift definition
-    for (const shiftDef of shiftDefs) {
-      const neededStaff = shiftDef.min_staff || 1;
+    for (const shiftDef of shiftSlots) {
+      const neededStaff = shiftDef.planned_slots || shiftDef.min_staff || 1;
 
       for (let slot = 0; slot < neededStaff; slot++) {
         // Build candidate list (not yet assigned today)
@@ -275,29 +399,31 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           const stats = empStats[emp];
           const history = historyMap.get(emp);
           const prefs = empPrefsMap.get(emp);
+          const specialPool = specialPoolsByShift.get(shiftDef.code);
+          let hardBlocked = false;
 
           // === HARD RULES (violations = large penalty) ===
 
           // Rotation: forbidden transitions
           const lastType = empLastShiftType[emp];
           if (lastType === 'night' && shiftDef.shift_type === 'early' && rotation.night_to_early_forbidden) {
-            score -= 5000;
+            hardBlocked = true;
             reasons.push('Regelverstoß: Nacht→Früh verboten');
           }
           if (lastType === 'late' && shiftDef.shift_type === 'early' && rotation.late_to_early_forbidden) {
-            score -= 5000;
+            hardBlocked = true;
             reasons.push('Regelverstoß: Spät→Früh verboten');
           }
 
           // Max nights per month
           if (shiftDef.shift_type === 'night' && stats.nights >= rotation.max_nights_per_month) {
-            score -= 3000;
+            hardBlocked = true;
             reasons.push(`Nachtlimit erreicht (${stats.nights}/${rotation.max_nights_per_month})`);
           }
 
           // Max weekends per month
           if (weekend && stats.weekends >= rotation.max_weekends_per_month) {
-            score -= 2000;
+            hardBlocked = true;
             reasons.push(`Wochenendlimit erreicht (${stats.weekends}/${rotation.max_weekends_per_month})`);
           }
 
@@ -311,19 +437,53 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             else break;
           }
           if (consecutiveSame >= rotation.max_consecutive_same) {
-            score -= 2000;
+            hardBlocked = true;
             reasons.push(`Max. gleiche Schichtart in Folge erreicht (${consecutiveSame})`);
+          }
+
+          if (specialPool) {
+            const poolEntry = specialPool.get(emp);
+            if (!poolEntry) {
+              hardBlocked = true;
+              reasons.push(`Nicht im festen Pool für ${shiftDef.code}`);
+            } else {
+              const assignedCount = Number(stats.specialShiftCounts?.[shiftDef.code] || 0);
+              if (assignedCount >= poolEntry.monthlyMaxAssignments) {
+                hardBlocked = true;
+                reasons.push(`${shiftDef.code}-Limit erreicht (${assignedCount}/${poolEntry.monthlyMaxAssignments})`);
+              } else {
+                score += 120;
+                score -= assignedCount * 90;
+                reasons.push(`Fester ${shiftDef.code}-Pool (${assignedCount}/${poolEntry.monthlyMaxAssignments})`);
+              }
+            }
+          }
+
+          if (hardBlocked) {
+            return { emp, score: Number.NEGATIVE_INFINITY, reasons, hardBlocked: true };
           }
 
           // === FAIRNESS (soft scoring) ===
 
           // Total shift balance: prefer employees with fewer total shifts
           if (fairnessRules.balance_total_load) {
-            const avgTotal = activeEmployees.reduce((sum, e) => sum + empStats[e].total, 0) / activeEmployees.length || 0;
-            const diff = stats.total - avgTotal;
-            score -= diff * 50; // less assigned = higher score
-            if (diff < -1) reasons.push('Fairness: Weniger Schichten als Durchschnitt');
-            if (diff > 1) reasons.push('Fairness: Mehr Schichten als Durchschnitt');
+            const avgHours = activeEmployees.reduce((sum, e) => sum + empHours[e], 0) / activeEmployees.length || 0;
+            const diffHours = empHours[emp] - avgHours;
+            score -= diffHours * 8;
+            if (diffHours < -8) reasons.push('Fairness: Weniger Stunden als Durchschnitt');
+            if (diffHours > 8) reasons.push('Fairness: Mehr Stunden als Durchschnitt');
+          }
+
+          const remainingToTarget = targetHours - empHours[emp];
+          score += remainingToTarget * 12;
+          if (remainingToTarget > 16) reasons.push(`Sollzeit offen: ${remainingToTarget.toFixed(1)}h`);
+          if (remainingToTarget < -8) reasons.push(`Bereits über Sollzeit: ${Math.abs(remainingToTarget).toFixed(1)}h`);
+
+          if (shiftDef.shift_type === 'night' && rotation.free_days_after_night > 0) {
+            score -= rotation.free_days_after_night * 25;
+          }
+          if (weekend && rotation.free_days_after_weekend > 0) {
+            score -= rotation.free_days_after_weekend * 15;
           }
 
           // Night balance
@@ -398,16 +558,31 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           }
 
           // Deterministic tiebreaker: alphabetical by name
-          return { emp, score, reasons };
+          return { emp, score, reasons, hardBlocked: false };
         });
 
+        const eligibleScored = scored.filter((entry) => Number.isFinite(entry.score));
+
+        if (eligibleScored.length === 0) {
+          const blockedPreview = scored
+            .filter((entry) => entry.hardBlocked && entry.reasons.length > 0)
+            .slice(0, 3)
+            .map((entry) => `${entry.emp}: ${entry.reasons.join(', ')}`);
+          conflicts.push({
+            day, date: dateStr, shift: shiftDef.code, severity: 'critical',
+            type: 'no_eligible_candidate',
+            message: `${shiftDef.name} (${shiftDef.code}) am ${dateStr}: Keine zulässigen Kandidaten${blockedPreview.length > 0 ? ` (${blockedPreview.join(' | ')})` : ''}`,
+          });
+          continue;
+        }
+
         // Sort by score descending, then name ascending for determinism
-        scored.sort((a, b) => {
+        eligibleScored.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
           return a.emp.localeCompare(b.emp, 'de');
         });
 
-        const winner = scored[0];
+        const winner = eligibleScored[0];
         if (!winner) continue;
 
         const emp = winner.emp;
@@ -416,13 +591,29 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
         empDayAssignment[emp][day] = shiftDef.code;
         empLastShiftType[emp] = shiftDef.shift_type;
         empConsecutiveWork[emp]++;
+        if (rotation.min_free_after_streak > 0 && empConsecutiveWork[emp] >= rotation.max_consecutive_workdays) {
+          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.min_free_after_streak);
+          empRecoveryReason[emp] = 'Arbeitsserie';
+        }
+        if (shiftDef.shift_type === 'night' && rotation.free_days_after_night > 0) {
+          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_night);
+          empRecoveryReason[emp] = 'Nachtschicht';
+        }
+        if (weekend && rotation.free_days_after_weekend > 0) {
+          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_weekend);
+          empRecoveryReason[emp] = 'Wochenendarbeit';
+        }
 
         // Update stats
+        const shiftHours = getShiftDurationHours(shiftDef);
         if (shiftDef.shift_type === 'night') empStats[emp].nights++;
         if (weekend) empStats[emp].weekends++;
         if (shiftDef.shift_type === 'early') empStats[emp].earlyCount++;
         if (shiftDef.shift_type === 'late') empStats[emp].lateCount++;
         empStats[emp].total++;
+        empStats[emp].specialShiftCounts[shiftDef.code] = Number(empStats[emp].specialShiftCounts[shiftDef.code] || 0) + 1;
+        empHours[emp] += shiftHours;
+        empStats[emp].actualHours = Number(empHours[emp].toFixed(2));
         planReport.totalShiftsPlanned++;
 
         // Build explanation
@@ -431,7 +622,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           'Verfügbar (kein Urlaub/Abwesenheit, nicht ausgeschlossen)',
           `Schicht: ${shiftDef.name} (${shiftDef.code})`,
           ...winner.reasons,
-          `Planungsbewertung: ${winner.score} Punkte (Rang 1 von ${scored.length} Kandidaten)`,
+          `Planungsbewertung: ${winner.score} Punkte (Rang 1 von ${eligibleScored.length} zulässigen Kandidaten)`,
         ];
         explanations[expKey] = { employee: emp, day, code: shiftDef.code, reasons: allReasons, score: winner.score };
 
@@ -447,8 +638,14 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
     // Reset consecutive work for unassigned employees
     for (const emp of activeEmployees) {
       if (!assignedToday.has(emp)) {
+        const recoveryDaysBefore = empRequiredFreeDays[emp];
+        const recoveryReasonBefore = empRecoveryReason[emp];
         empConsecutiveWork[emp] = 0;
         empLastShiftType[emp] = null;
+        if (empRequiredFreeDays[emp] > 0) {
+          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp] - 1, 0);
+          if (empRequiredFreeDays[emp] === 0) empRecoveryReason[emp] = null;
+        }
         // Explanation for non-assignment
         const expKey = `${emp}_${day}`;
         if (!explanations[expKey]) {
@@ -459,11 +656,10 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             const thisDate = new Date(dateStr);
             return thisDate >= abStart && thisDate <= abEnd;
           });
-          const overStreak = empConsecutiveWork[emp] >= rotation.max_consecutive_workdays;
           explanations[expKey] = {
             employee: emp, day, code: null,
             reasons: isAbsent ? ['Nicht eingeteilt: Abwesend (Urlaub/Krankheit)']
-              : overStreak ? ['Nicht eingeteilt: Maximale Arbeitstage in Folge erreicht']
+              : recoveryDaysBefore > 0 ? [`Nicht eingeteilt: Erholungstag nach ${recoveryReasonBefore || 'Belastung'} erforderlich (${recoveryDaysBefore} verbleibend)`]
               : ['Nicht eingeteilt: Genügend andere Mitarbeiter für alle Schichten verfügbar'],
           };
         }
@@ -491,12 +687,17 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       earlyCount: empStats[emp].earlyCount,
       lateCount: empStats[emp].lateCount,
       total: empStats[emp].total,
+      actualHours: Number(empHours[emp].toFixed(2)),
+      targetHours,
+      deltaHours: Number((empHours[emp] - targetHours).toFixed(2)),
     };
   }
 
   planReport.conflictsCount = conflicts.length;
   planReport.rulesApplied = [
     `Rotationsregeln: Max ${rotation.max_consecutive_workdays} Arbeitstage, ${rotation.max_nights_per_month} Nächte/Monat`,
+    `Freitage nach Nacht: ${rotation.free_days_after_night || 0}, nach Wochenendarbeit: ${rotation.free_days_after_weekend || 0}`,
+    `Monatliche Sollzeit: ${targetHours} Stunden`,
     `Fairnessregeln: Nächte=${fairnessRules.balance_nights ? 'Ja' : 'Nein'}, Wochenenden=${fairnessRules.balance_weekends ? 'Ja' : 'Nein'}`,
     `Wünsche berücksichtigt: ${planConfig.respect_employee_wishes ? 'Ja' : 'Nein'} (Gewichtung ${planConfig.soft_wishes_priority}%)`,
     `Harte Regeln Priorität: ${planConfig.hard_rules_priority}%`,
@@ -515,11 +716,18 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       activeEmployees: activeEmployees.length,
       excluded: shiftExcludedSet.size,
       daysInMonth: numDays,
-      shiftDefinitions: shiftDefs.map(d => ({ code: d.code, name: d.name, type: d.shift_type, minStaff: d.min_staff })),
+      shiftDefinitions: shiftDefs.map(d => ({ code: d.code, name: d.name, type: d.shift_type, minStaff: d.min_staff, maxStaff: d.max_staff, durationHours: getShiftDurationHours(d) })),
       rotationRules: rotation,
       fairnessRules,
       planningConfig: planConfig,
       staffingRules,
+      specialPools: Object.fromEntries(
+        [...specialPoolsByShift.entries()].map(([shiftCode, entries]) => [
+          shiftCode,
+          [...entries.entries()].map(([employeeName, value]) => ({ employeeName, monthlyMaxAssignments: value.monthlyMaxAssignments })),
+        ])
+      ),
+      effectiveShiftSlots: baselineShiftSlots.map(d => ({ code: d.code, type: d.shift_type, plannedSlots: d.planned_slots, durationHours: getShiftDurationHours(d) })),
       generatedAt: new Date().toISOString(),
     },
   };
@@ -661,18 +869,29 @@ router.post('/drafts/:id/activate', requirePageAccess('shiftplan_control', 'writ
 
     const shifts = draft.shifts_json; // JSONB array
     const draftMonth = draft.month;
+    const parsedDraftMonth = parseDraftMonthId(draftMonth);
+
+    if (!parsedDraftMonth) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: 'Ungültiges Draft-Monatsformat' });
+    }
 
     // Build month label matching existing schema (e.g. "2026-04" or "April 2026")
-    const monthKey = draftMonth; // Use raw YYYY-MM format
+    const liveMonthLabel = formatShiftMonthLabel(parsedDraftMonth.year, parsedDraftMonth.month);
 
-    // Delete existing shifts for this month
-    await client.query('DELETE FROM shifts WHERE month = $1', [monthKey]);
+    if (!liveMonthLabel) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: 'Monatslabel konnte nicht erzeugt werden' });
+    }
+
+    // Delete existing shifts for this month. Also clean up legacy rows written with the raw YYYY-MM key.
+    await client.query('DELETE FROM shifts WHERE month = $1 OR month = $2', [liveMonthLabel, draftMonth]);
 
     // Insert draft shifts
     for (const s of shifts) {
       await client.query(
         'INSERT INTO shifts (month, employee_name, day, shift_code) VALUES ($1, $2, $3, $4) ON CONFLICT (month, employee_name, day) DO UPDATE SET shift_code = $4',
-        [monthKey, s.employee_name, s.day, s.shift_code]
+        [liveMonthLabel, s.employee_name, s.day, s.shift_code]
       );
     }
 
@@ -700,7 +919,11 @@ router.post('/drafts/:id/activate', requirePageAccess('shiftplan_control', 'writ
       userProvisioning = { error: provisionErr.message };
     }
 
-    res.json({ ok: true, message: `Draft für ${draftMonth} wurde als aktiver Schichtplan übernommen`, activatedBy: actor, contactSync, userProvisioning });
+    recomputeConstraintsInternal(liveMonthLabel).catch((constraintErr) => {
+      console.warn('[SHIFTPLAN CONTROL] Constraint recompute failed:', constraintErr.message);
+    });
+
+    res.json({ ok: true, message: `Draft für ${liveMonthLabel} wurde als aktiver Schichtplan übernommen`, activatedBy: actor, liveMonthLabel, contactSync, userProvisioning });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Activation error:', err);
@@ -993,8 +1216,7 @@ router.get('/planning-basis', async (req, res) => {
     const numDays = daysInMonth(year, mon);
 
     // Employees
-    const empRes = await pool.query(`SELECT DISTINCT employee_name FROM shifts ORDER BY employee_name LIMIT 100`);
-    const employees = deduplicateEmployees(empRes.rows.map(r => r.employee_name));
+    const employees = await loadEmployeesForPlanningYear(year);
 
     // Absences
     const absRes = await pool.query(

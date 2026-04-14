@@ -43,6 +43,7 @@ const EMPTY_FORM = {
   firstName: "",
   lastName: "",
   email: "",
+  initialPassword: "",
   ibx: "",
   department: "",
   role: "user",
@@ -71,6 +72,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
       form.firstName.trim() &&
       form.lastName.trim() &&
       form.email.trim() &&
+      form.initialPassword.trim() &&
       form.ibx.trim() &&
       form.department.trim()
     );
@@ -154,6 +156,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         email: form.email.trim(),
+        initialPassword: form.initialPassword,
         ibx: form.ibx,
         group: form.department.trim(),
         isAdmin: form.role === "admin",
@@ -185,7 +188,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             User anlegen
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Passwort wird automatisch serverseitig auf den Initialwert gesetzt
+            Startpasswort wird beim Anlegen gesetzt und beim ersten Login zwingend zur Aenderung markiert
           </p>
         </CardHeader>
 
@@ -225,6 +228,19 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                   setForm({ ...form, email: e.target.value })
                 }
                 disabled={loading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Startpasswort</Label>
+              <Input
+                type="password"
+                value={form.initialPassword}
+                onChange={(e) =>
+                  setForm({ ...form, initialPassword: e.target.value })
+                }
+                disabled={loading}
+                placeholder="Initiales Passwort fuer den ersten Login"
               />
             </div>
 

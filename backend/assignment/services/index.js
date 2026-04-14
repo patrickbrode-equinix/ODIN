@@ -5,6 +5,7 @@
 import { assignmentSettingsRepository, assignmentDecisionRepository, assignmentExclusionRepository } from '../repositories/index.js';
 import { buildTicketExplanation } from '../logging/decisionLog.js';
 import { SETTINGS_KEYS } from '../constants.js';
+import { decisionMatchesTicketIdentifier } from '../lib/ticketIdentity.js';
 
 /* ---- Settings Service ---- */
 
@@ -130,10 +131,10 @@ export const assignmentExplanationService = {
   async getTicketExplanation(ticketId, runId = null) {
     let decisions;
     if (runId) {
-      const decision = await assignmentDecisionRepository.findByRunId(runId);
-      decisions = decision.filter(d => d.ticket_id === ticketId);
+      const decisionRows = await assignmentDecisionRepository.findByRunId(runId, { limit: 1000, offset: 0 });
+      decisions = decisionRows.filter((decision) => decisionMatchesTicketIdentifier(decision, ticketId));
     } else {
-      decisions = await assignmentDecisionRepository.findByTicketId(ticketId);
+      decisions = await assignmentDecisionRepository.findByTicketIdentity(ticketId);
     }
 
     if (decisions.length === 0) {

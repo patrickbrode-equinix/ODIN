@@ -13,7 +13,7 @@ import * as XLSX from "xlsx";
 /* ------------------------------------------------ */
 
 export const KNOWN_SHIFT_CODES: string[] = [
-  "E1","E2","L1","L2","L3","N","FS","ABW",
+  "E1","E2","E1SA","E1WE","L1","L2","L1WE","L3","N","FS","ABW",
   "U","UR","URB","K","S","DBS","NA",
 ];
 
@@ -24,6 +24,9 @@ export const PENDING_REVIEW_CODES: string[] = ["L3"];
 const SHIFT_ALIASES: Record<string, string> = {
   NACHT: "N",
   FREI: "FS",
+  "N/A": "FS",
+  NA: "FS",
+  OFF: "FS",
 };
 
 /* ------------------------------------------------ */
@@ -105,18 +108,21 @@ export interface ParseResult {
 
 function normalizeShiftCode(val: any, unknownSet: Set<string>, log: ImportLogEntry[], sheetName: string): string {
   if (val === null || val === undefined) return "";
-  const raw = String(val).trim();
+  const raw = String(val).replace(/\s+/g, " ").trim();
   if (!raw) return "";
   const v = raw.toUpperCase();
+  const leadToken = v.match(/^[A-Z0-9/]+/)?.[0] || "";
 
   // Alias-Auflösung
   if (SHIFT_ALIASES[v]) return SHIFT_ALIASES[v];
+  if (leadToken && SHIFT_ALIASES[leadToken]) return SHIFT_ALIASES[leadToken];
 
   // ABW-Varianten (ABW, ABW-Krank, etc.)
   if (v.startsWith("ABW")) return "ABW";
 
   // Bekannter Code → direkt zurückgeben
   if (KNOWN_SHIFT_CODES.includes(v)) return v;
+  if (leadToken && KNOWN_SHIFT_CODES.includes(leadToken)) return leadToken;
 
   // Unbekannter Code → loggen, aber als Rohwert importieren
   if (!unknownSet.has(v)) {
@@ -139,9 +145,34 @@ function looksLikeName(val: any): boolean {
 
 function parseDayNumber(val: any): number | null {
   if (val === null || val === undefined) return null;
-  const n = Number(val);
-  if (!Number.isFinite(n)) return null;
-  return n >= 1 && n <= 31 ? Math.floor(n) : null;
+
+  if (typeof val === "number") {
+    return Number.isFinite(val) && val >= 1 && val <= 31 ? Math.floor(val) : null;
+  }
+
+  if (typeof val === "string") {
+    const normalized = val.replace(/\s+/g, " ").trim();
+    if (!normalized) return null;
+
+    const matches = normalized.match(/\b([1-9]|[12][0-9]|3[01])\b/g);
+    if (!matches || matches.length === 0) return null;
+
+    const n = Number(matches[matches.length - 1]);
+    return Number.isFinite(n) && n >= 1 && n <= 31 ? n : null;
+  }
+
+  return null;
+}
+
+function parseExcelSerialDate(cell: number): { day: number; month: number; year: number } | null {
+  const parsed = XLSX.SSF.parse_date_code(cell);
+  if (!parsed || !parsed.y || !parsed.m || !parsed.d) return null;
+
+  return {
+    day: parsed.d,
+    month: parsed.m,
+    year: parsed.y,
+  };
 }
 
 /* ------------------------------------------------ */
@@ -390,10 +421,10 @@ export async function parseShiftplanExcel(file: File | Blob | ArrayBuffer): Prom
           }
           // Excel-Datumswerte (serial numbers) prüfen
           if (typeof cell === "number" && cell > 40000 && cell < 60000) {
-            const d = new Date((cell - 25569) * 86400000);
-            if (!isNaN(d.getTime())) {
-              if (!month) month = d.getMonth() + 1;
-              if (!year) year = d.getFullYear();
+            const dateInfo = parseExcelSerialDate(cell);
+            if (dateInfo) {
+              if (!month) month = dateInfo.month;
+              if (!year) year = dateInfo.year;
             }
           }
         }

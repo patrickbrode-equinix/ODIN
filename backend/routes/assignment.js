@@ -18,8 +18,20 @@ import {
   checkCrawlerFreshness,
   loadLastCrawlerTimestamp,
 } from '../assignment/index.js';
+import {
+  normalizeLegacyDecisionRow,
+  summarizeDecisionResults,
+} from '../assignment/lib/reportCompatibility.js';
 
 const router = express.Router();
+
+async function loadLegacyRunDecisions(runId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM assignment_decisions WHERE run_id = $1 ORDER BY created_at DESC, id DESC`,
+    [runId]
+  );
+  return rows.map(normalizeLegacyDecisionRow);
+}
 
 /* All assignment routes require auth */
 router.use(requireAuth);
@@ -161,25 +173,76 @@ router.get('/runs/:runId/report', async (req, res) => {
     if (!run) return res.status(404).json({ ok: false, error: 'Run not found' });
 
     // Load all decisions for this run
-    const decisions = await assignmentDecisionRepository.findAll({ runId, limit: 1000 });
+    const currentDecisions = await assignmentDecisionRepository.findAll({ runId, limit: 1000 });
+    const legacyDecisions = currentDecisions.length === 0 ? await loadLegacyRunDecisions(runId) : [];
+    const decisionSource = currentDecisions.length > 0 ? 'current' : (legacyDecisions.length > 0 ? 'legacy' : 'none');
+    const decisions = decisionSource === 'legacy' ? legacyDecisions : currentDecisions;
+    const realDecisions = decisionSource === 'legacy'
+      ? decisions
+      : decisions.filter(isQueueBackedDecision);
+    const syntheticDecisionCount = decisionSource === 'current'
+      ? Math.max(decisions.length - realDecisions.length, 0)
+      : 0;
+
+    const internalIds = realDecisions
+      .map((decision) => parseDecisionInternalTicketId(decision))
+      .filter((value) => Number.isInteger(value));
+    const externalIds = realDecisions
+      .map((decision) => readDecisionDisplayTicketNumber(decision))
+      .filter(Boolean);
+
+    const queueLookup = new Map();
+    if (internalIds.length > 0 || externalIds.length > 0) {
+      const { rows: queueRows } = await pool.query(
+        `SELECT id, external_id, queue_type, system_name, customer_trouble_type, subtype
+         FROM queue_items
+         WHERE ($1::int[] <> '{}'::int[] AND id = ANY($1::int[]))
+            OR ($2::text[] <> '{}'::text[] AND external_id = ANY($2::text[]))`,
+        [internalIds, externalIds]
+      );
+
+      for (const row of queueRows) {
+        queueLookup.set(`id:${row.id}`, row);
+        if (row.external_id) {
+          queueLookup.set(`external:${row.external_id}`, row);
+        }
+      }
+    }
 
     // Categorize decisions
-    const assigned = decisions.filter(d => d.result === 'assigned');
-    const unassigned = decisions.filter(d => d.result !== 'assigned' && d.result !== 'not_relevant');
-    const notRelevant = decisions.filter(d => d.result === 'not_relevant');
+    const assigned = realDecisions.filter((decision) => decision.result === 'assigned');
+    const unassigned = realDecisions.filter((decision) => decision.result !== 'assigned' && decision.result !== 'not_relevant');
+    const notRelevant = realDecisions.filter((decision) => decision.result === 'not_relevant');
 
     // Build summary
-    const summary = {};
-    for (const d of decisions) {
-      summary[d.result] = (summary[d.result] || 0) + 1;
+    const runSummary = run.summary && typeof run.summary === 'object' ? run.summary : {};
+    const summary = summarizeDecisionResults(realDecisions);
+    if (Number(runSummary.crawler_stale || 0) > 0) {
+      summary.crawler_stale = Number(runSummary.crawler_stale);
     }
 
     // Validate ticket counts
-    const totalProcessed = decisions.length;
+    const totalProcessed = realDecisions.length;
     const totalAssigned = assigned.length;
     const totalUnassigned = unassigned.length;
     const totalNotRelevant = notRelevant.length;
     const countConsistent = totalProcessed === (totalAssigned + totalUnassigned + totalNotRelevant);
+    const presentInQueueDbCount = realDecisions.filter((decision) => Boolean(resolveQueueTicket(decision, queueLookup))).length;
+    const missingInQueueDbCount = totalProcessed - presentInQueueDbCount;
+    const recordedTotalTickets = Number(run.total_tickets || 0);
+    const skipHeaderDecisionValidation = Number(runSummary.crawler_stale || 0) > 0 && totalProcessed === 0;
+    const headerMatchesDecisionCount = skipHeaderDecisionValidation ? true : recordedTotalTickets === totalProcessed;
+
+    const validationWarnings = [];
+    if (!countConsistent) {
+      validationWarnings.push(`Inkonsistenz: ${totalProcessed} ≠ ${totalAssigned} + ${totalUnassigned} + ${totalNotRelevant}`);
+    }
+    if (!headerMatchesDecisionCount) {
+      validationWarnings.push(`Run-Header meldet ${recordedTotalTickets} Tickets, die Decision-Logik enthält aber ${totalProcessed}`);
+    }
+    if (missingInQueueDbCount > 0) {
+      validationWarnings.push(`${missingInQueueDbCount} Tickets sind aktuell nicht mehr in queue_items vorhanden`);
+    }
 
     res.json({
       ok: true,
@@ -189,8 +252,9 @@ router.get('/runs/:runId/report', async (req, res) => {
         status: run.status,
         triggeredBy: run.triggered_by,
         startedAt: run.started_at,
-        completedAt: run.completed_at,
-        crawlerOverride: run.crawler_override || false,
+        completedAt: run.finished_at,
+        crawlerOverride: Boolean(runSummary.crawlerOverrideActive),
+        decisionSource,
         summary,
         validation: {
           totalProcessed,
@@ -198,27 +262,24 @@ router.get('/runs/:runId/report', async (req, res) => {
           totalUnassigned,
           totalNotRelevant,
           countConsistent,
-          warning: !countConsistent ? `Inkonsistenz: ${totalProcessed} ≠ ${totalAssigned} + ${totalUnassigned} + ${totalNotRelevant}` : null,
+          recordedTotalTickets,
+          headerMatchesDecisionCount,
+          presentInQueueDbCount,
+          missingInQueueDbCount,
+          syntheticDecisionCount,
+          warning: validationWarnings.length > 0 ? validationWarnings.join(' | ') : null,
         },
-        assigned: assigned.map(d => ({
-          ticketId: d.ticket_external_id,
-          queueType: d.queue_type,
-          assignedTo: d.assigned_to,
-          reason: d.selection_reason || d.rule_path?.join(' → ') || 'Regelbasierte Zuweisung',
-          candidates: d.candidates_evaluated,
-          exclusionReasons: d.exclusion_reasons,
+        assigned: assigned.map((decision) => buildReportDecision(decision, queueLookup, {
+          assignedTo: decision.assigned_worker_name,
+          reason: decision.selection_reason || decision.rule_path?.join(' → ') || 'Regelbasierte Zuweisung',
         })),
-        unassigned: unassigned.map(d => ({
-          ticketId: d.ticket_external_id,
-          queueType: d.queue_type,
-          result: d.result,
-          reason: d.selection_reason || d.exclusion_reasons?.[0]?.reason || resultToGerman(d.result),
-          details: d.exclusion_reasons,
+        unassigned: unassigned.map((decision) => buildReportDecision(decision, queueLookup, {
+          result: decision.result,
+          reason: decision.selection_reason || decision.error_message || resultToGerman(decision.result),
         })),
-        notRelevant: notRelevant.map(d => ({
-          ticketId: d.ticket_external_id,
-          queueType: d.queue_type,
-          reason: 'Nicht relevant für automatische Zuweisung',
+        notRelevant: notRelevant.map((decision) => buildReportDecision(decision, queueLookup, {
+          result: decision.result,
+          reason: decision.selection_reason || 'Nicht relevant für automatische Zuweisung',
         })),
       },
     });
@@ -226,6 +287,140 @@ router.get('/runs/:runId/report', async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+function getDecisionObject(decision, key) {
+  const normalized = decision.normalized_ticket || {};
+  const raw = decision.raw_ticket || {};
+
+  return decision[key]
+    ?? normalized[key]
+    ?? raw[key]
+    ?? null;
+}
+
+function parseDecisionInternalTicketId(decision) {
+  const rawValue = decision.ticket_id ?? getDecisionObject(decision, 'id');
+  const parsed = Number.parseInt(String(rawValue ?? ''), 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function readDecisionDisplayTicketNumber(decision) {
+  return [
+    decision.external_id,
+    getDecisionObject(decision, 'externalId'),
+    getDecisionObject(decision, 'external_id'),
+    getDecisionObject(decision, 'ticketNumber'),
+    getDecisionObject(decision, 'ticket'),
+    getDecisionObject(decision, 'Activity #'),
+    getDecisionObject(decision, 'activity_no'),
+    decision.ticket_id,
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionSystemName(decision) {
+  return [
+    getDecisionObject(decision, 'systemName'),
+    getDecisionObject(decision, 'system_name'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionTicketCategory(decision) {
+  return [
+    decision.ticket_type,
+    getDecisionObject(decision, 'type'),
+    getDecisionObject(decision, 'ticket_type'),
+    getDecisionObject(decision, 'queue_type'),
+    getDecisionObject(decision, 'subtype'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionQueueOrigin(decision) {
+  return [
+    getDecisionObject(decision, 'queue'),
+    getDecisionObject(decision, 'queue_type'),
+    getDecisionObject(decision, 'type'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionSubtype(decision) {
+  return [
+    getDecisionObject(decision, 'customerTroubleType'),
+    getDecisionObject(decision, 'customer_trouble_type'),
+    getDecisionObject(decision, 'subtype'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function isQueueBackedDecision(decision) {
+  const internalId = parseDecisionInternalTicketId(decision);
+  const displayTicketNumber = readDecisionDisplayTicketNumber(decision);
+  return Boolean(internalId || displayTicketNumber);
+}
+
+function resolveQueueTicket(decision, queueLookup) {
+  const internalId = parseDecisionInternalTicketId(decision);
+  const displayTicketNumber = readDecisionDisplayTicketNumber(decision);
+
+  if (internalId && queueLookup.has(`id:${internalId}`)) {
+    return queueLookup.get(`id:${internalId}`);
+  }
+  if (displayTicketNumber && queueLookup.has(`external:${displayTicketNumber}`)) {
+    return queueLookup.get(`external:${displayTicketNumber}`);
+  }
+  return null;
+}
+
+function buildReportDecision(decision, queueLookup, extras = {}) {
+  const queueTicket = resolveQueueTicket(decision, queueLookup);
+  const internalTicketId = parseDecisionInternalTicketId(decision);
+  const displayTicketNumber = readDecisionDisplayTicketNumber(decision);
+
+  return {
+    decisionId: decision.id,
+    ticketId: internalTicketId ? String(internalTicketId) : null,
+    displayTicketNumber: displayTicketNumber || (internalTicketId ? String(internalTicketId) : 'Unbekannt'),
+    internalTicketId: internalTicketId ? String(internalTicketId) : null,
+    queueType: queueTicket?.queue_type || readDecisionQueueOrigin(decision),
+    systemName: queueTicket?.system_name || readDecisionSystemName(decision),
+    ticketCategory: queueTicket?.queue_type || readDecisionTicketCategory(decision),
+    ticketSubtype: queueTicket?.customer_trouble_type || queueTicket?.subtype || readDecisionSubtype(decision),
+    existsInQueueDb: Boolean(queueTicket),
+    ...extras,
+  };
+}
+
+async function loadQueueLookupForDecisions(decisions) {
+  const internalIds = decisions
+    .map((decision) => parseDecisionInternalTicketId(decision))
+    .filter((value) => Number.isInteger(value));
+  const externalIds = decisions
+    .map((decision) => readDecisionDisplayTicketNumber(decision))
+    .filter(Boolean);
+
+  const queueLookup = new Map();
+  if (internalIds.length === 0 && externalIds.length === 0) {
+    return queueLookup;
+  }
+
+  const { rows } = await pool.query(
+    `SELECT id, external_id, queue_type, system_name, customer_trouble_type, subtype
+     FROM queue_items
+     WHERE active = TRUE
+       AND (
+         ($1::int[] <> '{}'::int[] AND id = ANY($1::int[]))
+         OR ($2::text[] <> '{}'::text[] AND external_id = ANY($2::text[]))
+       )`,
+    [internalIds, externalIds]
+  );
+
+  for (const row of rows) {
+    queueLookup.set(`id:${row.id}`, row);
+    if (row.external_id) {
+      queueLookup.set(`external:${row.external_id}`, row);
+    }
+  }
+
+  return queueLookup;
+}
 
 function resultToGerman(result) {
   const map = {
@@ -275,14 +470,32 @@ router.get('/runs/:runId', async (req, res) => {
 
 router.get('/decisions', async (req, res) => {
   try {
-    const { limit = 100, offset = 0, result, runId } = req.query;
-    const decisions = await assignmentDecisionRepository.findAll({
+    const { limit = 100, offset = 0, result, runId, includeHistorical } = req.query;
+    let decisions = await assignmentDecisionRepository.findAll({
       limit: parseInt(limit),
       offset: parseInt(offset),
       result: result || undefined,
       runId: runId ? parseInt(runId) : undefined,
     });
-    res.json({ ok: true, decisions });
+
+    if (runId && decisions.length === 0) {
+      const legacyDecisions = await loadLegacyRunDecisions(parseInt(runId));
+      decisions = result
+        ? legacyDecisions.filter((decision) => decision.result === result)
+        : legacyDecisions;
+    }
+
+    const shouldFilterLiveQueue = includeHistorical !== 'true';
+    let filteredOutCount = 0;
+
+    if (shouldFilterLiveQueue && decisions.length > 0) {
+      const queueLookup = await loadQueueLookupForDecisions(decisions);
+      const liveDecisions = decisions.filter((decision) => Boolean(resolveQueueTicket(decision, queueLookup)));
+      filteredOutCount = Math.max(decisions.length - liveDecisions.length, 0);
+      decisions = liveDecisions;
+    }
+
+    res.json({ ok: true, decisions, filteredOutCount });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

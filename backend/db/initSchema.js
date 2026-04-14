@@ -39,7 +39,6 @@ const DEFAULT_POLICY = {
   odin_logic: "view",
   settings: "view",
   user_management: "none",
-  car_liste: "view",
   ticket_audit: "none",
 };
 
@@ -703,6 +702,26 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
     END IF;
   END $$;
 `);
+
+  await db.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'shift_rotation_rules') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'free_days_after_night') THEN
+          ALTER TABLE shift_rotation_rules ADD COLUMN free_days_after_night INT NOT NULL DEFAULT 2;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'free_days_after_weekend') THEN
+          ALTER TABLE shift_rotation_rules ADD COLUMN free_days_after_weekend INT NOT NULL DEFAULT 1;
+        END IF;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'shift_planning_config') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_planning_config' AND column_name = 'monthly_target_hours') THEN
+          ALTER TABLE shift_planning_config ADD COLUMN monthly_target_hours NUMERIC(6,2) NOT NULL DEFAULT 174;
+        END IF;
+      END IF;
+    END $$;
+  `);
 
   for (const g of DEFAULT_GROUPS) {
     await db.query(

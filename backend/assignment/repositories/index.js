@@ -124,6 +124,18 @@ export const assignmentDecisionRepository = {
     return rows;
   },
 
+  async findByTicketIdentity(ticketIdentifier, { limit = 20 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM assignment_ticket_decisions
+       WHERE ticket_id = $1 OR external_id = $1
+       ORDER BY decided_at DESC
+       LIMIT $2`,
+      [ticketIdentifier, limit]
+    );
+    return rows;
+  },
+
   async findAll({ limit = 100, offset = 0, result, runId } = {}) {
     const conditions = [];
     const params = [];

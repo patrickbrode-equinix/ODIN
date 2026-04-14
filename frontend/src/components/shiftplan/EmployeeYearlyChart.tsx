@@ -1,6 +1,6 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { shiftTypes } from "../../store/shiftStore";
+import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, shiftTypes } from "../../store/shiftStore";
 import { useEffect, useState } from 'react';
 import { fetchSchedule } from "./shiftplan.api";
 import { formatMonthLabel } from "../../utils/dateFormat";
@@ -29,8 +29,8 @@ export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: Stat
                 if (!s) return;
 
                 // GROUPING
-                if (s === "E1" || s === "E2") s = "EARLY";
-                if (s === "L1" || s === "L2") s = "LATE";
+                if (EARLY_SHIFT_CODES.includes(s as (typeof EARLY_SHIFT_CODES)[number])) s = "EARLY";
+                if (LATE_SHIFT_CODES.includes(s as (typeof LATE_SHIFT_CODES)[number])) s = "LATE";
                 c[s] = (c[s] || 0) + 1;
 
                 // HOLIDAY CHECK

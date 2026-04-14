@@ -10,7 +10,17 @@ import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { recomputeConstraintsInternal } from "./constraints.js"; // [NEW]
 import { parseMonthLabel } from "../lib/monthParser.js";
 import { syncEmployeeContacts } from "./employeeContacts.js";
-import { provisionUsersFromShiftplan } from "../services/shiftUserProvisioning.service.js";
+import {
+  provisionUsersForEmployees,
+  provisionUsersFromShiftplan,
+} from "../services/shiftUserProvisioning.service.js";
+import {
+  applyImportEmployeeDecisions,
+  deleteEmployeeData,
+  deleteMatchedUserForEmployee,
+  fetchShiftImportReview,
+  summarizeImportedSchedules,
+} from "../services/shiftEmployeeSync.service.js";
 
 const router = express.Router();
 
@@ -79,6 +89,43 @@ import { logActivity } from "./activity.js";
 // Helper for padding
 function pad2(n) {
   return String(n).padStart(2, "0");
+}
+
+function normalizeEmployeeActionName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeEmployeeActions(payload) {
+  const additions = Array.isArray(payload?.additions)
+    ? payload.additions
+      .map((item) => ({
+        name: normalizeEmployeeActionName(item?.name),
+        includeInImport: item?.includeInImport !== false,
+        createUser: item?.createUser === true,
+      }))
+      .filter((item) => item.name)
+    : [];
+
+  const updates = Array.isArray(payload?.updates)
+    ? payload.updates
+      .map((item) => ({
+        name: normalizeEmployeeActionName(item?.name),
+        includeInImport: item?.includeInImport !== false,
+      }))
+      .filter((item) => item.name)
+    : [];
+
+  const removals = Array.isArray(payload?.removals)
+    ? payload.removals
+      .map((item) => ({
+        name: normalizeEmployeeActionName(item?.name),
+        deleteFromDatabase: item?.deleteFromDatabase === true,
+        deleteOdinUser: item?.deleteOdinUser === true,
+      }))
+      .filter((item) => item.name)
+    : [];
+
+  return { additions, updates, removals };
 }
 
 router.get(
@@ -370,6 +417,27 @@ router.post(
 /* ------------------------------------------------ */
 
 router.post(
+  "/import/review",
+  requireAuth,
+  requirePageAccess("shiftplan", "write"),
+  async (req, res) => {
+    try {
+      const { schedules } = req.body || {};
+
+      if (!schedules || typeof schedules !== "object") {
+        return res.status(400).json({ error: "Missing or invalid schedules data" });
+      }
+
+      const review = await fetchShiftImportReview({ schedules });
+      res.json({ success: true, review });
+    } catch (err) {
+      console.error("IMPORT REVIEW ERROR:", err);
+      res.status(500).json({ error: "Failed to build import review" });
+    }
+  }
+);
+
+router.post(
   "/import/merge",
   requireAuth,
   requirePageAccess("shiftplan", "write"),
@@ -377,15 +445,29 @@ router.post(
     const client = await db.connect();
 
     try {
-      const { schedules } = req.body; // Object: { "Januar 2026": { ...data... }, ... }
+      const { schedules, employeeActions } = req.body; // Object: { "Januar 2026": { ...data... }, ... }
 
       if (!schedules || typeof schedules !== "object") {
         return res.status(400).json({ error: "Missing or invalid schedules data" });
       }
 
+      const normalizedActions = normalizeEmployeeActions(employeeActions);
+      const filteredImport = applyImportEmployeeDecisions({
+        schedules,
+        additions: normalizedActions.additions,
+        updates: normalizedActions.updates,
+      });
+      const filteredSchedules = filteredImport.schedules;
+      const importSummary = summarizeImportedSchedules(filteredSchedules);
+      const schedulesToPersist = filteredSchedules;
+
+      if (importSummary.monthsCount === 0) {
+        return res.status(400).json({ error: "No schedules remain after import decisions" });
+      }
+
       await client.query("BEGIN");
 
-      const monthsToUpdate = Object.keys(schedules);
+      const monthsToUpdate = Object.keys(schedulesToPersist);
 
       for (const monthLabel of monthsToUpdate) {
         const parsedMonth = parseMonthLabel(monthLabel);
@@ -397,7 +479,7 @@ router.post(
         await client.query(`DELETE FROM shifts WHERE month = $1`, [monthLabel]);
 
         // 2. INSERT new data
-        const monthData = schedules[monthLabel];
+        const monthData = schedulesToPersist[monthLabel];
         for (const employee of Object.keys(monthData)) {
           const days = monthData[employee] || {};
 
@@ -421,16 +503,73 @@ router.post(
       // Log the upload
       try {
         const uploaderName = req.user?.displayName || req.user?.email || "unknown";
-        const totalEmployees = Object.values(schedules).reduce(
-          (acc, monthData) => acc + Object.keys(monthData || {}).length, 0
-        );
         await db.query(
           `INSERT INTO shiftplan_upload_log (uploaded_by, months_affected, employees_count, changes_count)
            VALUES ($1, $2, $3, $4)`,
-          [uploaderName, monthsToUpdate, totalEmployees, totalEmployees]
+          [uploaderName, monthsToUpdate, importSummary.employeesCount, importSummary.changesCount]
         );
       } catch (logErr) {
         console.warn("shiftplan_upload_log insert failed (non-fatal):", logErr.message);
+      }
+
+      const cleanupResults = [];
+      const deselectedImportedEmployees = [
+        ...normalizedActions.additions,
+        ...normalizedActions.updates,
+      ]
+        .filter((item) => item.includeInImport === false)
+        .map((item) => ({
+          name: item.name,
+          deleteFromDatabase: true,
+          deleteOdinUser: true,
+        }));
+
+      const requestedRemovals = [
+        ...normalizedActions.removals.filter(
+          (item) => item.deleteFromDatabase || item.deleteOdinUser
+        ),
+        ...deselectedImportedEmployees,
+      ].filter((item, index, allItems) => (
+        allItems.findIndex((candidate) => candidate.name.toLowerCase() === item.name.toLowerCase()) === index
+      ));
+
+      if (requestedRemovals.length > 0) {
+        await client.query("BEGIN");
+        try {
+          for (let index = 0; index < requestedRemovals.length; index++) {
+            const removal = requestedRemovals[index];
+            const savepoint = `employee_cleanup_${index + 1}`;
+
+            await client.query(`SAVEPOINT ${savepoint}`);
+            try {
+              const dataDeletion = removal.deleteFromDatabase
+                ? await deleteEmployeeData({ employeeName: removal.name, client })
+                : null;
+              const userDeletion = removal.deleteOdinUser
+                ? await deleteMatchedUserForEmployee({ employeeName: removal.name, actorUserId: req.user?.id, client })
+                : null;
+
+              cleanupResults.push({
+                employeeName: removal.name,
+                dataDeletion,
+                userDeletion,
+              });
+
+              await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+            } catch (cleanupErr) {
+              await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+              cleanupResults.push({
+                employeeName: removal.name,
+                error: cleanupErr.message,
+              });
+            }
+          }
+
+          await client.query("COMMIT");
+        } catch (cleanupBatchErr) {
+          await client.query("ROLLBACK");
+          cleanupResults.push({ error: cleanupBatchErr.message });
+        }
       }
 
       let contactSync = null;
@@ -443,13 +582,49 @@ router.post(
       }
 
       try {
-        userProvisioning = await provisionUsersFromShiftplan();
+        const employeesToProvision = normalizedActions.additions
+          .filter((item) => item.includeInImport !== false && item.createUser === true)
+          .map((item) => ({ employeeName: item.name, email: "" }));
+
+        userProvisioning = employeesToProvision.length > 0
+          ? await provisionUsersForEmployees({ employees: employeesToProvision })
+          : {
+            dryRun: false,
+            totalEmployees: 0,
+            uniqueEmployees: 0,
+            matchedExisting: 0,
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            createdUsers: [],
+            updatedUsers: [],
+            skippedUsers: [],
+          };
       } catch (provisionErr) {
         console.warn("[SCHEDULES] User provisioning failed:", provisionErr.message);
         userProvisioning = { error: provisionErr.message };
       }
 
-      res.json({ success: true, updatedMonths: monthsToUpdate, contactSync, userProvisioning });
+      const deletedEmployeesCount = cleanupResults.filter((item) => item?.dataDeletion?.deletedRecords > 0).length;
+      const deletedUsersCount = cleanupResults.filter((item) => item?.userDeletion?.deleted === true).length;
+
+      res.json({
+        success: true,
+        updatedMonths: monthsToUpdate,
+        months_count: importSummary.monthsCount,
+        employees_count: importSummary.employeesCount,
+        changes_count: importSummary.changesCount,
+        contactSync,
+        userProvisioning,
+        employeeActionsResult: {
+          excludedEmployees: filteredImport.excludedEmployees,
+          cleanupResults,
+          deletedEmployeesCount,
+          deletedUsersCount,
+          createdUsersCount: userProvisioning?.created ?? 0,
+          updatedUsersCount: userProvisioning?.updated ?? 0,
+        },
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("IMPORT MERGE ERROR:", err);

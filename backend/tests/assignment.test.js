@@ -41,6 +41,12 @@ import {
   isWorkingShiftCode,
   resolveEffectiveWorkerRole,
 } from '../assignment/candidates/loadCandidates.js';
+import {
+  decisionMatchesTicketIdentifier,
+  parseInternalTicketId,
+  resolveTicketIdentity,
+} from '../assignment/lib/ticketIdentity.js';
+import { mapLegacyDecisionTypeToResult } from '../assignment/lib/reportCompatibility.js';
 
 /* ================================================ */
 /* mapType                                          */
@@ -75,6 +81,23 @@ describe('mapType', () => {
     const r = mapType(null);
     assert.equal(r.value, 'Unknown');
     assert.ok(r.warning);
+  });
+});
+
+describe('run summary helpers', () => {
+  it('counts crawler_stale results in buildRunSummary', () => {
+    const summary = buildRunSummary([
+      { result: 'assigned' },
+      { result: 'crawler_stale' },
+    ]);
+
+    assert.equal(summary.assigned, 1);
+    assert.equal(summary.crawler_stale, 1);
+    assert.equal(summary.totalDecisions, 2);
+  });
+
+  it('maps legacy skip decisions to manual review for report compatibility', () => {
+    assert.equal(mapLegacyDecisionTypeToResult('skipped_manual_exclusion'), 'manual_review');
   });
 });
 
@@ -587,6 +610,49 @@ describe('buildTicketExplanation', () => {
     assert.equal(exp.structured.assignedWorkerName, 'Marco D.');
     assert.equal(exp.structured.displayTicketNumber, 'TT-12345');
     assert.equal(exp.structured.queueOrigin, 'TroubleTicket');
+  });
+});
+
+describe('ticket identity helpers', () => {
+  it('prefers internal queue_items ids while preserving external ids', () => {
+    const identity = resolveTicketIdentity({
+      id: '42',
+      externalId: 'TT-12345',
+      queue: 'TroubleTicket',
+    });
+
+    assert.equal(identity.internalId, 42);
+    assert.equal(identity.externalId, 'TT-12345');
+    assert.equal(identity.queueType, 'TroubleTicket');
+  });
+
+  it('falls back to external id plus queue type when no internal id exists', () => {
+    const identity = resolveTicketIdentity({
+      externalId: 'SH-9',
+      raw: { queue_type: 'SmartHands' },
+    });
+
+    assert.equal(identity.internalId, null);
+    assert.equal(identity.externalId, 'SH-9');
+    assert.equal(identity.queueType, 'SmartHands');
+  });
+
+  it('matches assignment decisions by internal and external ticket identifiers', () => {
+    const decision = {
+      ticket_id: '42',
+      external_id: 'TT-12345',
+      normalized_ticket: { id: '42', externalId: 'TT-12345' },
+    };
+
+    assert.equal(decisionMatchesTicketIdentifier(decision, '42'), true);
+    assert.equal(decisionMatchesTicketIdentifier(decision, 'TT-12345'), true);
+    assert.equal(decisionMatchesTicketIdentifier(decision, 'TT-99999'), false);
+  });
+
+  it('only parses positive numeric values as internal ticket ids', () => {
+    assert.equal(parseInternalTicketId('42'), 42);
+    assert.equal(parseInternalTicketId('TT-12345'), null);
+    assert.equal(parseInternalTicketId('0'), null);
   });
 });
 

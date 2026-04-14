@@ -6,8 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock, CheckCircle2, RefreshCcw, Zap } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "../../api/api";
-import { queueApi, Ticket } from "../../api/queue";
+import { queueApi } from "../../api/queue";
 import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "../../utils/ticketColors";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_CARD_BASE } from "../layout/EnterpriseLayout";
 import { format } from "date-fns";
@@ -41,7 +40,7 @@ function TicketRowCompact({ t }: { t: any }) {
       </div>
       <div className="truncate text-sm font-semibold opacity-90">{activity}</div>
       <div className="flex flex-wrap gap-1.5 text-[10px] opacity-70">
-        {system && <span className="bg-black/15 px-1.5 py-0.5 rounded truncate max-w-[120px]">{system}</span>}
+        {system && <span className="bg-black/15 px-1.5 py-0.5 rounded truncate" style={{ maxWidth: 120 }}>{system}</span>}
         {owner && <span>{owner}</span>}
         {status && <span className="border border-white/10 px-1.5 py-0.5 rounded">{status}</span>}
         {schedStart && <span className="bg-indigo-500/15 text-indigo-300 px-1.5 py-0.5 rounded flex items-center gap-1"><Clock className="w-2.5 h-2.5" />Start: {format(new Date(schedStart), "dd.MM HH:mm")}</span>}
@@ -55,7 +54,6 @@ function TicketRowCompact({ t }: { t: any }) {
 /* PAGE                                             */
 /* ------------------------------------------------ */
 export default function CommitDateDashboardPage() {
-  const [commitTickets, setCommitTickets] = useState<any[]>([]);
   const [queueTickets, setQueueTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -63,18 +61,7 @@ export default function CommitDateDashboardPage() {
   async function load() {
     setLoading(true);
     try {
-      const [commitRes, queueRes] = await Promise.all([
-        api.get("/commit/latest").catch(() => ({ data: [] })),
-        queueApi.getDueToday().catch(() => []),
-      ]);
-
-      let commitRows: any[] = [];
-      const commitPayload = commitRes.data;
-      if (Array.isArray(commitPayload)) commitRows = commitPayload;
-      else if (Array.isArray(commitPayload?.data)) commitRows = commitPayload.data;
-      else if (Array.isArray(commitPayload?.rows)) commitRows = commitPayload.rows;
-
-      setCommitTickets(commitRows);
+      const queueRes = await queueApi.getDueToday().catch(() => []);
       setQueueTickets(Array.isArray(queueRes) ? queueRes : []);
       setLastRefresh(new Date());
     } catch (e) {
@@ -91,12 +78,7 @@ export default function CommitDateDashboardPage() {
   }, []);
 
   /* Combine and filter for 72h */
-  const allTickets = useMemo(() => {
-    const map = new Map<string, any>();
-    commitTickets.forEach(t => map.set(t.external_id || t.id || t.activity_no, t));
-    queueTickets.forEach(t => map.set(t.external_id || t.id || t.activity_no, t));
-    return Array.from(map.values());
-  }, [commitTickets, queueTickets]);
+  const allTickets = useMemo(() => queueTickets, [queueTickets]);
 
   const limitMs = Date.now() + 72 * 3600 * 1000;
   const expiring72h = useMemo(() => {

@@ -8,7 +8,8 @@
     "tabs",
     "scripting",
     "activeTab",
-    "storage"
+    "storage",
+    "power"
   ],
   "host_permissions": [
     "https://jarvis-emea.equinix.com/*",

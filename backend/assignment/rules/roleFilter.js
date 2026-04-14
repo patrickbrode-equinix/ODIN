@@ -3,6 +3,7 @@
 /* ================================================ */
 
 import { STAFF_ROLES, EXCLUDED_ROLES, MS_24H } from '../constants.js';
+import { getAssignmentRuntimeRules } from '../services/runtimeRules.js';
 
 /**
  * Apply role-based filtering rules per spec:
@@ -24,9 +25,11 @@ import { STAFF_ROLES, EXCLUDED_ROLES, MS_24H } from '../constants.js';
  */
 export function applyRoleFilter(worker, ticket, now = Date.now()) {
   const role = (worker.role || 'normal').toLowerCase().trim();
+  const runtimeRules = getAssignmentRuntimeRules();
+  const excludedRoles = new Set((runtimeRules.excludedRoles || []).length > 0 ? runtimeRules.excludedRoles : [...EXCLUDED_ROLES]);
 
   // Project, Leads, Large Order → never receive tickets
-  if (EXCLUDED_ROLES.has(role)) {
+  if (excludedRoles.has(role)) {
     return {
       eligible: false,
       rule: 'roleFilter',
@@ -35,7 +38,7 @@ export function applyRoleFilter(worker, ticket, now = Date.now()) {
   }
 
   // Dispatcher → only receives OtherTeams handovers
-  if (role === STAFF_ROLES.DISPATCHER) {
+  if (role === STAFF_ROLES.DISPATCHER && runtimeRules.dispatcherRule?.enabled !== false) {
     if (ticket.handoverType === 'other_teams') {
       return {
         eligible: true,
@@ -51,7 +54,7 @@ export function applyRoleFilter(worker, ticket, now = Date.now()) {
   }
 
   // OtherTeams handover → ONLY goes to dispatcher, never to normal staff
-  if (ticket.handoverType === 'other_teams') {
+  if (ticket.handoverType === 'other_teams' && runtimeRules.dispatcherRule?.enabled !== false) {
     return {
       eligible: false,
       rule: 'roleFilter',
@@ -60,8 +63,8 @@ export function applyRoleFilter(worker, ticket, now = Date.now()) {
   }
 
   // Deutsche Börse → only TroubleTicket or CrossConnect with remaining > 24h
-  if (role === STAFF_ROLES.DEUTSCHE_BOERSE) {
-    if (ticket.type === 'TroubleTicket') {
+  if (role === STAFF_ROLES.DEUTSCHE_BOERSE && runtimeRules.deutscheBoerse?.enabled !== false) {
+    if (ticket.type === 'TroubleTicket' && runtimeRules.deutscheBoerse.allowTroubleTickets !== false) {
       return {
         eligible: true,
         rule: 'roleFilter',
@@ -70,19 +73,29 @@ export function applyRoleFilter(worker, ticket, now = Date.now()) {
     }
     if (ticket.type === 'CrossConnect') {
       const remainingMs = ticket.dueAt ? new Date(ticket.dueAt).getTime() - now : null;
-      if (remainingMs !== null && remainingMs > MS_24H) {
+      const thresholdMs = Number(runtimeRules.deutscheBoerse.allowCrossConnectIfRemainingHoursGt || 0) * 3600000;
+      if (remainingMs !== null && remainingMs > thresholdMs) {
         return {
           eligible: true,
           rule: 'roleFilter',
-          reason: `Deutsche Börse may receive Cross Connect (remaining: ${Math.round(remainingMs / 3600000)}h > 24h)`,
+          reason: `Deutsche Börse may receive Cross Connect (remaining: ${Math.round(remainingMs / 3600000)}h > ${Math.round(thresholdMs / 3600000)}h)`,
         };
       }
       return {
         eligible: false,
         rule: 'roleFilter',
-        reason: `Deutsche Börse cannot receive Cross Connect with remaining time <= 24h`,
+        reason: `Deutsche Börse cannot receive Cross Connect with remaining time below configured threshold`,
       };
     }
+
+    if ((runtimeRules.deutscheBoerse.deny || []).includes(ticket.type)) {
+      return {
+        eligible: false,
+        rule: 'roleFilter',
+        reason: `Deutsche Börse does not receive "${ticket.type}" tickets`,
+      };
+    }
+
     return {
       eligible: false,
       rule: 'roleFilter',
@@ -91,8 +104,9 @@ export function applyRoleFilter(worker, ticket, now = Date.now()) {
   }
 
   // Cross Connect Role → only Cross Connect tickets
-  if (role === STAFF_ROLES.CROSS_CONNECT) {
-    if (ticket.type === 'CrossConnect') {
+  if (role === STAFF_ROLES.CROSS_CONNECT && runtimeRules.crossConnectOnly?.enabled !== false) {
+    const allowedTypes = runtimeRules.crossConnectOnly.allow || ['CrossConnect'];
+    if (allowedTypes.includes(ticket.type)) {
       return {
         eligible: true,
         rule: 'roleFilter',

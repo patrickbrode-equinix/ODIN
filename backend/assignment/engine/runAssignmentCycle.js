@@ -5,6 +5,7 @@
 import pool from '../../db.js';
 import { assignmentRunRepository } from '../repositories/index.js';
 import { assignmentSettingsService } from '../services/index.js';
+import { refreshAssignmentRuntimeRules } from '../services/runtimeRules.js';
 import { normalizeTicket } from '../normalization/normalizeTicket.js';
 import { checkRelevance } from '../relevance/checkRelevance.js';
 import { sortTickets } from '../priority/sortAndSelect.js';
@@ -15,7 +16,7 @@ import { buildRunSummary } from '../logging/decisionLog.js';
 import { checkCrawlerFreshness } from '../rules/crawlerGuard.js';
 import { routeHandover } from '../rules/handoverRouter.js';
 import { AssignmentError } from '../errors.js';
-import { CRAWLER_MAX_AGE_MS } from '../constants.js';
+import { CRAWLER_MAX_AGE_MS, SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
 
 /**
  * Run a complete assignment cycle.
@@ -49,6 +50,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
   try {
     // 1. Load settings
     const settings = await assignmentSettingsService.getEngineConfig();
+    await refreshAssignmentRuntimeRules();
     const mode = modeOverride || settings.mode;
     const executionSettings = { ...settings, mode, executionMode: mode };
 
@@ -67,10 +69,14 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     // 3. CRAWLER STALENESS CHECK — Global Safety Rule
     // Can be skipped for dry-run/shadow mode when explicitly requested
     const lastCrawlerTimestamp = await loadLastCrawlerTimestamp();
-    const maxAgeMs = (parseInt(executionSettings.crawlerMaxAgeMinutes) || 10) * 60 * 1000;
+    const defaultCrawlerMaxAgeMinutes = Math.round(CRAWLER_MAX_AGE_MS / (60 * 1000));
+    const maxAgeMs = (parseInt(executionSettings.crawlerMaxAgeMinutes) || defaultCrawlerMaxAgeMinutes) * 60 * 1000;
     const freshness = checkCrawlerFreshness(lastCrawlerTimestamp, Date.now(), maxAgeMs);
 
     const crawlerOverrideActive = skipCrawlerCheck && (mode === 'shadow' || mode === 'dry-run');
+    if (crawlerOverrideActive) {
+      summaryExtras = { crawlerOverrideActive: true };
+    }
 
     if (!freshness.fresh && !crawlerOverrideActive) {
       console.warn(`[ASSIGNMENT] CRAWLER STALE: ${freshness.reason}`);
@@ -79,11 +85,18 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
         result: 'crawler_stale',
         shortReason: freshness.reason,
       });
+      summaryExtras = {
+        ...summaryExtras,
+        crawlerStale: true,
+        crawler_stale: 1,
+      };
       await persistAssignmentRun(run.id, decisions, 'failed', {
         failureReason: 'Crawler-Daten zu alt – die zuletzt empfangenen Ticketdaten überschreiten das erlaubte Maximalalter.',
         failureStep: 'crawler_freshness_check',
         errorCategory: 'controlled_stop',
         summaryExtras,
+        totalTicketsOverride: 0,
+        relevantTicketsOverride: 0,
       });
       return {
         runId: run.id,
@@ -93,7 +106,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
         crawlerReason: freshness.reason,
         totalTickets: 0,
         decisions,
-        summary: buildRunSummary(decisions, summaryExtras),
+        summary: buildRunSummary([], summaryExtras),
       };
     }
 
@@ -101,9 +114,13 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     const { rows: rawTickets } = await pool.query(`
       SELECT * FROM queue_items
       WHERE active = true
+        AND is_final_closed = false
+        AND queue_type = ANY($2::text[])
+        AND external_id IS NOT NULL
+        AND btrim(external_id) <> ''
       ORDER BY id
       LIMIT $1
-    `, [parseInt(executionSettings.maxTicketsPerRun) || 500]);
+    `, [parseInt(executionSettings.maxTicketsPerRun) || 500, SUPPORTED_QUEUE_ITEM_TYPES]);
 
     console.log(`[ASSIGNMENT] Loaded ${rawTickets.length} raw tickets`);
 
@@ -160,6 +177,7 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     const workerTicketsMap = await loadWorkerCurrentTickets(candidatePool);
 
     summaryExtras = {
+      ...summaryExtras,
       rawQueueTicketCount: rawTickets.length,
       loadedEmployeesFromWeeklyPlan: allWorkers.length,
       loadedRolesFromWeeklyPlan: allWorkers.filter(worker => !!worker.weekplanRole).length,

@@ -2,10 +2,11 @@
 // OES Jarvis Crawler - background.js (MV3 Service Worker)
 // ==============================
 
-const ALARM_NAME = "oes_queue_scrape";
-const PERIOD_MINUTES = 1; // ✅ für Tests (später 3)
+const RECOVERY_ALARM_NAME = "oes_queue_scrape_recovery";
+const RECOVERY_PERIOD_MINUTES = 1;
 
 const STORAGE_KEY_LAST_URL = "oes_last_jarvis_url";
+let KEEP_AWAKE_ACTIVE = false;
 
 function log(...args) {
   console.log("[ODIN Crawler]", ...args);
@@ -17,72 +18,117 @@ function err(...args) {
   console.error("[ODIN Crawler]", ...args);
 }
 
-function createAlarm() {
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: PERIOD_MINUTES });
-  log(`Alarm created (${PERIOD_MINUTES} minute)`);
+function createRecoveryAlarm() {
+  chrome.alarms.create(RECOVERY_ALARM_NAME, { periodInMinutes: RECOVERY_PERIOD_MINUTES });
+  log(`Recovery alarm created (${RECOVERY_PERIOD_MINUTES} minute)`);
+}
+
+function requestDisplayKeepAwake(reason) {
+  if (KEEP_AWAKE_ACTIVE) return;
+  chrome.power.requestKeepAwake("display");
+  KEEP_AWAKE_ACTIVE = true;
+  log(`Display keep-awake enabled (${reason})`);
+}
+
+function releaseDisplayKeepAwake(reason) {
+  if (!KEEP_AWAKE_ACTIVE) return;
+  chrome.power.releaseKeepAwake();
+  KEEP_AWAKE_ACTIVE = false;
+  log(`Display keep-awake released (${reason})`);
+}
+
+async function getJarvisTabs() {
+  return chrome.tabs.query({ url: ["https://jarvis-emea.equinix.com/*"] });
+}
+
+async function syncKeepAwakeWithTabs(reason) {
+  const tabs = await getJarvisTabs();
+  if (tabs.length > 0) {
+    requestDisplayKeepAwake(reason);
+    return tabs;
+  }
+
+  releaseDisplayKeepAwake(reason);
+  return tabs;
+}
+
+async function waitForTabComplete(tabId) {
+  await new Promise((resolve) => {
+    const onUpdated = (updatedTabId, info) => {
+      if (updatedTabId === tabId && info.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+async function sendContinuousStart(tabId, reason) {
+  try {
+    log(`Starting continuous crawler on tab ${tabId} (${reason})`);
+    await chrome.tabs.sendMessage(tabId, { type: "OES_START_CONTINUOUS_SCRAPE", reason });
+  } catch (e) {
+    warn("Cannot message tab", tabId, e);
+  }
+}
+
+async function ensureCrawlerRunning(reason) {
+  let tabs = await syncKeepAwakeWithTabs(reason);
+
+  if (tabs.length === 0) {
+    const stored = await chrome.storage.local.get([STORAGE_KEY_LAST_URL]);
+    const lastUrl = stored?.[STORAGE_KEY_LAST_URL];
+    if (!lastUrl) {
+      warn("No Jarvis tabs and no last URL stored yet. Open Jarvis once to initialize.");
+      return;
+    }
+
+    log("No Jarvis tab found. Reopening last Jarvis URL in background...", lastUrl);
+    const created = await chrome.tabs.create({ url: lastUrl, active: false });
+    if (!created?.id) return;
+    await waitForTabComplete(created.id);
+    tabs = await syncKeepAwakeWithTabs("reopened_jarvis_tab");
+  }
+
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    await sendContinuousStart(tab.id, reason);
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   log("Extension installed");
-  createAlarm();
+  createRecoveryAlarm();
+  void ensureCrawlerRunning("installed");
 });
 
 chrome.runtime.onStartup.addListener(() => {
   log("Browser startup");
-  createAlarm();
+  createRecoveryAlarm();
+  void ensureCrawlerRunning("startup");
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== ALARM_NAME) return;
+  if (alarm.name !== RECOVERY_ALARM_NAME) return;
 
-  log("Alarm fired");
+  log("Recovery alarm fired");
 
   try {
-    const tabs = await chrome.tabs.query({ url: ["https://jarvis-emea.equinix.com/*"] });
-    log("Found tabs:", tabs.length);
-
-    // If no Jarvis tab is open, reopen the last seen Jarvis URL in the background.
-    if (tabs.length === 0) {
-      const stored = await chrome.storage.local.get([STORAGE_KEY_LAST_URL]);
-      const lastUrl = stored?.[STORAGE_KEY_LAST_URL];
-      if (lastUrl) {
-        log("No Jarvis tab found. Reopening last Jarvis URL in background...", lastUrl);
-        const created = await chrome.tabs.create({ url: lastUrl, active: false });
-        if (created?.id) {
-          // wait for load completion
-          await new Promise((resolve) => {
-            const onUpdated = (tabId, info) => {
-              if (tabId === created.id && info.status === "complete") {
-                chrome.tabs.onUpdated.removeListener(onUpdated);
-                resolve();
-              }
-            };
-            chrome.tabs.onUpdated.addListener(onUpdated);
-          });
-          try {
-            log("Sending trigger to reopened tab", created.id);
-            await chrome.tabs.sendMessage(created.id, { type: "OES_SCRAPE_ALL_QUEUES" });
-          } catch (e) {
-            warn("Cannot message reopened tab", created.id, e);
-          }
-        }
-      } else {
-        warn("No Jarvis tabs and no last URL stored yet. Open Jarvis once to initialize.");
-      }
-      return;
-    }
-
-    for (const tab of tabs) {
-      try {
-        log("Sending trigger to tab", tab.id);
-        await chrome.tabs.sendMessage(tab.id, { type: "OES_SCRAPE_ALL_QUEUES" });
-      } catch (e) {
-        warn("Cannot message tab", tab.id, e);
-      }
-    }
+    await ensureCrawlerRunning("recovery_alarm");
   } catch (e) {
-    err("Failed to query tabs:", e);
+    err("Recovery alarm failed:", e);
   }
+});
+
+chrome.tabs.onRemoved.addListener(() => {
+  void syncKeepAwakeWithTabs("tab_removed");
+});
+
+chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
+  if (info.status !== "complete") return;
+  if (!tab.url || !tab.url.startsWith("https://jarvis-emea.equinix.com/")) return;
+  void syncKeepAwakeWithTabs("tab_updated");
 });
 
 // Single message handler
@@ -94,9 +140,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.url && typeof msg.url === "string") {
       chrome.storage.local.set({ [STORAGE_KEY_LAST_URL]: msg.url }).catch(() => { });
     }
+    requestDisplayKeepAwake("content_ready");
+    if (sender.tab?.id) {
+      void sendContinuousStart(sender.tab.id, "content_ready");
+    }
   }
   if (msg?.type === "OES_TRIGGER_RECEIVED") {
     log("Trigger received by content on:", msg.url);
+  }
+  if (msg?.type === "OES_LOOP_STATE") {
+    log(`Continuous loop state: running=${msg.running} reason=${msg.reason || "n/a"}`);
+    if (msg.running) {
+      requestDisplayKeepAwake("loop_running");
+    } else {
+      void syncKeepAwakeWithTabs("loop_stopped");
+    }
   }
   if (msg?.type === "OES_SCRAPE_ERROR") {
     err("Scrape error on:", msg.url, msg.message);

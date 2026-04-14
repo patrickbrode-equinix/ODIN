@@ -44,11 +44,12 @@ export function normalizeGroupFromQueueType(queueType) {
 export function canonicalizeQueueType(v) {
   const s = String(v || "").trim();
   if (!s) return "";
-  if (s === "SMART_HANDS"   || s.toLowerCase() === "smarthands")    return "SmartHands";
-  if (s === "CC_INSTALLS"   || s.toLowerCase() === "ccinstalls")    return "CCInstalls";
-  if (s === "TROUBLE_TICKETS" || s.toLowerCase() === "troubletickets") return "TroubleTickets";
-  if (s === "DEINSTALL" || s.toLowerCase() === "deinstall" || s.toLowerCase() === "deinstalls") return "Deinstall";
-  return s;
+  const lower = s.toLowerCase();
+  if (s === "SMART_HANDS" || lower === "smarthands") return "SmartHands";
+  if (s === "CC_INSTALLS" || lower === "ccinstalls") return "CCInstalls";
+  if (s === "TROUBLE_TICKETS" || lower === "troubletickets") return "TroubleTickets";
+  if (s === "DEINSTALL" || lower === "deinstall" || lower === "deinstalls") return "Deinstall";
+  return "";
 }
 
 /**

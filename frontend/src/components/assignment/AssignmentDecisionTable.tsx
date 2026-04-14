@@ -4,9 +4,9 @@
 
 import { useAssignmentStore } from '../../store/assignmentStore';
 import type { AssignmentDecision, DecisionResult } from '../../types/assignment';
-import { Eye, AlertCircle, CheckCircle2, XCircle, HelpCircle, Ban, AlertTriangle } from 'lucide-react';
+import { Eye, CheckCircle2, XCircle, HelpCircle, Ban, AlertTriangle } from 'lucide-react';
 import { InfoTooltip } from '../ui/InfoTooltip';
-import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId } from '../../utils/assignmentTicketDisplay';
+import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId, getAssignmentSystemName, getAssignmentTicketCategory } from '../../utils/assignmentTicketDisplay';
 
 const resultStyles: Record<DecisionResult, { label: string; className: string; icon: React.ReactNode; explanation: string }> = {
   assigned: {
@@ -68,7 +68,8 @@ export function AssignmentDecisionTable({ decisions }: Props) {
         <thead>
           <tr className="border-b border-border/30 text-xs text-muted-foreground">
             <th className="text-left px-3 py-2 font-medium">Ticketnummer</th>
-            <th className="text-left px-3 py-2 font-medium">Typ</th>
+            <th className="text-left px-3 py-2 font-medium">System</th>
+            <th className="text-left px-3 py-2 font-medium">Kategorie</th>
             <th className="text-left px-3 py-2 font-medium">Status</th>
             <th className="text-left px-3 py-2 font-medium">Site</th>
             <th className="text-left px-3 py-2 font-medium">Ergebnis</th>
@@ -82,6 +83,8 @@ export function AssignmentDecisionTable({ decisions }: Props) {
             const rs = resultStyles[d.result] || resultStyles.error;
             const displayTicketNumber = getAssignmentDisplayTicketNumber(d);
             const internalTicketId = getAssignmentInternalTicketId(d);
+            const systemName = getAssignmentSystemName(d);
+            const ticketCategory = getAssignmentTicketCategory(d);
             return (
               <tr
                 key={d.id}
@@ -93,7 +96,8 @@ export function AssignmentDecisionTable({ decisions }: Props) {
                     <div className="text-[10px] text-muted-foreground">DB-ID: {internalTicketId}</div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-xs">{d.ticket_type || '–'}</td>
+                <td className="px-3 py-2 text-xs">{systemName || '–'}</td>
+                <td className="px-3 py-2 text-xs">{ticketCategory || '–'}</td>
                 <td className="px-3 py-2 text-xs">{d.ticket_status || '–'}</td>
                 <td className="px-3 py-2 text-xs">{d.ticket_site || '–'}</td>
                 <td className="px-3 py-2">

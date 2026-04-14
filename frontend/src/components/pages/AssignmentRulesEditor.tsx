@@ -21,7 +21,7 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; co
   exception: { label: "Ausnahmen",    icon: AlertTriangle,    color: "text-red-600" },
 };
 
-export default function AssignmentRulesEditor() {
+export default function AssignmentRulesEditor({ embedded = false }: { embedded?: boolean }) {
   const [rules, setRules] = useState<AssignmentRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -94,12 +94,18 @@ export default function AssignmentRulesEditor() {
   };
 
   if (loading) {
+    const loadingContent = (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+      </div>
+    );
+
+    if (embedded) return loadingContent;
+
     return (
       <EnterprisePageShell>
         <EnterpriseHeader title="ODIN-Logik Konfiguration" subtitle="Assignment Rules & Prioritäten" />
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-        </div>
+        {loadingContent}
       </EnterprisePageShell>
     );
   }
@@ -110,10 +116,8 @@ export default function AssignmentRulesEditor() {
     return acc;
   }, {});
 
-  return (
-    <EnterprisePageShell>
-      <EnterpriseHeader title="ODIN-Logik Konfiguration" subtitle="Assignment Rules, Prioritäten & Hierarchien" />
-
+  const content = (
+    <>
       {Object.entries(grouped).map(([cat, catRules]) => {
         const meta = CATEGORY_META[cat] || { label: cat, icon: Brain, color: "text-gray-600" };
         return (
@@ -156,7 +160,8 @@ export default function AssignmentRulesEditor() {
                         <textarea
                           value={editingConfig}
                           onChange={e => setEditingConfig(e.target.value)}
-                          className="w-full border dark:border-gray-600 rounded p-3 text-xs font-mono bg-gray-50 dark:bg-gray-800 min-h-[120px]"
+                          className="w-full border dark:border-gray-600 rounded p-3 text-xs font-mono bg-gray-50 dark:bg-gray-800"
+                          style={{ minHeight: 120 }}
                           rows={8}
                         />
                       </div>
@@ -218,6 +223,15 @@ export default function AssignmentRulesEditor() {
           </div>
         );
       })}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <EnterprisePageShell>
+      <EnterpriseHeader title="ODIN-Logik Konfiguration" subtitle="Assignment Rules, Prioritäten & Hierarchien" />
+      {content}
     </EnterprisePageShell>
   );
 }

@@ -4,9 +4,14 @@ import assert from 'node:assert/strict';
 import {
   buildDeletionPlan,
   isCrawlerConfirmedComplete,
+  normalizePayload,
   normalizeQueueMetaByType,
 } from '../services/queueIngest.service.js';
 import { buildProvisioningPlan } from '../services/shiftUserProvisioning.service.js';
+import {
+  applyImportEmployeeDecisions,
+  buildShiftImportReview,
+} from '../services/shiftEmployeeSync.service.js';
 
 describe('normalizeQueueMetaByType', () => {
   it('merges queuesMeta and array payload metadata into canonical queue types', () => {
@@ -37,6 +42,47 @@ describe('normalizeQueueMetaByType', () => {
       actual: 2,
       attempts: null,
     });
+  });
+
+  it('ignores unsupported queue types instead of exposing phantom queues', () => {
+    const metaByType = normalizeQueueMetaByType({
+      queuesMeta: {
+        SIG: { complete: true, expected: 3, actual: 3, attempts: 1 },
+        SmartHands: { complete: true, expected: 1, actual: 1, attempts: 1 },
+      },
+    });
+
+    assert.deepEqual(Object.keys(metaByType), ['SmartHands']);
+    assert.equal(metaByType.SIG, undefined);
+  });
+});
+
+describe('normalizePayload', () => {
+  it('drops unsupported queue types from ingest payloads', () => {
+    const normalized = normalizePayload({
+      queues: [
+        {
+          queueType: 'SIG',
+          complete: true,
+          items: [{ ticketKey: 'SIG-123' }],
+        },
+        {
+          queueType: 'SmartHands',
+          complete: true,
+          items: [{ ticketKey: 'SH-123', status: 'Open' }],
+        },
+      ],
+      queuesMeta: {
+        SIG: { complete: true, expected: 1, actual: 1 },
+        SmartHands: { complete: true, expected: 1, actual: 1 },
+      },
+    });
+
+    assert.deepEqual(normalized.completeTypes, ['SmartHands']);
+    assert.deepEqual(Object.keys(normalized.queueMetaByType), ['SmartHands']);
+    assert.equal(normalized.itemsToUpsert.length, 1);
+    assert.equal(normalized.itemsToUpsert[0].queue_type, 'SmartHands');
+    assert.equal(normalized.itemsToUpsert[0].external_id, 'SH-123');
   });
 });
 
@@ -96,6 +142,7 @@ describe('buildProvisioningPlan', () => {
     assert.equal(plan.uniqueEmployees, 1);
     assert.equal(plan.creates.length, 1);
     assert.deepEqual(plan.creates[0], {
+      employeeName: 'John Doe',
       firstName: 'John',
       lastName: 'Doe',
       username: 'jdoe',
@@ -130,6 +177,7 @@ describe('buildProvisioningPlan', () => {
     assert.equal(plan.matchedExisting, 1);
     assert.equal(plan.creates.length, 0);
     assert.deepEqual(plan.updates, [{
+      employeeName: 'Jane Doe',
       userId: 7,
       email: 'jane.doe@eu.equinix.com',
       match: 'email',
@@ -149,6 +197,7 @@ describe('buildProvisioningPlan', () => {
 
     assert.equal(plan.creates.length, 1);
     assert.deepEqual(plan.creates[0], {
+      employeeName: 'Patrick.Brode@eu.equinix.com',
       firstName: 'Patrick',
       lastName: 'Brode',
       username: 'pbrode',
@@ -213,6 +262,7 @@ describe('buildProvisioningPlan', () => {
     assert.equal(plan.creates.length, 1);
     assert.equal(plan.creates[0].email, 'john.doe+odin2@eu.equinix.com');
     assert.equal(plan.creates[0].username, 'jdoe');
+    assert.equal(plan.creates[0].employeeName, 'John Doe');
   });
 
   it('skips invalid employee names', () => {
@@ -223,5 +273,96 @@ describe('buildProvisioningPlan', () => {
 
     assert.equal(plan.creates.length, 0);
     assert.deepEqual(plan.skipped, [{ employeeName: 'singletoken', reason: 'invalid_name' }]);
+  });
+});
+
+describe('buildShiftImportReview', () => {
+  it('builds a unified imported employee review with create and delete guidance', () => {
+    const review = buildShiftImportReview({
+      schedules: {
+        'Mai 2026': {
+          'Jane Doe': { 1: 'E1' },
+          'New Person': { 1: 'L1' },
+        },
+      },
+      existingEmployeesInTargetMonths: ['Jane Doe', 'Retired User'],
+      existingUsers: [{
+        id: 12,
+        email: 'retired.user@eu.equinix.com',
+        username: 'ruser',
+        first_name: 'Retired',
+        last_name: 'User',
+        approved: true,
+        provisioned_from_shiftplan: true,
+        provisioned_employee_name: 'Retired User',
+        is_admin: false,
+        is_root: false,
+      }],
+    });
+
+    assert.deepEqual(review.importedEmployees.map((item) => ({
+      name: item.name,
+      existsInTargetMonths: item.existsInTargetMonths,
+      createUser: item.createUser,
+      canCreateUser: item.canCreateUser,
+      importedShiftCount: item.importedShiftCount,
+    })), [{
+      name: 'Jane Doe',
+      existsInTargetMonths: true,
+      createUser: false,
+      canCreateUser: false,
+      importedShiftCount: 1,
+    }, {
+      name: 'New Person',
+      existsInTargetMonths: false,
+      createUser: true,
+      canCreateUser: true,
+      importedShiftCount: 1,
+    }]);
+
+    assert.equal(review.missingEmployees.length, 1);
+    assert.equal(review.missingEmployees[0].name, 'Retired User');
+    assert.equal(review.missingEmployees[0].canDeleteUser, true);
+    assert.equal(review.missingEmployees[0].user?.email, 'retired.user@eu.equinix.com');
+  });
+});
+
+describe('applyImportEmployeeDecisions', () => {
+  it('removes excluded new employees from the merged schedule payload', () => {
+    const result = applyImportEmployeeDecisions({
+      schedules: {
+        'Mai 2026': {
+          'Jane Doe': { 1: 'E1', 2: 'L1' },
+          'New Person': { 1: 'N' },
+        },
+      },
+      additions: [{ name: 'New Person', includeInImport: false }],
+    });
+
+    assert.deepEqual(result.excludedEmployees, ['New Person']);
+    assert.deepEqual(result.schedules, {
+      'Mai 2026': {
+        'Jane Doe': { 1: 'E1', 2: 'L1' },
+      },
+    });
+  });
+
+  it('removes deselected existing employees from the imported payload before cleanup', () => {
+    const result = applyImportEmployeeDecisions({
+      schedules: {
+        'Mai 2026': {
+          'Jane Doe': { 1: 'E1', 2: 'L1' },
+          'New Person': { 1: 'N' },
+        },
+      },
+      updates: [{ name: 'Jane Doe', includeInImport: false }],
+    });
+
+    assert.deepEqual(result.excludedEmployees, ['Jane Doe']);
+    assert.deepEqual(result.schedules, {
+      'Mai 2026': {
+        'New Person': { 1: 'N' },
+      },
+    });
   });
 });

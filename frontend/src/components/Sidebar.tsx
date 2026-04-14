@@ -40,7 +40,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
 
   const group = normalizeGroup(user.group);
   const teamLabel = groupLabel(group);
-  const shiftplanChildPaths = new Set(["/shiftplan-control", "/shift-admin-settings"]);
+  const shiftplanChildPaths = new Set(["/shiftplan-control"]);
 
   /* ———————————————————————————————— */
   /* FILTERED NAV (FINAL)               */

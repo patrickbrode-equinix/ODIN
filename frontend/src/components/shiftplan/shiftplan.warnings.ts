@@ -2,7 +2,7 @@
 /* SHIFTPLAN – UNDERSTAFFING WARNINGS (LOGIC)       */
 /* ------------------------------------------------ */
 
-import type { Schedule } from "../../store/shiftStore";
+import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, type Schedule } from "../../store/shiftStore";
 
 export type UnderstaffWarning = {
   dateKey: string; // YYYY-MM-DD
@@ -52,8 +52,8 @@ export function computeUnderstaffWarnings(
         .toUpperCase();
       if (!code) continue;
 
-      if (code === "E1" || code === "E2") early++;
-      if (code === "L1" || code === "L2") late++;
+      if (EARLY_SHIFT_CODES.includes(code as (typeof EARLY_SHIFT_CODES)[number])) early++;
+      if (LATE_SHIFT_CODES.includes(code as (typeof LATE_SHIFT_CODES)[number])) late++;
       if (code === "N") night++;
     }
 

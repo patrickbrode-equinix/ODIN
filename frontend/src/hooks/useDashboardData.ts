@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/api";
+import { queueApi } from "../api/queue";
 import { useCommitStore } from "../store/commitStore";
 import { fetchActiveKioskMessages, acknowledgeMessage, type KioskMessage } from "../api/kiosk";
 
@@ -44,17 +45,18 @@ export function useDashboardData(): DashboardDataState {
   /* ---- Commit Data ---- */
   const loadCommitData = useCallback(async () => {
     try {
-      const res = await api.get("/commit/latest");
-      if (res.data) {
-        const rows = res.data.data || [];
-        useCommitStore.getState().setTickets(rows);
-        setCrawlerStatus({
-          lastUpdate: res.data.created_at,
-          count:      res.data.row_count,
-        });
-      }
+      const [rows, metaRes] = await Promise.all([
+        queueApi.getTickets(),
+        api.get("/commit/meta").catch(() => ({ data: null })),
+      ]);
+
+      useCommitStore.getState().setTickets(rows);
+      setCrawlerStatus({
+        lastUpdate: metaRes.data?.lastUpdate || "",
+        count: metaRes.data?.count ?? rows.length,
+      });
     } catch (e) {
-      console.error("[useDashboardData] Commit refresh failed", e);
+      console.error("[useDashboardData] Live ticket refresh failed", e);
     }
   }, []);
 

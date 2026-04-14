@@ -3,7 +3,7 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useState } from "react";
-import { Plus, CheckCircle, Trash2, Users as UsersIcon } from "lucide-react";
+import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
 
 import {
@@ -23,6 +23,7 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
 
 import { AddUserModal } from "../users/AddUserModal";
+import { UserAccessModal } from "../users/UserAccessModal";
 
 /* ------------------------------------------------ */
 /* TYPES                                           */
@@ -76,6 +77,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
 
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
 
   /* ------------------------------------------------ */
   /* LOAD USERS                                      */
@@ -238,6 +240,18 @@ export default function Users() {
                           </div>
                         )}
 
+                        {canManageUsers && !isRoot && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="User-Rechte bearbeiten"
+                            onClick={() => setSelectedUserForAccess(user)}
+                          >
+                            <Shield className="w-4 h-4 mr-1 text-indigo-500" />
+                            Rechte
+                          </Button>
+                        )}
+
                         {!user.approved && canManageUsers && !isRoot && (
                           <Button
                             size="icon"
@@ -279,6 +293,12 @@ export default function Users() {
           setAddUserOpen(false);
         }}
         onCreated={loadUsers}
+      />
+
+      <UserAccessModal
+        open={selectedUserForAccess !== null}
+        onClose={() => setSelectedUserForAccess(null)}
+        user={selectedUserForAccess}
       />
     </EnterprisePageShell>
   );

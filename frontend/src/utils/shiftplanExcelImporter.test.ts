@@ -4,6 +4,7 @@
 /* ------------------------------------------------ */
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import { parseShiftplanExcel, KNOWN_SHIFT_CODES, PENDING_REVIEW_CODES } from "./shiftplanExcelImporter";
 
@@ -18,6 +19,10 @@ function makeWorkbook(sheets: Record<string, any[][]>): ArrayBuffer {
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
   return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+}
+
+function toArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
 }
 
 /* ------------------------------------------------ */
@@ -112,6 +117,27 @@ describe("Layout A – Classic Format", () => {
     const sheet = Object.values(result.sheets)[0];
     expect(sheet.employees[0].shifts[1]).toBe("XYZ");
   });
+
+  it("parses weekday day headers, serial month cells and time suffixes", async () => {
+    const data = [
+      [46113],
+      ["IBX OPS FR2 - Hauptobjekt, IBX OPS FR2"],
+      ["", "Mi 1", "Do 2", "Fr 3"],
+      ["Albrecht, Patrick", "N\r\n21:15-06:45", "N/A", "E2 06:45-15:15"],
+    ];
+    const buf = makeWorkbook({ "Month 1": data });
+    const result = await parseShiftplanExcel(buf);
+
+    const sheet = Object.values(result.sheets)[0];
+    expect(sheet).toBeDefined();
+    expect(sheet.meta.layout).toBe("A");
+    expect(sheet.meta.month).toBe(4);
+    expect(sheet.meta.year).toBe(2026);
+    expect(sheet.employees.length).toBe(1);
+    expect(sheet.employees[0].shifts[1]).toBe("N");
+    expect(sheet.employees[0].shifts[2]).toBe("FS");
+    expect(sheet.employees[0].shifts[3]).toBe("E2");
+  });
 });
 
 /* ------------------------------------------------ */
@@ -139,6 +165,22 @@ describe("Layout B – New Format", () => {
     expect(max!.shifts[1]).toBe("E1");
     expect(max!.shifts[2]).toBe("L2");
     expect(max!.shifts[3]).toBe("N");
+  });
+
+  it("parses Layout B weekday headers", async () => {
+    const data = [
+      [null, "Insert here ↓", "Mi 1", "Do 2", "Fr 3"],
+      [null, "Mustermann, Max", "E1", "L2", "N"],
+    ];
+    const buf = makeWorkbook({ "April 2026": data });
+    const result = await parseShiftplanExcel(buf);
+
+    const sheet = Object.values(result.sheets)[0];
+    expect(sheet).toBeDefined();
+    expect(sheet.meta.layout).toBe("B");
+    expect(sheet.employees[0].shifts[1]).toBe("E1");
+    expect(sheet.employees[0].shifts[2]).toBe("L2");
+    expect(sheet.employees[0].shifts[3]).toBe("N");
   });
 });
 
@@ -217,5 +259,23 @@ describe("Multi-sheet workbook", () => {
 
     expect(Object.keys(result.sheets).length).toBe(1);
     expect(result.ignoredSheets).toContain("Notizen");
+  });
+});
+
+describe("Real provided workbooks", () => {
+  it.each([
+    "../../../3 Months.xlsm",
+    "../../../3 Months (1).xlsm",
+  ])("parses %s without fatal importer errors", async (relativePath) => {
+    const fileBuffer = readFileSync(new URL(relativePath, import.meta.url));
+    const result = await parseShiftplanExcel(toArrayBuffer(fileBuffer));
+
+    expect(result.log.some((entry) => entry.level === "error")).toBe(false);
+    expect(Object.keys(result.sheets).length).toBeGreaterThanOrEqual(3);
+    expect(result.skippedSheets.some((entry) => entry.sheet === "Load")).toBe(true);
+
+    const parsedMonths = Object.values(result.sheets).map((sheet) => `${sheet.meta.month}-${sheet.meta.year}`);
+    expect(parsedMonths.length).toBeGreaterThanOrEqual(3);
+    expect(parsedMonths.every((entry) => /\d{1,2}-20\d{2}/.test(entry))).toBe(true);
   });
 });

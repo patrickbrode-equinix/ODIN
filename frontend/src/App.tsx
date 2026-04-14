@@ -28,20 +28,17 @@ const Users                  = lazy(() => import("./components/pages/Users"));
 const Protokoll              = lazy(() => import("./components/pages/Protokoll"));
 const TeamsBenachrichtigungen = lazy(() => import("./components/pages/TeamsBenachrichtigungen"));
 const AutomatedAssignment    = lazy(() => import("./components/pages/AutomatedAssignment"));
-const DBSPage                = lazy(() => import("./components/pages/DBS"));
-const CARPage                = lazy(() => import("./components/pages/CAR"));
 const CommitCompliance       = lazy(() => import("./components/pages/CommitCompliance"));
 const OdinLogicPage          = lazy(() => import("./components/pages/OdinLogicPage"));
 const TeamsCommunicationCenter = lazy(() => import("./components/pages/TeamsCommunicationCenter"));
 const AdminSettings          = lazy(() => import("./components/pages/AdminSettings"));
 const AssignmentRulesEditor  = lazy(() => import("./components/pages/AssignmentRulesEditor"));
 const ShiftplanControlCenter = lazy(() => import("./components/pages/ShiftplanControlCenter"));
-const ShiftAdminSettings     = lazy(() => import("./components/pages/ShiftAdminSettings"));
 
 /* Loading fallback */
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-full min-h-[200px]">
+    <div className="flex items-center justify-center h-full min-h-50">
       <div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
     </div>
   );
@@ -180,15 +177,11 @@ export default function App() {
             {/* DBS (Colo 2.0) → redirects to CAR */}
             <Route
               path="dbs/*"
-              element={<Navigate to="/car-liste" replace />}
+              element={<Navigate to="/dashboard" replace />}
             />
             <Route
               path="car-liste"
-              element={
-                <PageGuard pageKey="car_liste">
-                  <CARPage />
-                </PageGuard>
-              }
+              element={<Navigate to="/dashboard" replace />}
             />
             <Route
               path="protokoll"
@@ -254,14 +247,10 @@ export default function App() {
               }
             />
 
-            {/* Shift Admin Settings */}
+            {/* Shift Admin Settings moved into Admin Settings */}
             <Route
               path="shift-admin-settings"
-              element={
-                <PageGuard pageKey="shiftplan_control" min="write">
-                  <ShiftAdminSettings />
-                </PageGuard>
-              }
+              element={<Navigate to="/admin-settings?section=shiftplan" replace />}
             />
 
             {/* Teams Communication Center */}

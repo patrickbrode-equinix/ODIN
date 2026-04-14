@@ -23,15 +23,11 @@ import { PAGE_DEFS } from "../../config/navigation";
 /* TYPES                                            */
 /* ———————————————————————————————— */
 
-type GroupRow = {
-  key: string;
-  label: string;
-  policy: Record<string, AccessLevel>;
-};
-
 type UserAccessOverrideResponse = {
   id: number;
   group: string;
+  role: "user" | "admin";
+  basePolicy: Record<string, AccessLevel>;
   accessOverride: Record<string, AccessLevel>;
 };
 
@@ -98,10 +94,11 @@ export function UserAccessEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [groupPolicy, setGroupPolicy] = useState<Record<string, AccessLevel>>(
+  const [basePolicy, setBasePolicy] = useState<Record<string, AccessLevel>>(
     {}
   );
   const [override, setOverride] = useState<Record<string, AccessLevel>>({});
+  const [role, setRole] = useState<"user" | "admin">("user");
 
   const normalizedGroup = useMemo(
     () => normalizeKey(userGroup),
@@ -117,20 +114,13 @@ export function UserAccessEditor({
     setError("");
 
     try {
-      const groupsRes = await api.get<GroupRow[]>("/groups");
-      const groups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
-
-      const groupRow = groups.find(
-        (g) => normalizeKey(g.key) === normalizedGroup
-      );
-
-      setGroupPolicy(normalizePolicy(groupRow?.policy));
-
       const overrideRes = await api.get<UserAccessOverrideResponse>(
-        `/users/${userId}/access-override`
+        `/admin/users/${userId}/access-override`
       );
 
+      setBasePolicy(normalizePolicy(overrideRes.data?.basePolicy));
       setOverride(overrideRes.data?.accessOverride || {});
+      setRole(overrideRes.data?.role === "admin" ? "admin" : "user");
     } catch (e: any) {
       setError(
         e?.response?.data?.message || "Konnte User-Rechte nicht laden"
@@ -152,7 +142,7 @@ export function UserAccessEditor({
 
   const rows = useMemo(() => {
     return PAGE_DEFS.map((p) => {
-      const base = safeLevel(groupPolicy[p.key]);
+      const base = safeLevel(basePolicy[p.key]);
       const hasOverride = Object.prototype.hasOwnProperty.call(
         override || {},
         p.key
@@ -169,7 +159,7 @@ export function UserAccessEditor({
         selected,
       };
     });
-  }, [groupPolicy, override]);
+  }, [basePolicy, override]);
 
   /* ------------------------------------------------ */
   /* CHANGE HANDLER                                  */
@@ -198,7 +188,7 @@ export function UserAccessEditor({
     setError("");
 
     try {
-      await api.put(`/users/${userId}/access-override`, {
+      await api.put(`/admin/users/${userId}/access-override`, {
         accessOverride: override || {},
       });
       await load();
@@ -216,7 +206,7 @@ export function UserAccessEditor({
     setError("");
 
     try {
-      await api.put(`/users/${userId}/access-override`, {
+      await api.put(`/admin/users/${userId}/access-override`, {
         accessOverride: {},
       });
       setOverride({});
@@ -243,10 +233,12 @@ export function UserAccessEditor({
           <span className="font-medium text-foreground">{userEmail}</span>
           <span className="mx-2">•</span>
           Abteilung: <span className="font-medium">{normalizedGroup}</span>
+          <span className="mx-2">•</span>
+          Rolle: <span className="font-medium uppercase">{role}</span>
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Kein Override gesetzt = Abteilungsstandard gilt.
+          Kein Override gesetzt = Rollenstandard gilt. Overrides koennen Reiter explizit sperren oder freigeben.
         </div>
       </CardHeader>
 

@@ -16,6 +16,8 @@ import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { syncEmployeeContacts } from "./employeeContacts.js";
 import { provisionUsersFromShiftplan } from "../services/shiftUserProvisioning.service.js";
 import { logActivity } from "./activity.js";
+import { buildBaseAccessPolicy } from "../auth/accessControl.js";
+import { resolveUserRole } from "../auth/accessControl.js";
 
 const router = express.Router();
 
@@ -29,6 +31,19 @@ function normalizeEmail(value) {
 
 function normalizeGroup(value) {
   return normalizeGroupKey(value);
+}
+
+function sanitizeAccessOverride(input) {
+  const override = input && typeof input === "object" ? input : {};
+  const next = {};
+
+  for (const [pageKey, rawLevel] of Object.entries(override)) {
+    if (rawLevel === "none" || rawLevel === "view" || rawLevel === "write") {
+      next[pageKey] = rawLevel;
+    }
+  }
+
+  return next;
 }
 
 /* ———————————————— */
@@ -83,7 +98,7 @@ router.post(
   requireAuth,
   requirePageAccess("user_management", "write"),
   async (req, res) => {
-    const { firstName, lastName, email, ibx, department, group, isAdmin } = req.body;
+    const { firstName, lastName, email, ibx, department, group, isAdmin, initialPassword } = req.body;
 
     if (!firstName || !lastName || !email || !ibx || !(department || group)) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -109,7 +124,8 @@ router.post(
         firstName.trim().charAt(0).toLowerCase() +
         lastName.trim().toLowerCase();
 
-      const passwordHash = await bcrypt.hash("root", 12);
+      const startPassword = String(initialPassword || "root").trim() || "root";
+      const passwordHash = await bcrypt.hash(startPassword, 12);
 
       const result = await db.query(
         `
@@ -147,6 +163,101 @@ router.post(
     } catch (err) {
       console.error("USER CREATE ERROR:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+router.get(
+  "/:id/access-override",
+  requireAuth,
+  requirePageAccess("user_management", "write"),
+  async (req, res) => {
+    const targetUserId = Number(req.params.id);
+
+    try {
+      const result = await db.query(
+        `
+        SELECT
+          id,
+          email,
+          user_group AS "group",
+          is_root,
+          is_admin,
+          access_override AS "accessOverride"
+        FROM users
+        WHERE id = $1
+        `,
+        [targetUserId]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const user = result.rows[0];
+      const role = resolveUserRole(user);
+
+      return res.json({
+        id: user.id,
+        email: user.email,
+        group: user.group,
+        role,
+        basePolicy: buildBaseAccessPolicy(role),
+        accessOverride: sanitizeAccessOverride(user.accessOverride || {}),
+      });
+    } catch (err) {
+      console.error("USER ACCESS OVERRIDE READ ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+router.put(
+  "/:id/access-override",
+  requireAuth,
+  requirePageAccess("user_management", "write"),
+  async (req, res) => {
+    const targetUserId = Number(req.params.id);
+    const sanitizedOverride = sanitizeAccessOverride(req.body?.accessOverride);
+
+    try {
+      const current = await db.query(
+        `SELECT id, email, is_root, access_override AS "accessOverride" FROM users WHERE id = $1`,
+        [targetUserId]
+      );
+
+      if (current.rowCount === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (current.rows[0].is_root) {
+        return res.status(403).json({ message: "Root user cannot be modified" });
+      }
+
+      await db.query(
+        `UPDATE users SET access_override = $2::jsonb WHERE id = $1`,
+        [targetUserId, JSON.stringify(sanitizedOverride)]
+      );
+
+      await logActivity(
+        req.user.id,
+        req.user.email,
+        "USER_ACCESS_OVERRIDE_UPDATED",
+        "user_management",
+        "users",
+        String(targetUserId),
+        null,
+        {
+          previous: sanitizeAccessOverride(current.rows[0].accessOverride || {}),
+          next: sanitizedOverride,
+          targetEmail: current.rows[0].email,
+        }
+      );
+
+      return res.json({ success: true, accessOverride: sanitizedOverride });
+    } catch (err) {
+      console.error("USER ACCESS OVERRIDE WRITE ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );

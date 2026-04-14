@@ -71,3 +71,29 @@ export function getAssignmentQueueOrigin(source: TicketShape): string | null {
     null
   );
 }
+
+export function getAssignmentSystemName(source: TicketShape): string | null {
+  const normalized = source.normalizedTicket || source.normalized_ticket || null;
+  const raw = source.rawTicket || source.raw_ticket || null;
+
+  return (
+    readObjectValue(normalized, 'systemName') ||
+    readObjectValue(raw, 'system_name') ||
+    readObjectValue(raw, 'systemName') ||
+    null
+  );
+}
+
+export function getAssignmentTicketCategory(source: TicketShape): string | null {
+  const normalized = source.normalizedTicket || source.normalized_ticket || null;
+  const raw = source.rawTicket || source.raw_ticket || null;
+
+  return (
+    readString(source.ticket_type) ||
+    readObjectValue(normalized, 'type') ||
+    readObjectValue(raw, 'queue_type') ||
+    readObjectValue(raw, 'ticket_type') ||
+    readObjectValue(raw, 'subtype') ||
+    null
+  );
+}

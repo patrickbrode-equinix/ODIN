@@ -615,6 +615,10 @@ function DraftShiftTable({ draft }: { draft: Draft }) {
   const [year, mon] = draft.month.split('-').map(Number);
   const numDays = daysInMonth(year, mon);
   const shifts = draft.shifts_json || [];
+  const shiftDefinitions = Array.isArray(draft.config_snapshot?.shiftDefinitions) ? draft.config_snapshot.shiftDefinitions : [];
+  const durationByCode = Object.fromEntries(
+    shiftDefinitions.map((definition: any) => [definition.code, Number(definition.durationHours || 8)])
+  );
 
   // Group by employee
   const byEmployee: Record<string, Record<number, string>> = {};
@@ -622,7 +626,23 @@ function DraftShiftTable({ draft }: { draft: Draft }) {
     if (!byEmployee[s.employee_name]) byEmployee[s.employee_name] = {};
     byEmployee[s.employee_name][s.day] = s.shift_code;
   }
-  const employees = Object.keys(byEmployee).sort();
+  const fairnessEmployees = Object.keys(draft.fairness || {});
+  const employees = Array.from(new Set([...Object.keys(byEmployee), ...fairnessEmployees])).sort();
+
+  const hoursByEmployee = employees.reduce<Record<string, { actual: number; target: number; delta: number }>>((acc, employee) => {
+    const fairness = draft.fairness?.[employee] || {};
+    const actualFromFairness = Number(fairness.actualHours ?? 0);
+    const targetFromFairness = Number(fairness.targetHours ?? draft.config_snapshot?.planningConfig?.monthly_target_hours ?? 174);
+    const actualFromShifts = Object.values(byEmployee[employee] || {}).reduce((sum, code) => sum + Number(durationByCode[code] || 8), 0);
+    const actual = Number((actualFromFairness || actualFromShifts).toFixed(2));
+    const target = Number(targetFromFairness.toFixed ? targetFromFairness.toFixed(2) : targetFromFairness);
+    acc[employee] = {
+      actual,
+      target,
+      delta: Number((actual - target).toFixed(2)),
+    };
+    return acc;
+  }, {});
 
   const shiftColor = (code: string) => {
     if (code?.startsWith('E')) return 'bg-blue-500/20 text-blue-300';
@@ -646,10 +666,13 @@ function DraftShiftTable({ draft }: { draft: Draft }) {
               <th className="sticky left-0 z-10 bg-zinc-900 px-3 py-2 text-left text-muted-foreground font-medium border-b border-border/20">
                 Mitarbeiter
               </th>
+              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">Soll</th>
+              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">Ist</th>
+              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">Delta</th>
               {Array.from({ length: numDays }, (_, i) => i + 1).map(d => (
                 <th
                   key={d}
-                  className={`px-2 py-2 text-center font-medium border-b border-border/20 min-w-[32px] ${
+                  className={`px-2 py-2 text-center font-medium border-b border-border/20 min-w-8 ${
                     isWeekend(year, mon, d) ? 'bg-zinc-800/60 text-muted-foreground' : 'text-muted-foreground'
                   }`}
                 >
@@ -663,6 +686,11 @@ function DraftShiftTable({ draft }: { draft: Draft }) {
               <tr key={emp} className="hover:bg-blue-500/5 transition">
                 <td className="sticky left-0 z-10 bg-zinc-900 px-3 py-1.5 font-medium text-foreground border-b border-border/10 whitespace-nowrap">
                   {emp}
+                </td>
+                <td className="px-2 py-1.5 text-center border-b border-border/10 text-muted-foreground">{hoursByEmployee[emp].target.toFixed(1)}h</td>
+                <td className="px-2 py-1.5 text-center border-b border-border/10 text-foreground">{hoursByEmployee[emp].actual.toFixed(1)}h</td>
+                <td className={`px-2 py-1.5 text-center border-b border-border/10 ${hoursByEmployee[emp].delta > 0 ? 'text-amber-300' : hoursByEmployee[emp].delta < 0 ? 'text-blue-300' : 'text-green-300'}`}>
+                  {hoursByEmployee[emp].delta > 0 ? '+' : ''}{hoursByEmployee[emp].delta.toFixed(1)}h
                 </td>
                 {Array.from({ length: numDays }, (_, i) => i + 1).map(d => {
                   const code = byEmployee[emp]?.[d] || '';
@@ -757,8 +785,8 @@ function ExplanationsView({ explanations }: { explanations: Record<string, any> 
                 <div className="px-4 pb-3 space-y-1">
                   {byEmployee[emp].sort((a: any, b: any) => a.day - b.day).map((e: any) => (
                     <div key={e.day} className="flex items-start gap-3 text-xs py-1.5 border-t border-border/10">
-                      <span className="font-medium text-muted-foreground min-w-[50px]">Tag {e.day}</span>
-                      <span className={`font-bold min-w-[30px] ${e.code ? 'text-blue-400' : 'text-zinc-500'}`}>
+                      <span className="font-medium text-muted-foreground min-w-12.5">Tag {e.day}</span>
+                      <span className={`font-bold min-w-7.5 ${e.code ? 'text-blue-400' : 'text-zinc-500'}`}>
                         {e.code || '–'}
                       </span>
                       <div className="flex flex-wrap gap-1">

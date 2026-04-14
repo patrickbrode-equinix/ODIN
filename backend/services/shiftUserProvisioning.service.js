@@ -116,6 +116,22 @@ function buildExistingIndexes(existingUsers) {
   };
 }
 
+function summarizeExistingUser(existingUser) {
+  if (!existingUser) return null;
+
+  return {
+    id: existingUser.id,
+    email: existingUser.email || null,
+    username: existingUser.username || null,
+    displayName: buildExistingUserName(existingUser) || existingUser.email || existingUser.username || null,
+    approved: existingUser.approved === true,
+    isAdmin: existingUser.is_admin === true,
+    isRoot: existingUser.is_root === true,
+    provisionedFromShiftplan: existingUser.provisioned_from_shiftplan === true,
+    provisionedEmployeeName: existingUser.provisioned_employee_name || null,
+  };
+}
+
 function isCompatibleExistingUser(candidate, existingUser) {
   if (!existingUser) return false;
 
@@ -134,6 +150,23 @@ function isCompatibleExistingUser(candidate, existingUser) {
     || existingFullNameKey === candidate.fullNameKey
     || existingShortNameKey === candidate.shortNameKey
     || provisionedNameKey === candidateNameKey;
+}
+
+function resolveExistingUserMatch(candidate, indexes) {
+  const emailMatch = indexes.byEmail.get(candidate.preferredEmail);
+  const nameMatch = indexes.byName.get(candidate.fullNameKey)
+    || indexes.byName.get(`provisioned:${normalizeName(candidate.employeeName)}`)
+    || indexes.byShortName.get(candidate.shortNameKey);
+
+  if (isCompatibleExistingUser(candidate, emailMatch)) {
+    return emailMatch ? { user: emailMatch, match: "email" } : null;
+  }
+
+  if (nameMatch) {
+    return { user: nameMatch, match: "name" };
+  }
+
+  return null;
 }
 
 function nextAvailableEmail(baseEmail, usedEmails) {
@@ -165,37 +198,53 @@ function nextAvailableUsername(baseUsername, usedUsernames) {
   return null;
 }
 
-export function buildProvisioningPlan({ employees, existingUsers, defaultGroup = DEFAULT_GROUP, defaultIbx = DEFAULT_IBX }) {
+export function findExistingUserForEmployeeName(employeeName, existingUsers = []) {
+  const candidate = buildCandidate({ employeeName, email: "" });
+  if (!candidate) return null;
+
   const indexes = buildExistingIndexes(existingUsers);
-  const creates = [];
-  const updates = [];
-  const skipped = [];
+  const resolved = resolveExistingUserMatch(candidate, indexes);
+  if (!resolved?.user) return null;
+
+  return {
+    employeeName: candidate.employeeName,
+    displayName: candidate.displayName,
+    match: resolved.match,
+    user: summarizeExistingUser(resolved.user),
+  };
+}
+
+export function buildProvisioningAssessment({
+  employees,
+  existingUsers,
+  defaultGroup = DEFAULT_GROUP,
+  defaultIbx = DEFAULT_IBX,
+}) {
+  const indexes = buildExistingIndexes(existingUsers);
+  const assessments = [];
   const seenCandidates = [];
   let matchedExisting = 0;
 
   for (const employee of employees) {
     const candidate = buildCandidate(employee);
     if (!candidate) {
-      skipped.push({ employeeName: employee.employeeName, reason: "invalid_name" });
+      assessments.push({
+        employeeName: employee.employeeName,
+        action: "skip",
+        reason: "invalid_name",
+      });
       continue;
     }
 
     if (isEquivalentSeenCandidate(candidate, seenCandidates)) continue;
     seenCandidates.push(candidate);
 
-    const emailMatch = indexes.byEmail.get(candidate.preferredEmail);
-    const nameMatch = indexes.byName.get(candidate.fullNameKey)
-      || indexes.byName.get(`provisioned:${normalizeName(candidate.employeeName)}`)
-      || indexes.byShortName.get(candidate.shortNameKey);
-
-    const existingUser = isCompatibleExistingUser(candidate, emailMatch)
-      ? emailMatch
-      : nameMatch;
-
-    if (existingUser) {
+    const resolved = resolveExistingUserMatch(candidate, indexes);
+    if (resolved?.user) {
       matchedExisting += 1;
 
       const patch = {};
+      const existingUser = resolved.user;
       const existingDisplayName = buildExistingUserName(existingUser);
       if ((!existingDisplayName || existingUser.provisioned_from_shiftplan === true) && existingDisplayName !== candidate.displayName) {
         patch.firstName = candidate.firstName;
@@ -207,36 +256,52 @@ export function buildProvisioningPlan({ employees, existingUsers, defaultGroup =
         patch.provisionedEmployeeName = candidate.employeeName;
       }
 
-      if (Object.keys(patch).length > 0) {
-        updates.push({ userId: existingUser.id, email: existingUser.email, match: existingUser === emailMatch ? "email" : "name", patch });
-      }
+      assessments.push({
+        employeeName: candidate.employeeName,
+        displayName: candidate.displayName,
+        action: Object.keys(patch).length > 0 ? "update" : "matched",
+        match: resolved.match,
+        patch,
+        user: summarizeExistingUser(existingUser),
+      });
       continue;
     }
 
     const email = nextAvailableEmail(candidate.preferredEmail, indexes.usedEmails);
     const username = nextAvailableUsername(candidate.usernameBase, indexes.usedUsernames);
     if (!email || !username) {
-      skipped.push({ employeeName: employee.employeeName, reason: "unique_identity_unavailable" });
+      assessments.push({
+        employeeName: candidate.employeeName,
+        displayName: candidate.displayName,
+        action: "skip",
+        reason: "unique_identity_unavailable",
+      });
       continue;
     }
 
     indexes.usedEmails.add(email);
     indexes.usedUsernames.add(username);
 
-    creates.push({
-      firstName: candidate.firstName,
-      lastName: candidate.lastName,
-      username,
-      email,
-      group: defaultGroup,
-      department: defaultGroup,
-      ibx: defaultIbx,
-      approved: true,
-      isAdmin: false,
-      isRoot: false,
-      mustChangePassword: true,
-      provisionedFromShiftplan: true,
-      provisionedEmployeeName: candidate.employeeName,
+    assessments.push({
+      employeeName: candidate.employeeName,
+      displayName: candidate.displayName,
+      action: "create",
+      create: {
+        employeeName: candidate.employeeName,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        username,
+        email,
+        group: defaultGroup,
+        department: defaultGroup,
+        ibx: defaultIbx,
+        approved: true,
+        isAdmin: false,
+        isRoot: false,
+        mustChangePassword: true,
+        provisionedFromShiftplan: true,
+        provisionedEmployeeName: candidate.employeeName,
+      },
     });
   }
 
@@ -244,6 +309,42 @@ export function buildProvisioningPlan({ employees, existingUsers, defaultGroup =
     totalEmployees: employees.length,
     uniqueEmployees: seenCandidates.length,
     matchedExisting,
+    assessments,
+  };
+}
+
+export function buildProvisioningPlan({ employees, existingUsers, defaultGroup = DEFAULT_GROUP, defaultIbx = DEFAULT_IBX }) {
+  const assessment = buildProvisioningAssessment({ employees, existingUsers, defaultGroup, defaultIbx });
+  const creates = [];
+  const updates = [];
+  const skipped = [];
+
+  for (const item of assessment.assessments) {
+    if (item.action === "create" && item.create) {
+      creates.push(item.create);
+      continue;
+    }
+
+    if (item.action === "update" && item.user?.id && item.patch) {
+      updates.push({
+        employeeName: item.employeeName,
+        userId: item.user.id,
+        email: item.user.email,
+        match: item.match,
+        patch: item.patch,
+      });
+      continue;
+    }
+
+    if (item.action === "skip") {
+      skipped.push({ employeeName: item.employeeName, reason: item.reason });
+    }
+  }
+
+  return {
+    totalEmployees: assessment.totalEmployees,
+    uniqueEmployees: assessment.uniqueEmployees,
+    matchedExisting: assessment.matchedExisting,
     creates,
     updates,
     skipped,
@@ -265,31 +366,48 @@ function summarizePlan(plan, dryRun) {
   };
 }
 
-export async function provisionUsersFromShiftplan({
+export async function provisionUsersForEmployees({
+  employees,
   dryRun = false,
   initialPassword = DEFAULT_INITIAL_PASSWORD,
   logger = console,
 } = {}) {
   const client = await pool.connect();
   try {
-    const employeeRes = await client.query(
-      `SELECT DISTINCT s.employee_name AS "employeeName", ec.email
-       FROM shifts s
-       LEFT JOIN employee_contacts ec ON ec.employee_name = s.employee_name
-       WHERE s.employee_name IS NOT NULL AND btrim(s.employee_name) <> ''
-       ORDER BY s.employee_name ASC`
-    );
+    const inputEmployees = Array.isArray(employees)
+      ? employees
+      : [];
+    const normalizedEmployees = inputEmployees.map((employee) => {
+      if (typeof employee === "string") {
+        return { employeeName: employee, email: "" };
+      }
+      return {
+        employeeName: employee.employeeName,
+        email: employee.email || "",
+      };
+    });
+
+    const employeeRows = normalizedEmployees.length > 0
+      ? normalizedEmployees
+      : (await client.query(
+        `SELECT DISTINCT s.employee_name AS "employeeName", ec.email
+         FROM shifts s
+         LEFT JOIN employee_contacts ec ON ec.employee_name = s.employee_name
+         WHERE s.employee_name IS NOT NULL AND btrim(s.employee_name) <> ''
+         ORDER BY s.employee_name ASC`
+      )).rows;
 
     const existingUsersRes = await client.query(
       `SELECT id, email, username, first_name, last_name, approved,
-              provisioned_from_shiftplan, provisioned_employee_name
+              provisioned_from_shiftplan, provisioned_employee_name,
+              is_admin, is_root
        FROM users
        WHERE is_root = false
        ORDER BY id ASC`
     );
 
     const plan = buildProvisioningPlan({
-      employees: employeeRes.rows,
+      employees: employeeRows,
       existingUsers: existingUsersRes.rows,
     });
 
@@ -390,4 +508,16 @@ export async function provisionUsersFromShiftplan({
   } finally {
     client.release();
   }
+}
+
+export async function provisionUsersFromShiftplan({
+  dryRun = false,
+  initialPassword = DEFAULT_INITIAL_PASSWORD,
+  logger = console,
+} = {}) {
+  return provisionUsersForEmployees({
+    dryRun,
+    initialPassword,
+    logger,
+  });
 }

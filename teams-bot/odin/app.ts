@@ -1,18 +1,18 @@
 import { stripMentionsText, TokenCredentials } from "@microsoft/teams.api";
 import { App } from "@microsoft/teams.apps";
 import { LocalStorage } from "@microsoft/teams.common";
-import config from "./config";
 import { ManagedIdentityCredential } from "@azure/identity";
 import type { ConversationRefService } from "./src/services/conversation-ref.service";
 import type { IUserMappingRepository } from "./src/repositories/index";
+import { getConfig } from "./src/config/index";
 import { logger } from "./src/utils/logger";
 
 // ── Credentials ──
 
-const createTokenFactory = () => {
+const createTokenFactory = (clientId: string) => {
   return async (scope: string | string[], tenantId?: string): Promise<string> => {
     const managedIdentityCredential = new ManagedIdentityCredential({
-      clientId: process.env.CLIENT_ID,
+      clientId,
     });
     const scopes = Array.isArray(scope) ? scope : [scope];
     const tokenResponse = await managedIdentityCredential.getToken(scopes, {
@@ -23,13 +23,23 @@ const createTokenFactory = () => {
   };
 };
 
-const tokenCredentials: TokenCredentials = {
-  clientId: process.env.CLIENT_ID || "",
-  token: createTokenFactory(),
-};
+function createCredentialOptions(): TokenCredentials | undefined {
+  const cfg = getConfig();
 
-const credentialOptions =
-  config.MicrosoftAppType === "UserAssignedMsi" ? { ...tokenCredentials } : undefined;
+  if (cfg.botType !== "UserAssignedMsi") {
+    return undefined;
+  }
+
+  if (!cfg.microsoftAppId) {
+    logger.warn("UserAssignedMsi bot type configured without CLIENT_ID/BOT_ID");
+    return undefined;
+  }
+
+  return {
+    clientId: cfg.microsoftAppId,
+    token: createTokenFactory(cfg.microsoftAppId),
+  };
+}
 
 // ── App factory ──
 
@@ -40,9 +50,10 @@ export interface AppDeps {
 
 export function createApp(deps: AppDeps = {}): App {
   const storage = new LocalStorage();
+  const credentialOptions = createCredentialOptions();
 
   const app = new App({
-    ...credentialOptions,
+    ...(credentialOptions || {}),
     storage,
   });
 

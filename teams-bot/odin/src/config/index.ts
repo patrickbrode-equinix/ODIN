@@ -3,16 +3,24 @@
  * All runtime settings live here — loaded from environment variables.
  */
 
-function requireEnv(key: string, fallback?: string): string {
-  const value = process.env[key] || fallback;
+function firstEnv(keys: string[], fallback = ""): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function requireEnv(keys: string[], fallback?: string): string {
+  const value = firstEnv(keys, fallback || "");
   if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+    throw new Error(`Missing required environment variable: ${keys.join(" or ")}`);
   }
   return value;
 }
 
-function optionalEnv(key: string, fallback: string): string {
-  return process.env[key] || fallback;
+function optionalEnv(keys: string[], fallback: string): string {
+  return firstEnv(keys, fallback);
 }
 
 function boolEnv(key: string, fallback: boolean): boolean {
@@ -65,34 +73,29 @@ export function loadConfig(): BotConfig {
   if (_config) return _config;
 
   _config = {
-    port: parseInt(optionalEnv("PORT", "3978"), 10),
-    nodeEnv: optionalEnv("NODE_ENV", "development"),
+    port: parseInt(optionalEnv(["PORT", "port"], "3978"), 10),
+    nodeEnv: optionalEnv(["NODE_ENV"], "development"),
 
-    microsoftAppId: optionalEnv("CLIENT_ID", ""),
-    microsoftAppPassword: optionalEnv("CLIENT_PASSWORD", ""),
-    tenantId: optionalEnv("TENANT_ID", ""),
-    botType: optionalEnv("BOT_TYPE", "MultiTenant"),
+    microsoftAppId: optionalEnv(["CLIENT_ID", "BOT_ID"], ""),
+    microsoftAppPassword: optionalEnv(["CLIENT_PASSWORD", "CLIENT_SECRET"], ""),
+    tenantId: optionalEnv(["TENANT_ID", "BOT_TENANT_ID"], ""),
+    botType: optionalEnv(["BOT_TYPE"], "MultiTenant"),
 
-    botInternalApiKey: requireEnv("BOT_INTERNAL_API_KEY", "dev-api-key-change-me"),
-    odinCallbackBaseUrl: optionalEnv("ODIN_CALLBACK_BASE_URL", "http://localhost:5055"),
-    odinSharedSecret: requireEnv("ODIN_SHARED_SECRET", "dev-shared-secret-change-me"),
+    botInternalApiKey: requireEnv(["BOT_INTERNAL_API_KEY"], "dev-api-key-change-me"),
+    odinCallbackBaseUrl: optionalEnv(["ODIN_CALLBACK_BASE_URL"], "http://localhost:5055"),
+    odinSharedSecret: requireEnv(["ODIN_SHARED_SECRET"], "dev-shared-secret-change-me"),
 
     enableSupervisorApproval: boolEnv("ENABLE_SUPERVISOR_APPROVAL", false),
     enableGroupNotifications: boolEnv("ENABLE_GROUP_NOTIFICATIONS", true),
     enableDirectNotifications: boolEnv("ENABLE_DIRECT_NOTIFICATIONS", true),
 
-    logLevel: optionalEnv("LOG_LEVEL", "info") as BotConfig["logLevel"],
+    logLevel: optionalEnv(["LOG_LEVEL"], "info") as BotConfig["logLevel"],
 
-    graphClientId: optionalEnv("GRAPH_CLIENT_ID", ""),
-    graphClientSecret: optionalEnv("GRAPH_CLIENT_SECRET", ""),
-    graphTenantId: optionalEnv("GRAPH_TENANT_ID", ""),
-    botAppId: optionalEnv("BOT_APP_ID", ""),
+    graphClientId: optionalEnv(["GRAPH_CLIENT_ID", "CLIENT_ID", "BOT_ID"], ""),
+    graphClientSecret: optionalEnv(["GRAPH_CLIENT_SECRET", "CLIENT_SECRET", "CLIENT_PASSWORD"], ""),
+    graphTenantId: optionalEnv(["GRAPH_TENANT_ID", "TENANT_ID", "BOT_TENANT_ID"], ""),
+    botAppId: optionalEnv(["BOT_APP_ID", "TEAMS_APP_ID"], ""),
   };
-
-  // Auto-resolve BOT_APP_ID from TEAMS_APP_ID (set by Teams Toolkit)
-  if (!_config.botAppId && process.env.TEAMS_APP_ID) {
-    _config.botAppId = process.env.TEAMS_APP_ID;
-  }
 
   return _config;
 }

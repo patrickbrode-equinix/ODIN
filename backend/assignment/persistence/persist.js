@@ -7,18 +7,24 @@ import {
   assignmentDecisionRepository,
   assignmentRotationRepository,
 } from '../repositories/index.js';
+import { resolveTicketIdentity } from '../lib/ticketIdentity.js';
 
 /**
  * Persist a complete assignment run (header).
  */
-export async function persistAssignmentRun(runId, decisions, status = 'completed', { failureReason, failureStep, errorCategory, summaryExtras } = {}) {
-  const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0 };
+export async function persistAssignmentRun(runId, decisions, status = 'completed', { failureReason, failureStep, errorCategory, summaryExtras, totalTicketsOverride, relevantTicketsOverride } = {}) {
+  const counts = { assigned: 0, manual_review: 0, no_candidate: 0, not_relevant: 0, blocked: 0, error: 0, crawler_stale: 0 };
   for (const d of decisions) {
     if (counts[d.result] !== undefined) counts[d.result]++;
   }
 
+  const totalTickets = Number.isInteger(totalTicketsOverride) ? totalTicketsOverride : decisions.length;
+  const relevantTickets = Number.isInteger(relevantTicketsOverride)
+    ? relevantTicketsOverride
+    : Math.max(totalTickets - counts.not_relevant - counts.crawler_stale, 0);
+
   const summary = {
-    totalDecisions: decisions.length,
+    totalDecisions: totalTickets,
     ...counts,
     finishedAt: new Date().toISOString(),
     ...(summaryExtras || {}),
@@ -26,8 +32,8 @@ export async function persistAssignmentRun(runId, decisions, status = 'completed
 
   return assignmentRunRepository.finish(runId, {
     status,
-    totalTickets: decisions.length + counts.not_relevant,
-    relevant: decisions.length - counts.not_relevant,
+    totalTickets,
+    relevant: relevantTickets,
     assigned: counts.assigned,
     manualReview: counts.manual_review,
     noCandidate: counts.no_candidate,
@@ -88,17 +94,48 @@ export async function applyLiveAssignment(ticket, worker, mode) {
   try {
     // Import pool lazily to avoid circular deps
     const { default: pool } = await import('../../db.js');
+    const identity = resolveTicketIdentity(ticket);
 
-    // Update the queue_items row to record the assignment
-    await pool.query(
-      `UPDATE queue_items
-       SET assigned_worker_id = $1, assigned_at = NOW(), owner = $2, updated_at = NOW()
-       WHERE id = $3 OR external_id = $3`,
-      [worker.id, worker.name, ticket.id]
-    );
+    if (identity.internalId == null && (!identity.externalId || !identity.queueType)) {
+      return {
+        applied: false,
+        reason: 'Live assignment skipped: no reliable queue_items identifier available',
+      };
+    }
 
-    console.log(`[ASSIGNMENT] LIVE: Ticket ${ticket.id} assigned to ${worker.name} (ID: ${worker.id})`);
-    return { applied: true, reason: `Live assignment: ${ticket.id} → ${worker.name}` };
+    let result = null;
+
+    if (identity.internalId != null) {
+      result = await pool.query(
+        `UPDATE queue_items
+         SET assigned_worker_id = $1, assigned_at = NOW(), owner = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [worker.id, worker.name, identity.internalId]
+      );
+    }
+
+    if ((result?.rowCount || 0) === 0 && identity.externalId && identity.queueType) {
+      result = await pool.query(
+        `UPDATE queue_items
+         SET assigned_worker_id = $1, assigned_at = NOW(), owner = $2, updated_at = NOW()
+         WHERE queue_type = $3 AND external_id = $4`,
+        [worker.id, worker.name, identity.queueType, identity.externalId]
+      );
+    }
+
+    if ((result?.rowCount || 0) !== 1) {
+      const ticketLabel = identity.externalId || String(identity.internalId || ticket.id || 'unknown');
+      const rowCount = result?.rowCount || 0;
+      console.error(`[ASSIGNMENT] LIVE assignment validation failed for ticket ${ticketLabel}: updated ${rowCount} queue_items rows`);
+      return {
+        applied: false,
+        reason: `Live assignment validation failed: ${rowCount} queue_items rows updated`,
+      };
+    }
+
+    const ticketLabel = identity.externalId || String(identity.internalId || ticket.id || 'unknown');
+    console.log(`[ASSIGNMENT] LIVE: Ticket ${ticketLabel} assigned to ${worker.name} (ID: ${worker.id})`);
+    return { applied: true, reason: `Live assignment: ${ticketLabel} → ${worker.name}` };
   } catch (err) {
     console.error(`[ASSIGNMENT] LIVE assignment failed for ticket ${ticket.id}:`, err.message);
     return { applied: false, reason: `Live assignment failed: ${err.message}` };
