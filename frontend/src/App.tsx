@@ -267,7 +267,14 @@ export default function App() {
             <Route
               path="admin-settings"
               element={
-                <PageGuard pageKey="admin_settings" min="write">
+                <PageGuard
+                  pageKey="admin_settings"
+                  anyOf={[
+                    { pageKey: "teams_center" },
+                    { pageKey: "shiftplan_control" },
+                    { pageKey: "odin_logic" },
+                  ]}
+                >
                   <AdminSettings />
                 </PageGuard>
               }

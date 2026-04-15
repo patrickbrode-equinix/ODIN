@@ -69,6 +69,9 @@ describe('mapType', () => {
   it('maps "xc" -> CrossConnect', () => {
     assert.equal(mapType('xc').value, 'CrossConnect');
   });
+  it('maps "CCInstalls" -> CrossConnect', () => {
+    assert.equal(mapType('CCInstalls').value, 'CrossConnect');
+  });
   it('maps "other" -> Other', () => {
     assert.equal(mapType('other').value, 'Other');
   });
@@ -107,6 +110,18 @@ describe('run summary helpers', () => {
 describe('mapStatus', () => {
   it('maps "open" -> open', () => {
     assert.equal(mapStatus('open').value, 'open');
+  });
+  it('maps "Open-Dispatch" -> active', () => {
+    assert.equal(mapStatus('Open-Dispatch').value, 'active');
+  });
+  it('maps "Open-Accepted" -> active', () => {
+    assert.equal(mapStatus('Open-Accepted').value, 'active');
+  });
+  it('maps "Customer Updated" -> pending', () => {
+    assert.equal(mapStatus('Customer Updated').value, 'pending');
+  });
+  it('maps "Completed Pending Migration" -> pending', () => {
+    assert.equal(mapStatus('Completed Pending Migration').value, 'pending');
   });
   it('maps "new" -> open', () => {
     assert.equal(mapStatus('new').value, 'open');
@@ -321,6 +336,20 @@ describe('Eligibility Rules', () => {
   });
   it('isNotAbsent fails', () => {
     assert.ok(!isNotAbsent({ ...baseWorker, absent: true }).eligible);
+  });
+  it('excludes a night-shift worker when the scheduled ticket starts before the night shift begins', () => {
+    const result = isShiftActive(
+      { ...baseWorker, shiftCode: 'N', shiftActive: true },
+      { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-08T21:00:00' }
+    );
+    assert.equal(result.eligible, false);
+  });
+  it('keeps a late-shift worker eligible when the scheduled ticket starts during late shift coverage', () => {
+    const result = isShiftActive(
+      { ...baseWorker, shiftCode: 'L1', shiftActive: true },
+      { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-08T21:00:00' }
+    );
+    assert.equal(result.eligible, true);
   });
 
   it('matchesSite passes when sites match', () => {

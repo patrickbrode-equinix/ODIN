@@ -4,7 +4,7 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, ChevronLeft, ChevronRight, RefreshCw, Download, Calendar } from "lucide-react";
+import { Upload, ChevronLeft, ChevronRight, RefreshCw, Download, Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
 
 import { Button } from "../ui/button";
@@ -58,6 +58,35 @@ import { RamadanBadge } from "../shiftplan/RamadanBadge"; // [NEW]
 import { getShiftplanPreferences, updateShiftplanPreferences } from "../../api/userPreferences";
 import { generateReport, downloadReport } from "../../api/reports"; // [NEW]
 import { fetchRamadanMeta, fetchSunTimes, RamadanMeta, SunTime } from "../../api/ramadan"; // [NEW]
+
+type IssuePriorityMode = "staffing_first" | "balanced" | "fairness_first";
+
+type ShiftplanIssueInsight = {
+  id: string;
+  source: "understaffing" | "staffing" | "coverage" | "validation" | "absence" | "constraint";
+  severity: "high" | "medium";
+  title: string;
+  detected: string;
+  solution: string;
+  meta: string;
+};
+
+function parseIssueToggleSetting(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+  }
+  return fallback;
+}
+
+function formatShiftTypeLabel(value: string) {
+  const upper = String(value || "").toUpperCase();
+  if (upper === "EARLY") return "Früh";
+  if (upper === "LATE") return "Spät";
+  if (upper === "NIGHT") return "Nacht";
+  return value;
+}
 
 /* ------------------------------------------------ */
 /* PAGE                                             */
@@ -177,6 +206,9 @@ export default function Shiftplan() {
   const [showUnderstaffedOnly, setShowUnderstaffedOnly] = useState(false); // Not used yet in logic but requested
   const [showRamadanOverlay, setShowRamadanOverlay] = useState(false);
   const [showSunTimesHints, setShowSunTimesHints] = useState(false);
+  const [issuePanelEnabled, setIssuePanelEnabled] = useState(true);
+  const [issueShowSolutions, setIssueShowSolutions] = useState(true);
+  const [issuePriorityMode, setIssuePriorityMode] = useState<IssuePriorityMode>("balanced");
 
   // [NEW] Ramadan State (Centralized)
   const [ramadanMeta, setRamadanMeta] = useState<RamadanMeta | null>(null);
@@ -200,6 +232,24 @@ export default function Shiftplan() {
     api.get("/reports/changelog/exists")
       .then(res => setChangelogExists(!!res.data?.exists))
       .catch(() => setChangelogExists(false));
+  }, []);
+
+  useEffect(() => {
+    api.get("/app-settings")
+      .then((res) => {
+        const settings = res.data || {};
+        setIssuePanelEnabled(parseIssueToggleSetting(settings["shiftplan.issue_panel_enabled"], true));
+        setIssueShowSolutions(parseIssueToggleSetting(settings["shiftplan.issue_show_solutions"], true));
+        const nextMode = settings["shiftplan.issue_priority_mode"];
+        if (nextMode === "staffing_first" || nextMode === "balanced" || nextMode === "fairness_first") {
+          setIssuePriorityMode(nextMode);
+        }
+      })
+      .catch(() => {
+        setIssuePanelEnabled(true);
+        setIssueShowSolutions(true);
+        setIssuePriorityMode("balanced");
+      });
   }, []);
 
   // Load Hessen Holidays per year
@@ -255,6 +305,109 @@ export default function Shiftplan() {
     const early = warningsComputed.filter((w) => w.kind === "early");
     return { night, late, early, total: warningsComputed.length };
   }, [warningsComputed]);
+
+  const issueInsights = useMemo(() => {
+    const items: ShiftplanIssueInsight[] = [];
+
+    warningsComputed.forEach((warning, index) => {
+      const delta = Math.max((warning.target || 0) - (warning.actual || 0), 0);
+      items.push({
+        id: `warning-${index}`,
+        source: "understaffing",
+        severity: delta >= 2 || warning.actual === 0 ? "high" : "medium",
+        title: "Unterbesetzung erkannt",
+        detected: `${warning.label} am ${warning.dateKey}: ${warning.kind.toUpperCase()} ist mit ${warning.actual}/${warning.target} besetzt.`,
+        solution: `Besetzung in ${warning.kind.toUpperCase()} erhöhen, Reserve/DBS prüfen oder einen verfügbaren Mitarbeiter aus einer weniger kritischen Schicht verschieben.`,
+        meta: `Soll ${warning.target}, Ist ${warning.actual}`,
+      });
+    });
+
+    staffingResults.filter((entry) => entry.status !== "OK").forEach((entry, index) => {
+      items.push({
+        id: `staffing-${index}`,
+        source: "staffing",
+        severity: entry.status === "FAIL" ? "high" : "medium",
+        title: "Mindestbesetzung verletzt",
+        detected: `${entry.date}: ${formatShiftTypeLabel(entry.shift_type)} hat ${entry.actual}/${entry.min} Mitarbeiter.`,
+        solution: "Mindeststaffing-Regel für diesen Tag prüfen und gezielt Mitarbeiter mit passender Schichtfähigkeit nachziehen.",
+        meta: `Status ${entry.status}`,
+      });
+    });
+
+    coverageViolations.forEach((entry, index) => {
+      const missing = Object.entries(entry.missing || {})
+        .filter(([, count]) => Number(count || 0) > 0)
+        .map(([skill, count]) => `${skill.toUpperCase()}: ${count}`)
+        .join(", ");
+
+      items.push({
+        id: `coverage-${index}`,
+        source: "coverage",
+        severity: "high",
+        title: "Skill-Lücke erkannt",
+        detected: `${entry.date}: ${formatShiftTypeLabel(entry.shift_type)} fehlt Qualifikation ${missing || "unbekannt"}.`,
+        solution: "Mitarbeiter mit passender Skill-Matrix einplanen oder die Schichtbesetzung so tauschen, dass die Mindestskills erhalten bleiben.",
+        meta: missing || "Skill-Lücke",
+      });
+    });
+
+    violations.forEach((entry, index) => {
+      items.push({
+        id: `validation-${index}`,
+        source: "validation",
+        severity: "medium",
+        title: entry.violation_type === "REST_TIME" ? "Ruhezeit verletzt" : "Harter Schichtwechsel erkannt",
+        detected: `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`,
+        solution: entry.violation_type === "REST_TIME"
+          ? "Genug Ruhezeit herstellen, indem der Folgetag auf frei oder eine spätere Schicht umgestellt wird."
+          : "Wechselkette glätten und harte Sprünge zwischen Nacht-, Spät- und Frühschicht reduzieren.",
+        meta: `${entry.details.prev} -> ${entry.details.curr}`,
+      });
+    });
+
+    absenceConflicts.forEach((entry, index) => {
+      items.push({
+        id: `absence-${index}`,
+        source: "absence",
+        severity: "high",
+        title: "Abwesenheitskonflikt",
+        detected: `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`,
+        solution: "Entweder Abwesenheit oder Schichteintrag anpassen und anschließend Staffing erneut berechnen.",
+        meta: entry.details.shift_code,
+      });
+    });
+
+    constraintViolations.forEach((entry, index) => {
+      items.push({
+        id: `constraint-${index}`,
+        source: "constraint",
+        severity: "medium",
+        title: "Persönliche Restriktion verletzt",
+        detected: `${entry.employee_name}: ${entry.details?.msg || entry.constraint_key}`,
+        solution: "Schicht an die hinterlegte Mitarbeiterrestriktion anpassen oder die Restriktion fachlich aktualisieren.",
+        meta: entry.constraint_key,
+      });
+    });
+
+    const sourceWeight: Record<IssuePriorityMode, Record<ShiftplanIssueInsight['source'], number>> = {
+      staffing_first: { understaffing: 60, staffing: 55, coverage: 50, absence: 42, validation: 24, constraint: 20 },
+      balanced: { understaffing: 50, staffing: 48, coverage: 44, absence: 40, validation: 32, constraint: 30 },
+      fairness_first: { understaffing: 40, staffing: 38, coverage: 36, absence: 34, validation: 46, constraint: 44 },
+    };
+
+    return items
+      .sort((left, right) => {
+        const leftScore = (left.severity === "high" ? 100 : 60) + sourceWeight[issuePriorityMode][left.source];
+        const rightScore = (right.severity === "high" ? 100 : 60) + sourceWeight[issuePriorityMode][right.source];
+        return rightScore - leftScore;
+      })
+      .slice(0, 12);
+  }, [warningsComputed, staffingResults, coverageViolations, violations, absenceConflicts, constraintViolations, issuePriorityMode]);
+
+  const issueCounts = useMemo(() => {
+    const high = issueInsights.filter((entry) => entry.severity === "high").length;
+    return { high, total: issueInsights.length };
+  }, [issueInsights]);
 
   const visibleSchedule = useMemo(() => {
     const out: Record<string, any> = {};
@@ -948,8 +1101,45 @@ export default function Shiftplan() {
 
       {/* PANELS */}
       {
-        (warningsVisible || hiddenPanelVisible || statsVisible || wellbeingVisible) && (
+        (issuePanelEnabled || warningsVisible || hiddenPanelVisible || statsVisible || wellbeingVisible) && (
           <div className="flex flex-col gap-4">
+
+            {issuePanelEnabled && (
+              <div className={`rounded-xl border p-4 ${issueInsights.length > 0 ? 'border-amber-500/20 bg-amber-500/10' : 'border-emerald-500/20 bg-emerald-500/10'}`}>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                      {issueInsights.length > 0 ? <AlertTriangle className="h-4 w-4 text-amber-300" /> : <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
+                      Problem- und Lösungsansicht
+                    </div>
+                    <div className="mt-1 text-sm text-slate-300">
+                      {issueInsights.length > 0
+                        ? `${issueCounts.total} Hinweise erkannt, davon ${issueCounts.high} kritisch priorisiert.`
+                        : 'Für den aktuellen Monat wurden in den geladenen Prüfdaten keine akuten Probleme erkannt.'}
+                    </div>
+                  </div>
+                  <div className="text-xs uppercase tracking-wider text-slate-400">Priorisierung: {issuePriorityMode.replace('_', ' ')}</div>
+                </div>
+
+                {issueInsights.length > 0 && (
+                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    {issueInsights.map((issue) => (
+                      <div key={issue.id} className={`rounded-xl border p-3 ${issue.severity === 'high' ? 'border-red-400/20 bg-red-500/10' : 'border-amber-400/20 bg-slate-950/30'}`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-slate-100">{issue.title}</div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${issue.severity === 'high' ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
+                            {issue.severity === 'high' ? 'kritisch' : 'Hinweis'}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-sm text-slate-200">{issue.detected}</div>
+                        {issueShowSolutions && <div className="mt-2 text-sm text-slate-300"><span className="font-semibold text-sky-200">Lösung:</span> {issue.solution}</div>}
+                        <div className="mt-2 text-xs text-slate-400">Quelle: {issue.source} · {issue.meta}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* WELLBEING / FAIRNESS PANEL */}
             {wellbeingVisible && (

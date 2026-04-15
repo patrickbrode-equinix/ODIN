@@ -19,6 +19,7 @@ import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITL
 import { useTheme } from "../ThemeProvider";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
+import { useLanguage, type LanguageCode } from "../../context/LanguageContext";
 import PreferredColleagues from "../settings/PreferredColleagues";
 import EmployeePreferences from "../settings/EmployeePreferences";
 import {
@@ -34,7 +35,7 @@ import { Input } from "../ui/input";
 /* ------------------------------------------------ */
 
 type UserSettings = {
-  language: "de" | "en";
+  language: LanguageCode;
   theme: "dark" | "light";
   notify_email: boolean;
   notify_browser: boolean;
@@ -55,6 +56,7 @@ type UserMeta = {
 export default function Settings() {
   const { user, completeForcedPasswordChange } = useAuth();
   const { setTheme } = useTheme();
+  const { language, languages, setLanguage, t } = useLanguage();
 
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [meta, setMeta] = useState<UserMeta | null>(null);
@@ -138,10 +140,26 @@ export default function Settings() {
     if (!settings) return;
 
     setSettings({ ...settings, ...patch });
-    await api.put("/user/settings", patch);
+
+    const nextPatch = { ...patch };
+    if (patch.language) {
+      await setLanguage(patch.language, { persist: true });
+      delete nextPatch.language;
+    }
+
+    if (Object.keys(nextPatch).length > 0) {
+      await api.put("/user/settings", nextPatch);
+    }
 
     if (patch.theme) setTheme(patch.theme);
   }
+
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.language !== language) {
+      setSettings((current) => current ? { ...current, language } : current);
+    }
+  }, [language, settings]);
 
   /* ------------------------------------------------ */
   /* CHANGE PASSWORD                                  */
@@ -184,7 +202,7 @@ export default function Settings() {
   }
 
   if (loading || !settings || !user) {
-    return <div className="text-muted-foreground">Lade Einstellungen…</div>;
+    return <div className="text-muted-foreground">{t("settings.loading")}</div>;
   }
 
   const fullName =
@@ -203,22 +221,22 @@ export default function Settings() {
     <EnterprisePageShell>
       {/* HEADER */}
       <EnterpriseHeader
-        title="EINSTELLUNGEN"
-        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Persönliche App-Einstellungen</span>}
+        title={t("settings.title")}
+        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t("settings.personalAppSettings")}</span>}
         icon={<SettingsIcon className="w-5 h-5 text-indigo-400" />}
         rightContent={
           <Button onClick={() => setPwOpen(true)} className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm">
             <Lock className="w-3.5 h-3.5 mr-2" />
-            {passwordChangeRequired ? "Startpasswort ändern" : "Passwort ändern"}
+            {passwordChangeRequired ? t("settings.startPasswordChange") : t("settings.changePassword")}
           </Button>
         }
       />
 
       {passwordChangeRequired && (
         <EnterpriseCard noPadding={false} className="flex flex-col gap-3 border-amber-500/30 bg-amber-500/10">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-200">Sicherheitsvorgabe</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-200">{t("settings.securityRequirement")}</div>
           <p className="text-sm text-amber-50/90">
-            Dieses Konto verwendet noch das initiale Passwort. Bitte ändere es jetzt. Bis dahin bleibt ODIN auf diese Seite beschränkt.
+            {t("settings.securityRequirementBody")}
           </p>
         </EnterpriseCard>
       )}
@@ -226,15 +244,15 @@ export default function Settings() {
       {/* PROFIL */}
       <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
         <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
-          Profil
+          {t("settings.profile")}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Info label="Name" value={fullName} />
-          <Info label="E-Mail" value={user.email} />
-          <Info label="Standort" value={meta?.location} />
-          <Info label="Team" value={meta?.team} />
-          <Info label="Aktiv seit" value={formatDate(meta?.created_at)} />
-          <Info label="Letzter Login" value={formatDate(meta?.last_login)} />
+          <Info label={t("settings.name")} value={fullName} />
+          <Info label={t("settings.email")} value={user.email} />
+          <Info label={t("settings.location")} value={meta?.location} />
+          <Info label={t("settings.team")} value={meta?.team} />
+          <Info label={t("settings.activeSince")} value={formatDate(meta?.created_at)} />
+          <Info label={t("settings.lastLogin")} value={formatDate(meta?.last_login)} />
         </div>
       </EnterpriseCard>
 
@@ -243,11 +261,11 @@ export default function Settings() {
           {/* APP */}
           <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
-              App
+              {t("settings.app")}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label>Sprache</Label>
+                <Label>{t("settings.language")}</Label>
                 <Select
                   value={settings.language}
                   onValueChange={(v) =>
@@ -258,14 +276,15 @@ export default function Settings() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="de">Deutsch</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
+                    {languages.map((option) => (
+                      <SelectItem key={option.code} value={option.code}>{option.nativeLabel}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Theme</Label>
+                <Label>{t("settings.theme")}</Label>
                 <Select
                   value={settings.theme}
                   onValueChange={(v) =>
@@ -276,8 +295,8 @@ export default function Settings() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">{t("common.themeDark")}</SelectItem>
+                    <SelectItem value="light">{t("common.themeLight")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -288,21 +307,21 @@ export default function Settings() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <Bell className="w-4 h-4" />
-              Benachrichtigungen
+              {t("settings.notifications")}
             </div>
             <div className="space-y-4">
               <NotificationRow
-                title="E-Mail Benachrichtigungen"
+                title={t("settings.emailNotifications")}
                 value={settings.notify_email}
                 onChange={(v) => update({ notify_email: v })}
               />
               <NotificationRow
-                title="Browser Benachrichtigungen"
+                title={t("settings.browserNotifications")}
                 value={settings.notify_browser}
                 onChange={(v) => update({ notify_browser: v })}
               />
               <NotificationRow
-                title="Schicht-Erinnerungen"
+                title={t("settings.shiftReminders")}
                 value={settings.notify_shift_reminder}
                 onChange={(v) => update({ notify_shift_reminder: v })}
               />
@@ -318,11 +337,10 @@ export default function Settings() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <Sliders className="w-4 h-4" />
-              Schichtplan-Wünsche
+              {t("settings.shiftPreferences")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Lege deine bevorzugten und unerwünschten Schichten, verfügbare Tage und weitere Wünsche fest.
-              Diese werden bei der automatischen Schichtplanung berücksichtigt.
+              {t("settings.shiftPreferencesBody")}
             </p>
             <EmployeePreferences />
           </EnterpriseCard>
@@ -331,7 +349,7 @@ export default function Settings() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <Sliders className="w-4 h-4" />
-              System-Schwellenwerte
+              {t("settings.systemThresholds")}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <ThresholdInput

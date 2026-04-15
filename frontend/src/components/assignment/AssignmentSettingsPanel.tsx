@@ -7,6 +7,10 @@ import { useState, useEffect } from 'react';
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { Save, RefreshCw } from 'lucide-react';
 import { InfoTooltip } from '../ui/InfoTooltip';
+import { Slider } from '../ui/slider';
+import { Switch } from '../ui/switch';
+import { Checkbox } from '../ui/checkbox';
+import { Input } from '../ui/input';
 import type { AssignmentSettings } from '../../types/assignment';
 
 interface SettingDef {
@@ -173,6 +177,14 @@ export function AssignmentSettingsPanel() {
   const { settings, settingsSaving, updateSettings, fetchSettings } = useAssignmentStore();
   const [local, setLocal] = useState<Record<string, string>>({});
 
+  const ticketTypeOptions = ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
+
+  const sliderConfig: Partial<Record<SettingDef['key'], { min: number; max: number; step: number }>> = {
+    'assignment.crawlerMaxAgeMinutes': { min: 1, max: 30, step: 1 },
+    'assignment.planningWindowHours': { min: 1, max: 168, step: 1 },
+    'assignment.maxTicketsPerRun': { min: 25, max: 1000, step: 25 },
+  };
+
   useEffect(() => {
     if (settings) {
       setLocal({ ...settings });
@@ -183,8 +195,180 @@ export function AssignmentSettingsPanel() {
     setLocal((prev) => ({ ...prev, [key]: value }));
   };
 
+  const getBooleanValue = (key: string) => (local[key] || 'false') === 'true';
+  const getNumberValue = (key: string, fallback: number) => {
+    const parsed = Number(local[key]);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const getTicketTypes = () => {
+    return (local['assignment.supportedTicketTypes'] || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  };
+  const updateTicketTypes = (ticketType: string, checked: boolean) => {
+    const next = new Set(getTicketTypes());
+    if (checked) next.add(ticketType);
+    else next.delete(ticketType);
+    handleChange('assignment.supportedTicketTypes', Array.from(next).join(','));
+  };
+
   const handleSave = async () => {
     await updateSettings(local as Partial<AssignmentSettings>);
+  };
+
+  const renderNumberControl = (def: SettingDef) => {
+    const config = sliderConfig[def.key];
+    const value = getNumberValue(def.key, config?.min || 0);
+
+    if (!config) {
+      return (
+        <Input
+          type="number"
+          value={local[def.key] || ''}
+          onChange={(e) => handleChange(def.key, e.target.value)}
+        />
+      );
+    }
+
+    return (
+      <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-3">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Wert</span>
+          <span className="rounded-md bg-primary/10 px-2 py-0.5 font-semibold text-primary">{value}</span>
+        </div>
+        <Slider
+          value={[value]}
+          min={config.min}
+          max={config.max}
+          step={config.step}
+          onValueChange={(values) => handleChange(def.key, String(values[0] ?? config.min))}
+        />
+        <Input
+          type="number"
+          min={config.min}
+          max={config.max}
+          step={config.step}
+          value={String(value)}
+          onChange={(e) => handleChange(def.key, e.target.value)}
+        />
+      </div>
+    );
+  };
+
+  const renderField = (def: SettingDef) => {
+    if (def.key === 'assignment.mode') {
+      return (
+        <div className="grid w-full grid-cols-3 gap-2">
+          {['shadow', 'dry-run', 'live'].map((option) => {
+            const active = (local[def.key] || 'shadow') === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleChange(def.key, option)}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${active
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/40 bg-background/50 text-foreground hover:border-primary/40'
+                }`}
+              >
+                {option === 'dry-run' ? 'Dry-Run' : option === 'live' ? 'Live' : 'Shadow'}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (def.key === 'assignment.fallbackTieBreaker') {
+      return (
+        <div className="grid w-full grid-cols-2 gap-2">
+          {[
+            { value: 'stable-id', label: 'Stable ID' },
+            { value: 'random', label: 'Random' },
+          ].map((option) => {
+            const active = (local[def.key] || 'stable-id') === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleChange(def.key, option.value)}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${active
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/40 bg-background/50 text-foreground hover:border-primary/40'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (def.key === 'assignment.supportedTicketTypes') {
+      const selected = new Set(getTicketTypes());
+      return (
+        <div className="grid grid-cols-1 gap-2 rounded-xl border border-border/40 bg-background/40 p-3 sm:grid-cols-2">
+          {ticketTypeOptions.map((ticketType) => (
+            <label key={ticketType} className="flex items-center gap-2 rounded-lg border border-border/30 px-3 py-2 text-sm">
+              <Checkbox
+                checked={selected.has(ticketType)}
+                onCheckedChange={(checked) => updateTicketTypes(ticketType, checked === true)}
+              />
+              <span>{ticketType}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+
+    if (def.type === 'boolean') {
+      return (
+        <div className="flex items-center justify-between rounded-xl border border-border/40 bg-background/40 px-3 py-2.5">
+          <span className="text-sm text-foreground">{getBooleanValue(def.key) ? 'Aktiv' : 'Inaktiv'}</span>
+          <Switch
+            checked={getBooleanValue(def.key)}
+            onCheckedChange={(checked) => handleChange(def.key, checked ? 'true' : 'false')}
+          />
+        </div>
+      );
+    }
+
+    if (def.type === 'number') {
+      return renderNumberControl(def);
+    }
+
+    if (def.type === 'select') {
+      return (
+        <div className="grid gap-2 rounded-xl border border-border/40 bg-background/40 p-3">
+          {def.options?.map((option) => {
+            const active = (local[def.key] || '') === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleChange(def.key, option)}
+                className={`rounded-lg border px-3 py-2 text-sm text-left transition ${active
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/40 bg-background/50 text-foreground hover:border-primary/40'
+                }`}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <Input
+        type="text"
+        value={local[def.key] || ''}
+        onChange={(e) => handleChange(def.key, e.target.value)}
+      />
+    );
   };
 
   return (
@@ -226,40 +410,7 @@ export function AssignmentSettingsPanel() {
               {def.label}
               <InfoTooltip title={def.label} side="right" align="start">{def.tooltip}</InfoTooltip>
             </label>
-            {def.type === 'select' ? (
-              <select
-                className="text-sm rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-foreground"
-                value={local[def.key] || ''}
-                onChange={(e) => handleChange(def.key, e.target.value)}
-              >
-                {def.options?.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            ) : def.type === 'boolean' ? (
-              <select
-                className="text-sm rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-foreground"
-                value={local[def.key] || 'false'}
-                onChange={(e) => handleChange(def.key, e.target.value)}
-              >
-                <option value="true">Ja</option>
-                <option value="false">Nein</option>
-              </select>
-            ) : def.type === 'number' ? (
-              <input
-                type="number"
-                className="text-sm rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-foreground"
-                value={local[def.key] || ''}
-                onChange={(e) => handleChange(def.key, e.target.value)}
-              />
-            ) : (
-              <input
-                type="text"
-                className="text-sm rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-foreground"
-                value={local[def.key] || ''}
-                onChange={(e) => handleChange(def.key, e.target.value)}
-              />
-            )}
+            {renderField(def)}
           </div>
         ))}
       </div>

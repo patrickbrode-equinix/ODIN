@@ -21,6 +21,7 @@ import {
   Loader2, Play, RotateCcw, ShieldAlert, Activity, Mail, Network
 } from "lucide-react";
 import { InfoTooltip } from "../ui/InfoTooltip";
+import { useLanguage, type LanguageCode, getLanguageLocale } from "../../context/LanguageContext";
 
 /* ---- Tab type ---- */
 type TabId = "overview" | "diagnostics" | "employees" | "events" | "routing" | "templates" | "test" | "log" | "errors" | "settings";
@@ -32,17 +33,17 @@ interface RecipientGroup {
   recipients: string[];
 }
 
-const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "overview",  label: "Übersicht",      icon: Eye },
-  { id: "diagnostics", label: "Fehlercenter",  icon: ShieldAlert },
-  { id: "employees", label: "Mappings", icon: Network },
-  { id: "events",    label: "Events",         icon: Zap },
-  { id: "routing",   label: "Routing",        icon: Users },
-  { id: "templates", label: "Templates",      icon: FileText },
-  { id: "test",      label: "Test Center",    icon: TestTube },
-  { id: "log",       label: "Verlauf",        icon: Clock },
-  { id: "errors",    label: "Fehler & Retry", icon: AlertTriangle },
-  { id: "settings",  label: "Einstellungen",  icon: Settings },
+const TABS: { id: TabId; icon: React.ElementType }[] = [
+  { id: "overview", icon: Eye },
+  { id: "diagnostics", icon: ShieldAlert },
+  { id: "employees", icon: Network },
+  { id: "events", icon: Zap },
+  { id: "routing", icon: Users },
+  { id: "templates", icon: FileText },
+  { id: "test", icon: TestTube },
+  { id: "log", icon: Clock },
+  { id: "errors", icon: AlertTriangle },
+  { id: "settings", icon: Settings },
 ];
 
 const TAB_SUMMARIES: Record<TabId, { title: string; description: string }> = {
@@ -87,6 +88,87 @@ const TAB_SUMMARIES: Record<TabId, { title: string; description: string }> = {
     description: "Globale Versandregeln wie Quiet Hours, Deduplizierung, Fallbacks und Eskalationszeiten.",
   },
 };
+
+const TEAMS_COPY: Record<LanguageCode, any> = {
+  de: {
+    pageTitle: "Teams Communication Center",
+    pageSubtitle: "Microsoft Teams Nachrichtensteuerung",
+    strapline: "Teams Center · transparent, aber operativ nutzbar",
+    tabs: { overview: "Übersicht", diagnostics: "Fehlercenter", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test Center", log: "Verlauf", errors: "Fehler & Retry", settings: "Einstellungen" },
+    summaries: TAB_SUMMARIES,
+    statusError: "Status konnte nicht geladen werden",
+    diagnosticsError: "Fehlercenter konnte nicht geladen werden",
+    refresh: "Aktualisieren",
+    recheck: "Neu prüfen",
+    ready: "Bereit",
+    blocked: "Blockiert",
+    teamsReady: "Teams bereit",
+    teamsBlocked: "Teams blockiert",
+    sentToday: "Gesendet heute",
+    failedToday: "Fehlgeschlagen heute",
+    openRetries: "Offene Retries (24h)",
+    mappedEmployees: "Gemappte Mitarbeiter",
+    lastSuccess: "Letzter erfolgreicher Versand",
+    lastError: "Letzter Fehler",
+    time: "Zeit",
+    type: "Typ",
+    recipient: "Empfänger",
+    noSend: "Noch keine Sendung",
+    noErrors: "Keine Fehler",
+    quickStatus: "Fehlercenter-Schnellstatus",
+    whatChecks: "Was das Fehlercenter prüft",
+    commonFailures: "Typische Fehlerbilder",
+    operationsUsage: "Operative Nutzung",
+    latestDiagnosis: "Letzte Diagnose",
+    asOf: "Stand",
+    blockingPoints: "Blockierende Punkte",
+    noBlockingPoints: "Aktuell wurden keine blockierenden Teams-Probleme erkannt.",
+    activeMappings: "Aktive Teams-Mappings",
+    linkedUsers: "Mit ODIN-User verknüpft",
+    manualOverrides: "Manuelle Overrides",
+    employeeMappings: "Mitarbeiter-Mappings",
+    filterHint: "Filterbar nach Mitarbeitername, E-Mail oder Mailquelle.",
+    searchNameOrMail: "Suche nach Name oder E-Mail",
+    employee: "Mitarbeiter",
+    teamsMail: "Teams-Mail",
+    mailSource: "Mailquelle",
+    override: "Override",
+    odinUser: "ODIN-User",
+    lastUpdated: "Zuletzt aktualisiert",
+    manual: "Manuell",
+    automatic: "Automatisch",
+    notLinked: "Nicht verknüpft",
+    noEmployees: "Keine Mitarbeiter-Mappings passend zum aktuellen Filter.",
+    active: "Aktiv",
+    inactive: "Inaktiv",
+    statusFilterAll: "Alle Status",
+    sent: "Gesendet",
+    failed: "Fehlgeschlagen",
+    entriesTotal: "Einträge gesamt",
+    content: "Inhalt",
+    error: "Fehler",
+    failedMessages: "Fehlgeschlagene Nachrichten – manuelles Retry möglich",
+    noFailedMessages: "Keine fehlgeschlagenen Nachrichten",
+    retry: "Retry",
+    save: "Speichern",
+  },
+  en: { pageTitle: "Teams Communication Center", pageSubtitle: "Microsoft Teams message control", strapline: "Teams Center · transparent and operational", tabs: { overview: "Overview", diagnostics: "Diagnostics", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test center", log: "History", errors: "Errors & retry", settings: "Settings" }, summaries: { overview: { title: "Quick overview", description: "Status, delivery load and the main blockers in one compact control room." }, diagnostics: { title: "Diagnostics", description: "Technical checks with plain-language explanations, importance and next steps." }, employees: { title: "Mapped employees", description: "All Teams mappings from the database including mail source, override state and linked ODIN user." }, events: { title: "Events", description: "Controls which ODIN events trigger Teams messages and how aggressively they are delivered." }, routing: { title: "Routing", description: "Assigns events to people, roles, shifts or saved recipient groups." }, templates: { title: "Templates", description: "Wording and information density of Teams messages including test preview." }, test: { title: "Test center", description: "Validates webhooks, bot paths and templates without firing a real production event." }, log: { title: "History", description: "Chronological overview of sent or failed Teams messages." }, errors: { title: "Errors & retry", description: "Targeted reprocessing of failed deliveries with clear technical root cause." }, settings: { title: "Settings", description: "Global delivery rules such as quiet hours, deduplication, fallbacks and escalation times." } }, statusError: "Status could not be loaded", diagnosticsError: "Diagnostics could not be loaded", refresh: "Refresh", recheck: "Run again", ready: "Ready", blocked: "Blocked", teamsReady: "Teams ready", teamsBlocked: "Teams blocked", sentToday: "Sent today", failedToday: "Failed today", openRetries: "Open retries (24h)", mappedEmployees: "Mapped employees", lastSuccess: "Last successful delivery", lastError: "Last error", time: "Time", type: "Type", recipient: "Recipient", noSend: "No delivery yet", noErrors: "No errors", quickStatus: "Diagnostics quick status", whatChecks: "What diagnostics checks", commonFailures: "Typical failure patterns", operationsUsage: "Operational usage", latestDiagnosis: "Latest diagnosis", asOf: "As of", blockingPoints: "Blocking issues", noBlockingPoints: "No blocking Teams issues were detected.", activeMappings: "Active Teams mappings", linkedUsers: "Linked to ODIN user", manualOverrides: "Manual overrides", employeeMappings: "Employee mappings", filterHint: "Filter by employee name, email or email source.", searchNameOrMail: "Search by name or email", employee: "Employee", teamsMail: "Teams email", mailSource: "Mail source", override: "Override", odinUser: "ODIN user", lastUpdated: "Last updated", manual: "Manual", automatic: "Automatic", notLinked: "Not linked", noEmployees: "No employee mappings match the current filter.", active: "Active", inactive: "Inactive", statusFilterAll: "All statuses", sent: "Sent", failed: "Failed", entriesTotal: "entries total", content: "Content", error: "Error", failedMessages: "Failed messages – manual retry available", noFailedMessages: "No failed messages", retry: "Retry", save: "Save" },
+  sq: { pageTitle: "Qendra e komunikimit Teams", pageSubtitle: "Kontrolli i mesazheve Microsoft Teams", strapline: "Qendra Teams · transparente dhe operative", tabs: { overview: "Përmbledhje", diagnostics: "Diagnostikë", employees: "Mappings", events: "Ngjarje", routing: "Rrjedhë", templates: "Template", test: "Qendra e testit", log: "Historik", errors: "Gabime dhe retry", settings: "Cilësimet" }, summaries: TAB_SUMMARIES, statusError: "Statusi nuk u ngarkua", diagnosticsError: "Diagnostika nuk u ngarkua", refresh: "Rifresko", recheck: "Kontrollo sërish", ready: "Gati", blocked: "Bllokuar", teamsReady: "Teams gati", teamsBlocked: "Teams i bllokuar", sentToday: "Dërguar sot", failedToday: "Dështuar sot", openRetries: "Retry të hapura (24h)", mappedEmployees: "Punonjës të mapuar", lastSuccess: "Dërgimi i fundit me sukses", lastError: "Gabimi i fundit", time: "Koha", type: "Lloji", recipient: "Marrësi", noSend: "Ende pa dërgim", noErrors: "Pa gabime", quickStatus: "Status i shpejtë", whatChecks: "Çfarë kontrollon diagnostika", commonFailures: "Gabime tipike", operationsUsage: "Përdorim operativ", latestDiagnosis: "Diagnoza e fundit", asOf: "Gjendja", blockingPoints: "Pika bllokuese", noBlockingPoints: "Nuk u gjetën probleme bllokuese.", activeMappings: "Mappings aktivë", linkedUsers: "Të lidhur me ODIN", manualOverrides: "Overrides manuale", employeeMappings: "Mappings të punonjësve", filterHint: "Filtro sipas emrit, email-it ose burimit të email-it.", searchNameOrMail: "Kërko sipas emrit ose email-it", employee: "Punonjësi", teamsMail: "Email Teams", mailSource: "Burimi i email-it", override: "Override", odinUser: "Përdoruesi ODIN", lastUpdated: "Përditësuar së fundi", manual: "Manual", automatic: "Automatik", notLinked: "I palidhur", noEmployees: "Asnjë mapping nuk përputhet me filtrin.", active: "Aktiv", inactive: "Joaktiv", statusFilterAll: "Të gjithë statuset", sent: "Dërguar", failed: "Dështuar", entriesTotal: "hyrje gjithsej", content: "Përmbajtja", error: "Gabim", failedMessages: "Mesazhe të dështuara – retry manual", noFailedMessages: "Nuk ka mesazhe të dështuara", retry: "Retry", save: "Ruaj" },
+  bs: { pageTitle: "Teams komunikacijski centar", pageSubtitle: "Upravljanje Microsoft Teams porukama", strapline: "Teams centar · transparentan i operativan", tabs: { overview: "Pregled", diagnostics: "Dijagnostika", employees: "Mapiranja", events: "Događaji", routing: "Rutiranje", templates: "Predlošci", test: "Test centar", log: "Historija", errors: "Greške i retry", settings: "Postavke" }, summaries: TAB_SUMMARIES, statusError: "Status se nije mogao učitati", diagnosticsError: "Dijagnostika se nije mogla učitati", refresh: "Osvježi", recheck: "Provjeri ponovo", ready: "Spremno", blocked: "Blokirano", teamsReady: "Teams spreman", teamsBlocked: "Teams blokiran", sentToday: "Poslano danas", failedToday: "Neuspjelo danas", openRetries: "Otvoreni retry (24h)", mappedEmployees: "Mapirani zaposlenici", lastSuccess: "Posljednja uspješna isporuka", lastError: "Posljednja greška", time: "Vrijeme", type: "Tip", recipient: "Primalac", noSend: "Još nema slanja", noErrors: "Nema grešaka", quickStatus: "Brzi status", whatChecks: "Šta provjerava dijagnostika", commonFailures: "Tipični problemi", operationsUsage: "Operativna upotreba", latestDiagnosis: "Posljednja dijagnoza", asOf: "Stanje", blockingPoints: "Blokirajuće tačke", noBlockingPoints: "Nema blokirajućih Teams problema.", activeMappings: "Aktivna mapiranja", linkedUsers: "Povezano s ODIN korisnikom", manualOverrides: "Ručni override", employeeMappings: "Mapiranja zaposlenika", filterHint: "Filter po imenu, e-mailu ili izvoru pošte.", searchNameOrMail: "Traži po imenu ili e-mailu", employee: "Zaposlenik", teamsMail: "Teams e-mail", mailSource: "Izvor pošte", override: "Override", odinUser: "ODIN korisnik", lastUpdated: "Zadnje ažuriranje", manual: "Ručno", automatic: "Automatski", notLinked: "Nije povezano", noEmployees: "Nema mapiranja za trenutni filter.", active: "Aktivno", inactive: "Neaktivno", statusFilterAll: "Svi statusi", sent: "Poslano", failed: "Neuspjelo", entriesTotal: "unosa ukupno", content: "Sadržaj", error: "Greška", failedMessages: "Neuspjele poruke – moguć ručni retry", noFailedMessages: "Nema neuspjelih poruka", retry: "Retry", save: "Spremi" },
+  fr: { pageTitle: "Centre de communication Teams", pageSubtitle: "Pilotage des messages Microsoft Teams", strapline: "Centre Teams · transparent et exploitable", tabs: { overview: "Vue d’ensemble", diagnostics: "Diagnostic", employees: "Mappings", events: "Événements", routing: "Routage", templates: "Templates", test: "Centre de test", log: "Historique", errors: "Erreurs et retry", settings: "Paramètres" }, summaries: TAB_SUMMARIES, statusError: "Le statut n’a pas pu être chargé", diagnosticsError: "Le diagnostic n’a pas pu être chargé", refresh: "Actualiser", recheck: "Relancer", ready: "Prêt", blocked: "Bloqué", teamsReady: "Teams prêt", teamsBlocked: "Teams bloqué", sentToday: "Envoyés aujourd’hui", failedToday: "Échecs aujourd’hui", openRetries: "Retries ouverts (24h)", mappedEmployees: "Employés mappés", lastSuccess: "Dernier envoi réussi", lastError: "Dernière erreur", time: "Heure", type: "Type", recipient: "Destinataire", noSend: "Aucun envoi pour le moment", noErrors: "Aucune erreur", quickStatus: "Statut rapide", whatChecks: "Ce que vérifie le diagnostic", commonFailures: "Pannes typiques", operationsUsage: "Usage opérationnel", latestDiagnosis: "Dernier diagnostic", asOf: "État", blockingPoints: "Points bloquants", noBlockingPoints: "Aucun problème bloquant détecté.", activeMappings: "Mappings actifs", linkedUsers: "Lié à un utilisateur ODIN", manualOverrides: "Overrides manuels", employeeMappings: "Mappings employés", filterHint: "Filtrable par nom, e-mail ou source e-mail.", searchNameOrMail: "Rechercher par nom ou e-mail", employee: "Employé", teamsMail: "E-mail Teams", mailSource: "Source e-mail", override: "Override", odinUser: "Utilisateur ODIN", lastUpdated: "Dernière mise à jour", manual: "Manuel", automatic: "Automatique", notLinked: "Non lié", noEmployees: "Aucun mapping ne correspond au filtre actuel.", active: "Actif", inactive: "Inactif", statusFilterAll: "Tous les statuts", sent: "Envoyé", failed: "Échec", entriesTotal: "entrées au total", content: "Contenu", error: "Erreur", failedMessages: "Messages en échec – retry manuel possible", noFailedMessages: "Aucun message en échec", retry: "Retry", save: "Enregistrer" },
+  es: { pageTitle: "Centro de comunicación Teams", pageSubtitle: "Control de mensajes de Microsoft Teams", strapline: "Centro Teams · transparente y operativo", tabs: { overview: "Resumen", diagnostics: "Diagnóstico", employees: "Mappings", events: "Eventos", routing: "Routing", templates: "Templates", test: "Centro de pruebas", log: "Historial", errors: "Errores y retry", settings: "Ajustes" }, summaries: TAB_SUMMARIES, statusError: "No se pudo cargar el estado", diagnosticsError: "No se pudo cargar el diagnóstico", refresh: "Actualizar", recheck: "Volver a comprobar", ready: "Listo", blocked: "Bloqueado", teamsReady: "Teams listo", teamsBlocked: "Teams bloqueado", sentToday: "Enviados hoy", failedToday: "Fallidos hoy", openRetries: "Retries abiertos (24h)", mappedEmployees: "Empleados mapeados", lastSuccess: "Último envío correcto", lastError: "Último error", time: "Hora", type: "Tipo", recipient: "Destinatario", noSend: "Aún no hay envíos", noErrors: "Sin errores", quickStatus: "Estado rápido", whatChecks: "Qué comprueba el diagnóstico", commonFailures: "Fallos típicos", operationsUsage: "Uso operativo", latestDiagnosis: "Último diagnóstico", asOf: "Estado", blockingPoints: "Puntos bloqueantes", noBlockingPoints: "No se detectaron problemas bloqueantes.", activeMappings: "Mappings activos", linkedUsers: "Vinculado con usuario ODIN", manualOverrides: "Overrides manuales", employeeMappings: "Mappings de empleados", filterHint: "Filtrable por nombre, correo o fuente de correo.", searchNameOrMail: "Buscar por nombre o correo", employee: "Empleado", teamsMail: "Correo Teams", mailSource: "Fuente del correo", override: "Override", odinUser: "Usuario ODIN", lastUpdated: "Última actualización", manual: "Manual", automatic: "Automático", notLinked: "No vinculado", noEmployees: "No hay mappings para el filtro actual.", active: "Activo", inactive: "Inactivo", statusFilterAll: "Todos los estados", sent: "Enviado", failed: "Fallido", entriesTotal: "entradas totales", content: "Contenido", error: "Error", failedMessages: "Mensajes fallidos: retry manual disponible", noFailedMessages: "No hay mensajes fallidos", retry: "Retry", save: "Guardar" },
+  "pt-BR": { pageTitle: "Central de comunicação Teams", pageSubtitle: "Controle de mensagens do Microsoft Teams", strapline: "Central Teams · transparente e operacional", tabs: { overview: "Visão geral", diagnostics: "Diagnóstico", employees: "Mappings", events: "Eventos", routing: "Roteamento", templates: "Templates", test: "Centro de testes", log: "Histórico", errors: "Erros e retry", settings: "Configurações" }, summaries: TAB_SUMMARIES, statusError: "Não foi possível carregar o status", diagnosticsError: "Não foi possível carregar o diagnóstico", refresh: "Atualizar", recheck: "Verificar novamente", ready: "Pronto", blocked: "Bloqueado", teamsReady: "Teams pronto", teamsBlocked: "Teams bloqueado", sentToday: "Enviados hoje", failedToday: "Falhas hoje", openRetries: "Retries abertos (24h)", mappedEmployees: "Funcionários mapeados", lastSuccess: "Último envio com sucesso", lastError: "Último erro", time: "Hora", type: "Tipo", recipient: "Destinatário", noSend: "Ainda sem envios", noErrors: "Sem erros", quickStatus: "Status rápido", whatChecks: "O que o diagnóstico verifica", commonFailures: "Falhas típicas", operationsUsage: "Uso operacional", latestDiagnosis: "Último diagnóstico", asOf: "Estado", blockingPoints: "Pontos bloqueadores", noBlockingPoints: "Nenhum problema bloqueador foi detectado.", activeMappings: "Mappings ativos", linkedUsers: "Vinculado ao usuário ODIN", manualOverrides: "Overrides manuais", employeeMappings: "Mappings de funcionários", filterHint: "Filtrável por nome, e-mail ou origem do e-mail.", searchNameOrMail: "Buscar por nome ou e-mail", employee: "Funcionário", teamsMail: "E-mail Teams", mailSource: "Origem do e-mail", override: "Override", odinUser: "Usuário ODIN", lastUpdated: "Última atualização", manual: "Manual", automatic: "Automático", notLinked: "Não vinculado", noEmployees: "Nenhum mapping corresponde ao filtro atual.", active: "Ativo", inactive: "Inativo", statusFilterAll: "Todos os status", sent: "Enviado", failed: "Falhou", entriesTotal: "entradas no total", content: "Conteúdo", error: "Erro", failedMessages: "Mensagens com falha – retry manual disponível", noFailedMessages: "Nenhuma mensagem com falha", retry: "Retry", save: "Salvar" },
+  "fa-AF": { pageTitle: "مرکز ارتباط Teams", pageSubtitle: "کنترل پیام‌های Microsoft Teams", strapline: "مرکز Teams · شفاف و قابل استفاده عملیاتی", tabs: { overview: "نمای کلی", diagnostics: "تشخیص", employees: "نگاشت‌ها", events: "رویدادها", routing: "مسیردهی", templates: "قالب‌ها", test: "مرکز تست", log: "تاریخچه", errors: "خطا و retry", settings: "تنظیمات" }, summaries: TAB_SUMMARIES, statusError: "وضعیت بارگیری نشد", diagnosticsError: "تشخیص بارگیری نشد", refresh: "تازه‌سازی", recheck: "بررسی دوباره", ready: "آماده", blocked: "مسدود", teamsReady: "Teams آماده است", teamsBlocked: "Teams مسدود است", sentToday: "ارسال‌شده امروز", failedToday: "ناموفق امروز", openRetries: "retry باز (24h)", mappedEmployees: "کارکنان نگاشت‌شده", lastSuccess: "آخرین ارسال موفق", lastError: "آخرین خطا", time: "زمان", type: "نوع", recipient: "گیرنده", noSend: "هنوز ارسالی نیست", noErrors: "بدون خطا", quickStatus: "وضعیت سریع", whatChecks: "تشخیص چه چیزی را بررسی می‌کند", commonFailures: "خطاهای رایج", operationsUsage: "استفاده عملیاتی", latestDiagnosis: "آخرین تشخیص", asOf: "وضعیت", blockingPoints: "موارد مسدودکننده", noBlockingPoints: "هیچ مشکل مسدودکننده‌ای شناسایی نشد.", activeMappings: "نگاشت‌های فعال", linkedUsers: "متصل به کاربر ODIN", manualOverrides: "override دستی", employeeMappings: "نگاشت کارکنان", filterHint: "فیلتر بر اساس نام، ایمیل یا منبع ایمیل.", searchNameOrMail: "جستجو بر اساس نام یا ایمیل", employee: "کارمند", teamsMail: "ایمیل Teams", mailSource: "منبع ایمیل", override: "override", odinUser: "کاربر ODIN", lastUpdated: "آخرین به‌روزرسانی", manual: "دستی", automatic: "خودکار", notLinked: "متصل نیست", noEmployees: "هیچ نگاشتی با فیلتر فعلی سازگار نیست.", active: "فعال", inactive: "غیرفعال", statusFilterAll: "همه وضعیت‌ها", sent: "ارسال شد", failed: "ناموفق", entriesTotal: "ورودی در مجموع", content: "محتوا", error: "خطا", failedMessages: "پیام‌های ناموفق - retry دستی ممکن است", noFailedMessages: "پیام ناموفقی وجود ندارد", retry: "retry", save: "ذخیره" },
+};
+
+function useTeamsUi() {
+  const { language } = useLanguage();
+  return {
+    language,
+    locale: getLanguageLocale(language),
+    copy: TEAMS_COPY[language],
+  };
+}
 
 const DIAGNOSTIC_HELP: Record<string, { title: string; summary: string; detail: string }> = {
   channel_webhook: {
@@ -162,13 +244,16 @@ function parseRecipientGroups(rawValue: string | undefined): RecipientGroup[] {
 }
 
 export default function TeamsCommunicationCenter() {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const tabSummary = TAB_SUMMARIES[activeTab];
+  return <TeamsCommunicationCenterPanel />;
+}
 
-  return (
-    <EnterprisePageShell>
-      <EnterpriseHeader title="Teams Communication Center" subtitle="Microsoft Teams Nachrichtensteuerung" />
-      {/* Tab Bar */}
+export function TeamsCommunicationCenterPanel({ embedded = false, initialTab = "overview" }: { embedded?: boolean; initialTab?: TabId }) {
+  const { copy } = useTeamsUi();
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const tabSummary = copy.summaries[activeTab];
+
+  const content = (
+    <>
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
         {TABS.map(t => (
           <button
@@ -181,7 +266,7 @@ export default function TeamsCommunicationCenter() {
             }`}
           >
             <t.icon className="w-4 h-4" />
-            {t.label}
+            {copy.tabs[t.id]}
           </button>
         ))}
       </div>
@@ -192,11 +277,10 @@ export default function TeamsCommunicationCenter() {
             <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{tabSummary.title}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">{tabSummary.description}</div>
           </div>
-          <div className="text-xs text-gray-400">Teams Center · transparent, aber operativ nutzbar</div>
+          <div className="text-xs text-gray-400">{copy.strapline}</div>
         </div>
       </EnterpriseCard>
 
-      {/* Tab Content */}
       {activeTab === "overview" && <OverviewTab />}
       {activeTab === "diagnostics" && <DiagnosticsTab />}
       {activeTab === "employees" && <EmployeesTab />}
@@ -207,6 +291,15 @@ export default function TeamsCommunicationCenter() {
       {activeTab === "log" && <LogTab />}
       {activeTab === "errors" && <ErrorsTab />}
       {activeTab === "settings" && <SettingsTab />}
+    </>
+  );
+
+  if (embedded) return <div className="space-y-0">{content}</div>;
+
+  return (
+    <EnterprisePageShell>
+      <EnterpriseHeader title={copy.pageTitle} subtitle={copy.pageSubtitle} />
+      {content}
     </EnterprisePageShell>
   );
 }
@@ -216,6 +309,7 @@ export default function TeamsCommunicationCenter() {
 /* ================================================ */
 
 function OverviewTab() {
+  const { copy, locale } = useTeamsUi();
   const [status, setStatus] = useState<TeamsStatus | null>(null);
   const [diagnostics, setDiagnostics] = useState<TeamsDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -236,7 +330,7 @@ function OverviewTab() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (!status) return <ErrorBox message="Status konnte nicht geladen werden" />;
+  if (!status) return <ErrorBox message={copy.statusError} />;
 
   const StatusBadge = ({ ok, label }: { ok: boolean; label: string }) => (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${ok ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`}>
@@ -285,25 +379,25 @@ function OverviewTab() {
         <EnterpriseCard>
           <div className="text-center">
             <div className="text-3xl font-bold text-green-600">{status.sent_today}</div>
-            <div className="text-sm text-gray-500">Gesendet heute</div>
+            <div className="text-sm text-gray-500">{copy.sentToday}</div>
           </div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-center">
             <div className="text-3xl font-bold text-red-600">{status.failed_today}</div>
-            <div className="text-sm text-gray-500">Fehlgeschlagen heute</div>
+            <div className="text-sm text-gray-500">{copy.failedToday}</div>
           </div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-center">
             <div className="text-3xl font-bold text-orange-600">{status.pending_retries}</div>
-            <div className="text-sm text-gray-500">Offene Retries (24h)</div>
+            <div className="text-sm text-gray-500">{copy.openRetries}</div>
           </div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-center">
             <div className="text-3xl font-bold text-blue-600">{status.mapped_employees}</div>
-            <div className="text-sm text-gray-500">Gemappte Mitarbeiter</div>
+            <div className="text-sm text-gray-500">{copy.mappedEmployees}</div>
           </div>
         </EnterpriseCard>
       </div>
@@ -311,24 +405,24 @@ function OverviewTab() {
       {/* Last Success / Error */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <EnterpriseCard>
-          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Letzter erfolgreicher Versand</h3>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">{copy.lastSuccess}</h3>
           {status.last_success ? (
             <div className="text-sm space-y-1">
-              <div><span className="text-gray-500">Zeit:</span> {new Date(status.last_success.sent_at).toLocaleString("de-DE")}</div>
-              <div><span className="text-gray-500">Typ:</span> {status.last_success.message_type}</div>
-              <div><span className="text-gray-500">Empfänger:</span> {status.last_success.recipient || "–"}</div>
+              <div><span className="text-gray-500">{copy.time}:</span> {new Date(status.last_success.sent_at).toLocaleString(locale)}</div>
+              <div><span className="text-gray-500">{copy.type}:</span> {status.last_success.message_type}</div>
+              <div><span className="text-gray-500">{copy.recipient}:</span> {status.last_success.recipient || "–"}</div>
             </div>
-          ) : <div className="text-gray-400 text-sm">Noch keine Sendung</div>}
+          ) : <div className="text-gray-400 text-sm">{copy.noSend}</div>}
         </EnterpriseCard>
         <EnterpriseCard>
-          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Letzter Fehler</h3>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">{copy.lastError}</h3>
           {status.last_error ? (
             <div className="text-sm space-y-1">
-              <div><span className="text-gray-500">Zeit:</span> {new Date(status.last_error.sent_at).toLocaleString("de-DE")}</div>
-              <div><span className="text-gray-500">Typ:</span> {status.last_error.message_type}</div>
+              <div><span className="text-gray-500">{copy.time}:</span> {new Date(status.last_error.sent_at).toLocaleString(locale)}</div>
+              <div><span className="text-gray-500">{copy.type}:</span> {status.last_error.message_type}</div>
               <div className="text-red-600 text-xs font-mono break-all">{status.last_error.error_msg}</div>
             </div>
-          ) : <div className="text-green-500 text-sm">Keine Fehler</div>}
+          ) : <div className="text-green-500 text-sm">{copy.noErrors}</div>}
         </EnterpriseCard>
       </div>
 
@@ -336,12 +430,12 @@ function OverviewTab() {
         <EnterpriseCard>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Fehlercenter-Schnellstatus</h3>
+              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">{copy.quickStatus}</h3>
               <p className="text-sm text-gray-600 dark:text-gray-300">{diagnostics.summary}</p>
             </div>
             <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${diagnostics.ready ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`}>
               {diagnostics.ready ? <CheckCircle2 className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
-              {diagnostics.ready ? "Bereit" : "Blockiert"}
+              {diagnostics.ready ? copy.ready : copy.blocked}
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
@@ -363,7 +457,7 @@ function OverviewTab() {
 
       <div className="flex justify-end">
         <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
-          <RefreshCw className="w-4 h-4" /> Aktualisieren
+          <RefreshCw className="w-4 h-4" /> {copy.refresh}
         </button>
       </div>
     </div>
@@ -371,6 +465,7 @@ function OverviewTab() {
 }
 
 function DiagnosticsTab() {
+  const { copy, locale } = useTeamsUi();
   const [diagnostics, setDiagnostics] = useState<TeamsDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -387,7 +482,7 @@ function DiagnosticsTab() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (!diagnostics) return <ErrorBox message="Fehlercenter konnte nicht geladen werden" />;
+  if (!diagnostics) return <ErrorBox message={copy.diagnosticsError} />;
 
   return (
     <div className="space-y-6">
@@ -395,7 +490,7 @@ function DiagnosticsTab() {
         <EnterpriseCard>
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
             <ShieldAlert className="w-4 h-4" />
-            Was das Fehlercenter prüft
+            {copy.whatChecks}
             <InfoTooltip title="Prüfumfang" side="right">
               <p>Das Fehlercenter kombiniert Konfiguration, echte Authentifizierung, Graph-Lesetest und aktuelle Versandlage.</p>
               <p>Dadurch sieht man nicht nur <strong>dass</strong> Teams nicht funktioniert, sondern <strong>woran</strong> es konkret scheitert.</p>
@@ -406,7 +501,7 @@ function DiagnosticsTab() {
         <EnterpriseCard>
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
             <Mail className="w-4 h-4" />
-            Typische Fehlerbilder
+            {copy.commonFailures}
             <InfoTooltip title="Häufige Ursachen" side="right">
               <p>In der Praxis blockieren am häufigsten drei Dinge: fehlender Webhook, fehlende Graph-Rechte oder ein gültiges Token ohne Admin Consent.</p>
             </InfoTooltip>
@@ -416,7 +511,7 @@ function DiagnosticsTab() {
         <EnterpriseCard>
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
             <Activity className="w-4 h-4" />
-            Operative Nutzung
+            {copy.operationsUsage}
             <InfoTooltip title="Wie man es nutzt" side="right">
               <p>Erst die roten Blocker beheben, dann die Hinweise prüfen, danach im Test Center mit Kanal- und Personaltest verifizieren.</p>
             </InfoTooltip>
@@ -430,19 +525,19 @@ function DiagnosticsTab() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
               <Activity className="w-4 h-4" />
-              Letzte Diagnose
+              {copy.latestDiagnosis}
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-300">{diagnostics.summary}</div>
-            <div className="text-xs text-gray-400">Stand: {new Date(diagnostics.generated_at).toLocaleString("de-DE")}</div>
+            <div className="text-xs text-gray-400">{copy.asOf}: {new Date(diagnostics.generated_at).toLocaleString(locale)}</div>
           </div>
 
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${diagnostics.ready ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`}>
               {diagnostics.ready ? <CheckCircle2 className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
-              {diagnostics.ready ? "Teams bereit" : "Teams blockiert"}
+              {diagnostics.ready ? copy.teamsReady : copy.teamsBlocked}
             </div>
             <button onClick={load} className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
-              <RefreshCw className="w-4 h-4" /> Neu pruefen
+              <RefreshCw className="w-4 h-4" /> {copy.recheck}
             </button>
           </div>
         </div>
@@ -455,10 +550,10 @@ function DiagnosticsTab() {
       </div>
 
       <EnterpriseCard>
-        <h3 className="text-sm font-semibold mb-3">Blockierende Punkte</h3>
+        <h3 className="text-sm font-semibold mb-3">{copy.blockingPoints}</h3>
         {diagnostics.blocking_issues.length === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-900/20 dark:text-green-300">
-            Aktuell wurden keine blockierenden Teams-Probleme erkannt.
+            {copy.noBlockingPoints}
           </div>
         ) : (
           <div className="space-y-2">
@@ -481,6 +576,7 @@ function DiagnosticsTab() {
 }
 
 function EmployeesTab() {
+  const { copy, locale } = useTeamsUi();
   const [employees, setEmployees] = useState<TeamsEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -515,38 +611,38 @@ function EmployeesTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <EnterpriseCard>
           <div className="text-3xl font-bold text-blue-600">{activeMappings}</div>
-          <div className="text-sm text-gray-500">Aktive Teams-Mappings</div>
+          <div className="text-sm text-gray-500">{copy.activeMappings}</div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-3xl font-bold text-green-600">{linkedUsers}</div>
-          <div className="text-sm text-gray-500">Mit ODIN-User verknüpft</div>
+          <div className="text-sm text-gray-500">{copy.linkedUsers}</div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-3xl font-bold text-amber-600">{manualOverrides}</div>
-          <div className="text-sm text-gray-500">Manuelle Overrides</div>
+          <div className="text-sm text-gray-500">{copy.manualOverrides}</div>
         </EnterpriseCard>
       </div>
 
       <EnterpriseCard>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-sm font-semibold flex items-center gap-1.5">Mitarbeiter-Mappings
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">{copy.employeeMappings}
               <InfoTooltip title="Was hier sichtbar ist" side="right" width="w-96">
                 <p>Hier sehen Sie die Datenbasis für persönliche Teams-Nachrichten. Ohne Mapping kann ODIN einen Mitarbeiter zwar fachlich auswählen, aber nicht persönlich in Teams adressieren.</p>
                 <p><strong>Mailquelle:</strong> Zeigt, aus welchem Prozess die Adresse stammt. <strong>Override:</strong> Markiert manuell gepflegte Werte.</p>
               </InfoTooltip>
             </h3>
-            <p className="text-sm text-gray-500">Filterbar nach Mitarbeitername, E-Mail oder Mailquelle.</p>
+            <p className="text-sm text-gray-500">{copy.filterHint}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Suche nach Name oder E-Mail"
+              placeholder={copy.searchNameOrMail}
               className="w-72 border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
             />
             <button onClick={load} className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
-              <RefreshCw className="w-4 h-4" /> Aktualisieren
+              <RefreshCw className="w-4 h-4" /> {copy.refresh}
             </button>
           </div>
         </div>
@@ -555,12 +651,12 @@ function EmployeesTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                <th className="py-2 px-3">Mitarbeiter</th>
-                <th className="py-2 px-3">Teams-Mail</th>
-                <th className="py-2 px-3">Mailquelle</th>
-                <th className="py-2 px-3">Override</th>
-                <th className="py-2 px-3">ODIN-User</th>
-                <th className="py-2 px-3">Zuletzt aktualisiert</th>
+                <th className="py-2 px-3">{copy.employee}</th>
+                <th className="py-2 px-3">{copy.teamsMail}</th>
+                <th className="py-2 px-3">{copy.mailSource}</th>
+                <th className="py-2 px-3">{copy.override}</th>
+                <th className="py-2 px-3">{copy.odinUser}</th>
+                <th className="py-2 px-3">{copy.lastUpdated}</th>
               </tr>
             </thead>
             <tbody>
@@ -571,11 +667,11 @@ function EmployeesTab() {
                   <td className="py-2 px-3 text-xs text-gray-500">{employee.email_source || "–"}</td>
                   <td className="py-2 px-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${employee.manual_override ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>
-                      {employee.manual_override ? "Manuell" : "Automatisch"}
+                      {employee.manual_override ? copy.manual : copy.automatic}
                     </span>
                   </td>
-                  <td className="py-2 px-3">{employee.user_id ? `User #${employee.user_id}` : "Nicht verknüpft"}</td>
-                  <td className="py-2 px-3 text-xs text-gray-500">{new Date(employee.updated_at).toLocaleString("de-DE")}</td>
+                  <td className="py-2 px-3">{employee.user_id ? `User #${employee.user_id}` : copy.notLinked}</td>
+                  <td className="py-2 px-3 text-xs text-gray-500">{new Date(employee.updated_at).toLocaleString(locale)}</td>
                 </tr>
               ))}
             </tbody>
@@ -583,7 +679,7 @@ function EmployeesTab() {
         </div>
 
         {filteredEmployees.length === 0 && (
-          <div className="py-8 text-center text-sm text-gray-400">Keine Mitarbeiter-Mappings passend zum aktuellen Filter.</div>
+          <div className="py-8 text-center text-sm text-gray-400">{copy.noEmployees}</div>
         )}
       </EnterpriseCard>
     </div>
@@ -1046,6 +1142,7 @@ function TemplatesTab() {
 /* ================================================ */
 
 function TestCenterTab() {
+  const { copy } = useTeamsUi();
   const [channel, setChannel] = useState<"channel" | "personal">("channel");
   const [title, setTitle] = useState("ODIN Test Message");
   const [body, setBody] = useState("Dies ist eine Testnachricht von ODIN.");
@@ -1156,6 +1253,7 @@ function TestCenterTab() {
 /* ================================================ */
 
 function LogTab() {
+  const { copy, locale } = useTeamsUi();
   const [data, setData] = useState<{ rows: TeamsMessageLog[]; total: number }>({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<{ status?: string }>({});
@@ -1174,29 +1272,29 @@ function LogTab() {
     <div className="space-y-4">
       <div className="flex gap-2 items-center">
         <select value={filter.status || ""} onChange={e => setFilter(f => ({ ...f, status: e.target.value || undefined }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <option value="">Alle Status</option>
-          <option value="sent">Gesendet</option>
-          <option value="failed">Fehlgeschlagen</option>
+          <option value="">{copy.statusFilterAll}</option>
+          <option value="sent">{copy.sent}</option>
+          <option value="failed">{copy.failed}</option>
         </select>
         <InfoTooltip title="Status-Filter">
           <p><strong>Gesendet:</strong> Nachricht wurde erfolgreich an Teams übermittelt (HTTP 200/202).</p>
           <p><strong>Fehlgeschlagen:</strong> Nachricht konnte nicht zugestellt werden – siehe Fehlerspalte für Details.</p>
           <p>Der Filter zeigt nur die letzten 100 Einträge an.</p>
         </InfoTooltip>
-        <button onClick={load} className="text-sm text-blue-600 hover:underline">Aktualisieren</button>
-        <span className="text-xs text-gray-400">{data.total} Einträge gesamt</span>
+        <button onClick={load} className="text-sm text-blue-600 hover:underline">{copy.refresh}</button>
+        <span className="text-xs text-gray-400">{data.total} {copy.entriesTotal}</span>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Status <InfoTooltip title="Status"><p>Grüner Haken = zugestellt. Rotes X = fehlgeschlagen. Fehlgeschlagene Nachrichten können im Errors-Tab erneut versendet werden.</p></InfoTooltip></span></th>
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Zeitpunkt <InfoTooltip title="Zeitpunkt"><p>Zeitpunkt der Übergabe an die Teams-API (nicht Zustellzeitpunkt beim Empfänger).</p></InfoTooltip></span></th>
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Typ <InfoTooltip title="Nachrichtentyp"><p>Der Event-Typ, der die Nachricht ausgelöst hat (z.B. assignment, escalation, handover, test).</p></InfoTooltip></span></th>
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Empfänger <InfoTooltip title="Empfänger"><p>Teams-Kanal oder Person. „–" bedeutet Broadcast an den Standardkanal.</p></InfoTooltip></span></th>
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Inhalt <InfoTooltip title="Inhalt"><p>Gekürzte Vorschau des Nachrichteninhalts.</p></InfoTooltip></span></th>
-              <th className="py-2 px-3"><span className="flex items-center gap-1">Fehler <InfoTooltip title="Fehlermeldung"><p>Technische Fehlermeldung bei fehlgeschlagener Zustellung. Häufige Ursachen: ungültiger Webhook, Netzwerkfehler, Bot-Token abgelaufen.</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.status} <InfoTooltip title="Status"><p>Grüner Haken = zugestellt. Rotes X = fehlgeschlagen. Fehlgeschlagene Nachrichten können im Errors-Tab erneut versendet werden.</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.time} <InfoTooltip title="Zeitpunkt"><p>Zeitpunkt der Übergabe an die Teams-API (nicht Zustellzeitpunkt beim Empfänger).</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.type} <InfoTooltip title="Nachrichtentyp"><p>Der Event-Typ, der die Nachricht ausgelöst hat (z.B. assignment, escalation, handover, test).</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.recipient} <InfoTooltip title="Empfänger"><p>Teams-Kanal oder Person. „–" bedeutet Broadcast an den Standardkanal.</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.content} <InfoTooltip title="Inhalt"><p>Gekürzte Vorschau des Nachrichteninhalts.</p></InfoTooltip></span></th>
+              <th className="py-2 px-3"><span className="flex items-center gap-1">{copy.error} <InfoTooltip title="Fehlermeldung"><p>Technische Fehlermeldung bei fehlgeschlagener Zustellung. Häufige Ursachen: ungültiger Webhook, Netzwerkfehler, Bot-Token abgelaufen.</p></InfoTooltip></span></th>
             </tr>
           </thead>
           <tbody>
@@ -1207,7 +1305,7 @@ function LogTab() {
                     ? <CheckCircle2 className="w-4 h-4 text-green-500" />
                     : <XCircle className="w-4 h-4 text-red-500" />}
                 </td>
-                <td className="py-2 px-3 text-gray-500 whitespace-nowrap">{new Date(msg.sent_at).toLocaleString("de-DE")}</td>
+                <td className="py-2 px-3 text-gray-500 whitespace-nowrap">{new Date(msg.sent_at).toLocaleString(locale)}</td>
                 <td className="py-2 px-3">{msg.message_type}</td>
                 <td className="py-2 px-3">{msg.recipient || "–"}</td>
                 <td className="py-2 px-3 max-w-xs truncate">{msg.content}</td>
@@ -1226,6 +1324,7 @@ function LogTab() {
 /* ================================================ */
 
 function ErrorsTab() {
+  const { copy, locale } = useTeamsUi();
   const [errors, setErrors] = useState<TeamsMessageLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<number | null>(null);
@@ -1251,7 +1350,7 @@ function ErrorsTab() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-500 mb-4 flex items-center gap-1.5">Fehlgeschlagene Nachrichten – manuelles Retry möglich
+      <p className="text-sm text-gray-500 mb-4 flex items-center gap-1.5">{copy.failedMessages}
         <InfoTooltip title="Fehler & Retry" width="w-96">
           <p>Hier werden alle Nachrichten aufgelistet, deren Zustellung fehlgeschlagen ist. Mögliche Ursachen:</p>
           <ul className="list-disc ml-4 space-y-0.5">
@@ -1266,14 +1365,14 @@ function ErrorsTab() {
       {errors.length === 0 ? (
         <div className="text-center py-8 text-gray-400">
           <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
-          Keine fehlgeschlagenen Nachrichten
+          {copy.noFailedMessages}
         </div>
       ) : errors.map(e => (
         <EnterpriseCard key={e.id}>
           <div className="flex justify-between items-start">
             <div className="space-y-1">
               <div className="text-sm font-medium">
-                {e.message_type} – {new Date(e.sent_at).toLocaleString("de-DE")}
+                {e.message_type} – {new Date(e.sent_at).toLocaleString(locale)}
               </div>
               <div className="text-xs text-gray-500">{e.content}</div>
               <div className="text-xs text-red-500 font-mono">{e.error_msg}</div>
@@ -1284,7 +1383,7 @@ function ErrorsTab() {
               className="flex items-center gap-1 px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs rounded hover:bg-orange-200 disabled:opacity-50"
             >
               {retrying === e.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-              Retry
+              {copy.retry}
             </button>
           </div>
         </EnterpriseCard>
@@ -1298,6 +1397,7 @@ function ErrorsTab() {
 /* ================================================ */
 
 function SettingsTab() {
+  const { copy } = useTeamsUi();
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1321,7 +1421,7 @@ function SettingsTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const fields: { key: string; label: string; type: "text" | "number" | "toggle"; tooltip: React.ReactNode }[] = [
+  const coreFields: SettingField[] = [
     { key: "quiet_hours_start", label: "Quiet Hours Start", type: "text", tooltip: <><p>Beginn der Ruhezeit im Format HH:MM (z.B. „22:00"). Während der Quiet Hours werden nur kritische Nachrichten zugestellt.</p><p><strong>Tipp:</strong> Setzen Sie den Wert auf die Uhrzeit, ab der Ihr Team nicht mehr im Dienst ist.</p></> },
     { key: "quiet_hours_end", label: "Quiet Hours Ende", type: "text", tooltip: <><p>Ende der Ruhezeit im Format HH:MM (z.B. „06:00"). Ab diesem Zeitpunkt werden alle Nachrichten wieder normal versendet.</p><p><strong>Aufgeschobene Nachrichten:</strong> Nicht-kritische Nachrichten aus der Nacht werden als Digest zusammengefasst.</p></> },
     { key: "quiet_hours_critical_only", label: "Nur kritische nachts", type: "toggle", tooltip: <><p>Wenn aktiv, werden während der Quiet Hours nur Nachrichten mit kritischer Priorität (P1) sofort zugestellt. Alle anderen werden bis zum Ende der Ruhezeit zurückgehalten.</p><p><strong>Deaktiviert:</strong> Alle Nachrichten werden auch nachts sofort gesendet.</p></> },
@@ -1333,47 +1433,147 @@ function SettingsTab() {
     { key: "deduplicate_window_minutes", label: "Duplikat-Fenster (Min)", type: "number", tooltip: <><p>Zeitfenster in Minuten, innerhalb dessen identische Nachrichten (gleicher Typ, gleicher Empfänger, gleicher Inhalt) als Duplikat erkannt und unterdrückt werden.</p><p><strong>Empfehlung:</strong> 10–30 Minuten. Zu kurz = Spam, zu lang = verzögerte Updates.</p></> },
   ];
 
+  const dispatcherFields: SettingField[] = [
+    { key: "dispatcher_manual_review_notify_systems", label: "System-Ausschlüsse melden", type: "toggle", tooltip: <><p>Wenn aktiv, erhalten Dispatcher eine Teams-Nachricht, sobald ein Ticket wegen Systemname aus ODIN ausgeschlossen und in den manuellen Review geschoben wird.</p><p>Diese Einstellung ist bereits mit der Backend-Logik verdrahtet.</p></> },
+    { key: "dispatcher_manual_review_notify_subtypes", label: "Subtype-Ausschlüsse melden", type: "toggle", tooltip: <><p>Wenn aktiv, werden manuelle Reviews aufgrund eines ausgeschlossenen Subtypes sofort an Dispatcher gemeldet.</p><p>Dadurch sieht das Team früh, welche Tickets bewusst nicht automatisch verteilt wurden.</p></> },
+    { key: "dispatcher_manual_review_live_only", label: "Nur im Live-Modus senden", type: "toggle", tooltip: <><p>Begrenzt die Dispatcher-Benachrichtigung auf echte Live-Läufe.</p><p>Dry-Run- und Shadow-Run-Szenarien bleiben damit ruhig.</p></> },
+    { key: "dispatcher_manual_review_recipients", label: "Direkte Empfänger", type: "text", tooltip: <><p>Kommaseparierte Liste aus E-Mail-Adressen oder Mitarbeiterkennungen für die direkte Zustellung.</p><p>ODIN versucht zuerst die persönliche Zustellung über den Bot-Pfad, falls dieser vorhanden ist.</p></>, placeholder: "dispatcher@firma.de, schichtleitung@firma.de" },
+    { key: "dispatcher_manual_review_shift_filter", label: "Nur für bestimmte Schichten", type: "text", tooltip: <><p>Optionaler Schichtfilter, z. B. 1,2 oder D,N. Nur aktive Mitarbeiter aus diesen Schichten werden als Empfänger berücksichtigt.</p><p>So lassen sich Nachtdispatcher und Tagesdispatch getrennt steuern.</p></>, placeholder: "1,2,N" },
+    { key: "dispatcher_manual_review_group_targets", label: "Gruppen-Ziele", type: "text", tooltip: <><p>Kommaseparierte Gruppennamen für den späteren Gruppenversand oder Fallback-Zusammenfassungen.</p><p>Die Gruppennamen sollten mit den Routing-Gruppen abgestimmt sein.</p></>, placeholder: "Dispatcher, Shift Leads" },
+    { key: "dispatcher_manual_review_channel_fallback", label: "Kanal-Fallback erlauben", type: "toggle", tooltip: <><p>Wenn persönliche Zustellung nicht möglich ist, darf ODIN stattdessen eine Kanal- oder Sammelnachricht erzeugen.</p><p>Empfohlen, solange nicht alle Mitarbeiter sauber im Bot gemappt sind.</p></> },
+    { key: "dispatcher_manual_review_title", label: "Titel-Vorlage", type: "text", tooltip: <><p>Optionaler eigener Nachrichtentitel für manuelle Reviews.</p><p>Freilassen bedeutet: der Standardtitel aus dem Backend wird verwendet.</p></>, placeholder: "Manual Review für Dispatcher" },
+    { key: "dispatcher_manual_review_body", label: "Text-Vorlage", type: "textarea", tooltip: <><p>Optionaler Nachrichtentext für Dispatcher-Benachrichtigungen. Unterstützt Platzhalter wie <code>{"{{ticketId}}"}</code>, <code>{"{{systemName}}"}</code>, <code>{"{{reason}}"}</code> und <code>{"{{category}}"}</code>.</p><p>Wenn leer, verwendet das Backend den Standardtext.</p></>, placeholder: "Ticket {{ticketId}} wurde wegen {{reason}} in den manuellen Review verschoben." },
+    { key: "bot_internal_base_url", label: "Bot-Base-URL", type: "text", tooltip: <><p>Interne Basis-URL des Teams-Bots für persönliche Zustellung.</p><p>Nur notwendig, wenn persönliche Bot-Benachrichtigungen aus dem Backend genutzt werden sollen.</p></>, placeholder: "http://teams-bot:3978" },
+  ];
+
+  const orchestrationFields: SettingField[] = [
+    { key: "notification_timing_matrix", label: "Wann soll wer eine Nachricht bekommen", type: "textarea", tooltip: <><p>Freie Regelmatrix für künftige erweiterte Benachrichtigungslogik.</p><p>Empfohlenes Format pro Zeile: <code>trigger|zieltyp|ziel|bedingung</code>.</p></>, placeholder: "manual_review|group|Dispatcher|live-only\nassignment|shift|N|priority=P1" },
+    { key: "standard_person_shift_messages", label: "Standardnachrichten für Personen/Schichten", type: "textarea", tooltip: <><p>Speichert Standardtexte für bestimmte Personen in bestimmten Schichten.</p><p>Empfohlenes Format pro Zeile: <code>schicht|person|nachricht</code>.</p></>, placeholder: "N|dispatcher@firma.de|Bitte Ticket sofort prüfen." },
+    { key: "standard_group_messages", label: "Standardnachrichten für Gruppen", type: "textarea", tooltip: <><p>Speichert Gruppen- oder Rollenansprachen für spätere automatische Verwendung.</p><p>Empfohlenes Format pro Zeile: <code>gruppe|trigger|nachricht</code>.</p></>, placeholder: "Dispatcher|manual_review|Bitte manuell priorisieren." },
+  ];
+
+  const updateValue = (key: string, value: string) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  };
+
   return (
     <div className="space-y-4">
       <EnterpriseCard>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {fields.map(f => (
-            <div key={f.key}>
-              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">{f.label}
-                <InfoTooltip title={f.label}>{f.tooltip}</InfoTooltip>
-              </label>
-              {f.type === "toggle" ? (
-                <button
-                  onClick={() => setSettings(s => ({ ...s, [f.key]: s[f.key] === "true" ? "false" : "true" }))}
-                  className="focus:outline-none"
-                >
-                  {settings[f.key] === "true"
-                    ? <ToggleRight className="w-6 h-6 text-green-500" />
-                    : <ToggleLeft className="w-6 h-6 text-gray-400" />}
-                </button>
-              ) : (
-                <input
-                  type={f.type}
-                  value={settings[f.key] || ""}
-                  onChange={e => setSettings(s => ({ ...s, [f.key]: e.target.value }))}
-                  className="w-full border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />}
-            Speichern
-          </button>
+        <div className="grid gap-4 md:grid-cols-3">
+          <SettingsSummaryTile title="Dispatcher-Review" value={`${asEnabledLabel(settings.dispatcher_manual_review_notify_systems)} / ${asEnabledLabel(settings.dispatcher_manual_review_notify_subtypes)}`} hint="System- und Subtype-Ausschlüsse" />
+          <SettingsSummaryTile title="Zustellpfad" value={settings.bot_internal_base_url ? "Bot + Fallback" : "Webhook / Fallback"} hint="Personen und Kanalsteuerung" />
+          <SettingsSummaryTile title="Routing-Vorbereitung" value={settings.notification_timing_matrix ? "Erweitert konfiguriert" : "Basis"} hint="Wer bekommt wann welche Nachricht" />
         </div>
       </EnterpriseCard>
+
+      <SettingsSectionCard title="Globale Versandregeln" description="Basisverhalten für Ruhezeiten, Deduplizierung und Eskalation.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {coreFields.map((field) => (
+            <SettingInput key={field.key} field={field} value={settings[field.key] || ""} onChange={updateValue} />
+          ))}
+        </div>
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Dispatcher bei ausgeschlossenen Tickets" description="Diese Einstellungen steuern die neue Backend-Benachrichtigung für Tickets, die wegen Systemname oder Subtype in den manuellen Review laufen.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {dispatcherFields.map((field) => (
+            <SettingInput key={field.key} field={field} value={settings[field.key] || ""} onChange={updateValue} />
+          ))}
+        </div>
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Nachrichten-Orchestrierung" description="Vorbereitung für feinere Regeln wie personenspezifische Standardsätze, Gruppenansprache und zeitabhängige Zustellung.">
+        <div className="grid grid-cols-1 gap-4">
+          {orchestrationFields.map((field) => (
+            <SettingInput key={field.key} field={field} value={settings[field.key] || ""} onChange={updateValue} />
+          ))}
+        </div>
+      </SettingsSectionCard>
+
+      <div className="flex justify-end">
+        <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />}
+          {copy.save}
+        </button>
+      </div>
     </div>
   );
 }
 
+type SettingField = {
+  key: string;
+  label: string;
+  type: "text" | "number" | "toggle" | "textarea";
+  tooltip: React.ReactNode;
+  placeholder?: string;
+};
+
+function SettingsSectionCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <EnterpriseCard>
+      <div className="mb-4">
+        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</div>
+        <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</div>
+      </div>
+      {children}
+    </EnterpriseCard>
+  );
+}
+
+function SettingsSummaryTile({ title, value, hint }: { title: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/50">
+      <div className="text-xs uppercase tracking-wide text-gray-400">{title}</div>
+      <div className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">{value}</div>
+      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</div>
+    </div>
+  );
+}
+
+function SettingInput({ field, value, onChange }: { field: SettingField; value: string; onChange: (key: string, value: string) => void }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+        {field.label}
+        <InfoTooltip title={field.label}>{field.tooltip}</InfoTooltip>
+      </label>
+      {field.type === "toggle" ? (
+        <button
+          onClick={() => onChange(field.key, value === "true" ? "false" : "true")}
+          className="focus:outline-none"
+          type="button"
+        >
+          {value === "true"
+            ? <ToggleRight className="w-6 h-6 text-green-500" />
+            : <ToggleLeft className="w-6 h-6 text-gray-400" />}
+        </button>
+      ) : field.type === "textarea" ? (
+        <textarea
+          value={value}
+          onChange={(event) => onChange(field.key, event.target.value)}
+          placeholder={field.placeholder}
+          rows={4}
+          className="w-full border dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800"
+        />
+      ) : (
+        <input
+          type={field.type}
+          value={value}
+          onChange={(event) => onChange(field.key, event.target.value)}
+          placeholder={field.placeholder}
+          className="w-full border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
+        />
+      )}
+    </div>
+  );
+}
+
+function asEnabledLabel(value: string | undefined) {
+  return value === "true" ? "An" : "Aus";
+}
+
 function CapabilityCard({ label, active, tooltip }: { label: string; active: boolean; tooltip?: string }) {
+  const { copy } = useTeamsUi();
   return (
     <EnterpriseCard>
       <div className="flex items-center justify-between gap-3">
@@ -1387,7 +1587,7 @@ function CapabilityCard({ label, active, tooltip }: { label: string; active: boo
         </div>
         <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
           {active ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-          {active ? "Aktiv" : "Inaktiv"}
+          {active ? copy.active : copy.inactive}
         </div>
       </div>
     </EnterpriseCard>

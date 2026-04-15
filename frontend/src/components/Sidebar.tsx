@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage, type TranslationKey } from "../context/LanguageContext";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useHandoverStore } from "../store/handoverStore";
 
@@ -29,8 +30,25 @@ interface SidebarProps {
   isCollapsed: boolean;
 }
 
+const NAV_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>> = {
+  dashboard: "nav.dashboard",
+  shiftplan: "nav.shiftplan",
+  handover: "nav.handover",
+  tickets: "nav.tickets",
+  tv_dashboard: "nav.tvDashboard",
+  protokoll: "nav.protokoll",
+  commit_compliance: "nav.commitCompliance",
+  odin_logic: "nav.odinLogic",
+  shiftplan_control: "nav.shiftplanControl",
+  teams_center: "nav.teamsCenter",
+  admin_settings: "nav.adminSettings",
+  user_management: "nav.userManagement",
+  ticket_audit: "nav.ticketAudit",
+};
+
 export function Sidebar({ isCollapsed }: SidebarProps) {
   const { user, canAccess } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
   const [shiftplanOpen, setShiftplanOpen] = useState(true);
   const [dashOpen, setDashOpen] = useState(false);
@@ -41,13 +59,18 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
   const group = normalizeGroup(user.group);
   const teamLabel = groupLabel(group);
   const shiftplanChildPaths = new Set(["/shiftplan-control"]);
+  const canAccessAdminHub =
+    canAccess("admin_settings", "view")
+    || canAccess("teams_center", "view")
+    || canAccess("shiftplan_control", "view")
+    || canAccess("odin_logic", "view");
 
   /* ———————————————————————————————— */
   /* FILTERED NAV (FINAL)               */
   /* ———————————————————————————————— */
 
   const topItems = NAV_TOP.filter((item) =>
-    canAccess(item.pageKey, "view") && !shiftplanChildPaths.has(item.to)
+    (item.pageKey === "admin_settings" ? canAccessAdminHub : canAccess(item.pageKey, "view")) && !shiftplanChildPaths.has(item.to)
   );
 
   const shiftplanChildItems = NAV_TOP.filter((item) =>
@@ -71,6 +94,10 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
     || shiftplanChildItems.some((item) => location.pathname.startsWith(item.to));
   const isDashActive = location.pathname.startsWith("/dashboard");
   const isProtokollActive = location.pathname.startsWith("/protokoll");
+  const labelForItem = (pageKey: string, fallback: string) => {
+    const translationKey = NAV_TRANSLATION_KEYS[pageKey];
+    return translationKey ? t(translationKey) : fallback;
+  };
 
   return (
     <aside
@@ -96,7 +123,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               </div>
             </div>
             <div className="text-[10px] md:text-[11px] leading-snug font-semibold text-[#00d8ff] drop-shadow-[0_0_8px_rgba(0,216,255,0.7)] text-left pl-1 whitespace-normal">
-              Operations Dispatching and Intelligence Node
+              {t("nav.operationsNode")}
             </div>
           </div>
         ) : (
@@ -123,8 +150,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} end className={(props) => baseClass(props)}>
-                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isDashActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
-                    {!isCollapsed && <span className="flex-1">{item.label}</span>}
+                    <item.icon className={`h-6 w-6 shrink-0 ${isDashActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                    {!isCollapsed && <span className="flex-1">{labelForItem(item.pageKey, item.label)}</span>}
                   </NavLink>
 
                   {!isCollapsed ? (
@@ -154,7 +181,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Statistiken
+                      {t("nav.statistics")}
                     </NavLink>
                     {user?.isRoot && (
                       <NavLink
@@ -166,7 +193,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                           }`
                         }
                       >
-                        Ticket-Audit
+                        {t("nav.ticketAudit")}
                       </NavLink>
                     )}
                   </div>
@@ -187,8 +214,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} className={(props) => baseClass(props)}>
-                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isShiftplanActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
-                    {!isCollapsed && <span className="flex-1">{item.label}</span>}
+                    <item.icon className={`h-6 w-6 shrink-0 ${isShiftplanActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                    {!isCollapsed && <span className="flex-1">{labelForItem(item.pageKey, item.label)}</span>}
                   </NavLink>
 
                   {!isCollapsed ? (
@@ -218,7 +245,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Wochenplanung
+                      {t("nav.weekPlanning")}
                     </NavLink>
                     {shiftplanChildItems.map((child) => (
                       <NavLink
@@ -231,7 +258,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                           }`
                         }
                       >
-                        {child.label}
+                        {labelForItem(child.pageKey, child.label)}
                       </NavLink>
                     ))}
                   </div>
@@ -252,8 +279,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
               <div key={item.to} className="space-y-2">
                 <div className="flex items-center relative">
                   <NavLink to={item.to} end className={(props) => baseClass(props)}>
-                    <item.icon className={`w-6 h-6 flex-shrink-0 ${isProtokollActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
-                    {!isCollapsed && <span className="flex-1">{item.label}</span>}
+                    <item.icon className={`h-6 w-6 shrink-0 ${isProtokollActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                    {!isCollapsed && <span className="flex-1">{labelForItem(item.pageKey, item.label)}</span>}
                   </NavLink>
 
                   {!isCollapsed ? (
@@ -283,7 +310,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Teams Benachrichtigungen
+                      {t("nav.teamsNotifications")}
                     </NavLink>
                     <NavLink
                       to="/protokoll/automated-assignment"
@@ -294,7 +321,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         }`
                       }
                     >
-                      Automated Assignment
+                      {t("nav.automatedAssignment")}
                     </NavLink>
                   </div>
                 ) : null}
@@ -319,7 +346,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                 }
               >
                 <div className="relative">
-                  <item.icon className={`w-6 h-6 flex-shrink-0 ${ICON_GLOW}`} />
+                  <item.icon className={`h-6 w-6 shrink-0 ${ICON_GLOW}`} />
                   {count > 0 && isCollapsed && (
                     <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
                       {count > 9 ? "9+" : count}
@@ -328,9 +355,9 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                 </div>
                 {!isCollapsed && (
                   <div className="flex flex-1 justify-between items-center">
-                    <span>{item.label}</span>
+                    <span>{labelForItem(item.pageKey, item.label)}</span>
                     {count > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
                         {count}
                       </span>
                     )}
@@ -354,8 +381,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={`w-6 h-6 flex-shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
-                  {!isCollapsed && <span>{item.label}</span>}
+                  <item.icon className={`h-6 w-6 shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                  {!isCollapsed && <span>{labelForItem(item.pageKey, item.label)}</span>}
                 </>
               )}
             </NavLink>
@@ -378,8 +405,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
           >
             {({ isActive }) => (
               <>
-                <item.icon className={`w-6 h-6 flex-shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
-                {!isCollapsed && <span>{item.label}</span>}
+                <item.icon className={`h-6 w-6 shrink-0 ${isActive ? ICON_ACTIVE_GLOW : ICON_GLOW}`} />
+                {!isCollapsed && <span>{labelForItem(item.pageKey, item.label)}</span>}
               </>
             )}
           </NavLink>

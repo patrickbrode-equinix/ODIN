@@ -3,15 +3,18 @@
 /* TV Slides, Thresholds, Feature Toggles, Feedback */
 /* ------------------------------------------------ */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { useAuth } from "../../context/AuthContext";
 import { fetchTvSlideConfig, updateTvSlideConfig, type TvSlideConfig } from "../../api/tvConfig";
 import { fetchSettingsAudit, type SettingsAuditEntry } from "../../api/settingsAudit";
 import { api } from "../../api/api";
 import AssignmentRulesEditor from "./AssignmentRulesEditor";
 import { ShiftPlanningSettingsPanel } from "./ShiftAdminSettings";
+import { TeamsCommunicationCenterPanel } from "./TeamsCommunicationCenter";
+import AccessDenied from "./AccessDenied";
 import OdinExclusions from "../odinlogic/OdinExclusions";
 import EmployeeExclusions from "../odinlogic/EmployeeExclusions";
 import {
@@ -31,10 +34,11 @@ import {
   History, GripVertical, Brain, Trash2, ShieldBan, UserX, CalendarClock
 } from "lucide-react";
 
-type TabId = "shiftplan" | "tv" | "thresholds" | "toggles" | "feedback" | "odin" | "manualExclusions" | "employeeExclusions" | "maintenance" | "audit";
+type TabId = "shiftplan" | "teams" | "tv" | "thresholds" | "toggles" | "feedback" | "odin" | "manualExclusions" | "employeeExclusions" | "maintenance" | "audit";
 
 const TABS: { id: TabId; label: string; description: string; icon: React.ElementType; accent: string }[] = [
   { id: "shiftplan", label: "Schichtplan", description: "Definitionen, DBS-Pool und Planungsregeln", icon: CalendarClock, accent: "from-sky-500/25 via-cyan-500/10 to-transparent" },
+  { id: "teams", label: "Teams", description: "Events, Routing, Templates und Versandregeln zentral pflegen", icon: MessageSquare, accent: "from-cyan-500/25 via-sky-500/10 to-transparent" },
   { id: "tv", label: "TV-Modus", description: "Slides, Reihenfolge und Laufzeiten", icon: Tv, accent: "from-indigo-500/25 via-blue-500/10 to-transparent" },
   { id: "thresholds", label: "Schwellenwerte", description: "Globale Grenzwerte und TV-Parameter", icon: Settings, accent: "from-amber-500/25 via-orange-500/10 to-transparent" },
   { id: "toggles", label: "Feature Toggles", description: "Funktionen ein- und ausschalten", icon: Zap, accent: "from-emerald-500/25 via-green-500/10 to-transparent" },
@@ -46,23 +50,55 @@ const TABS: { id: TabId; label: string; description: string; icon: React.Element
   { id: "audit", label: "Änderungsprotokoll", description: "Alle Konfigurationsänderungen nachverfolgen", icon: History, accent: "from-zinc-500/25 via-slate-500/10 to-transparent" },
 ];
 
+const TAB_ACCESS: Record<TabId, Array<{ pageKey: string; min?: "view" | "write" }>> = {
+  shiftplan: [{ pageKey: "shiftplan_control", min: "view" }],
+  teams: [{ pageKey: "teams_center", min: "view" }],
+  tv: [{ pageKey: "admin_settings", min: "view" }],
+  thresholds: [{ pageKey: "admin_settings", min: "view" }],
+  toggles: [{ pageKey: "admin_settings", min: "view" }],
+  feedback: [{ pageKey: "admin_settings", min: "view" }],
+  odin: [{ pageKey: "odin_logic", min: "view" }],
+  manualExclusions: [{ pageKey: "odin_logic", min: "view" }],
+  employeeExclusions: [{ pageKey: "odin_logic", min: "view" }],
+  maintenance: [{ pageKey: "admin_settings", min: "view" }],
+  audit: [{ pageKey: "admin_settings", min: "view" }],
+};
+
 function isTabId(value: string | null): value is TabId {
   return TABS.some((tab) => tab.id === value);
 }
 
 export default function AdminSettings() {
+  const { canAccess } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabId>(() => {
-    const section = searchParams.get("section");
-    return isTabId(section) ? section : "shiftplan";
-  });
+  const accessibleTabs = useMemo(
+    () => TABS.filter((tab) => TAB_ACCESS[tab.id].some((requirement) => canAccess(requirement.pageKey, requirement.min || "view"))),
+    [canAccess]
+  );
+  const [activeTab, setActiveTab] = useState<TabId | null>(null);
 
   useEffect(() => {
     const section = searchParams.get("section");
-    if (isTabId(section) && section !== activeTab) setActiveTab(section);
-  }, [activeTab, searchParams]);
+    const fallbackTab = accessibleTabs[0]?.id ?? null;
+    const requestedTab = isTabId(section) && accessibleTabs.some((tab) => tab.id === section)
+      ? section
+      : fallbackTab;
+
+    if (requestedTab && requestedTab !== activeTab) {
+      setActiveTab(requestedTab);
+    }
+
+    if (requestedTab && section !== requestedTab) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("section", requestedTab);
+        return next;
+      });
+    }
+  }, [activeTab, accessibleTabs, searchParams, setSearchParams]);
 
   const selectTab = (tabId: TabId) => {
+    if (!accessibleTabs.some((tab) => tab.id === tabId)) return;
     setActiveTab(tabId);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -71,7 +107,15 @@ export default function AdminSettings() {
     });
   };
 
-  const activeMeta = TABS.find((tab) => tab.id === activeTab) || TABS[0];
+  if (accessibleTabs.length === 0) {
+    return <AccessDenied />;
+  }
+
+  if (!activeTab) {
+    return null;
+  }
+
+  const activeMeta = accessibleTabs.find((tab) => tab.id === activeTab) || accessibleTabs[0];
 
   return (
     <EnterprisePageShell>
@@ -82,13 +126,13 @@ export default function AdminSettings() {
           <div className="text-xs uppercase tracking-[0.28em] text-sky-200/70">Kontrollzentrum</div>
           <h2 className="mt-3 text-2xl font-semibold">Alle administrativen Einstellungen an einem Ort</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Die Kacheln fuhren direkt in den jeweiligen Konfigurationsbereich. Schichtplaneinstellungen sind jetzt Teil der Admin-Einstellungen und nicht mehr separat ausgelagert.
+            Die Kacheln fuhren direkt in den jeweiligen Konfigurationsbereich. Schichtplan- und Teams-Einstellungen sind jetzt Teil der Admin-Einstellungen und nicht mehr separat ausgelagert.
           </p>
         </div>
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {TABS.map((tab) => (
+        {accessibleTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -121,6 +165,7 @@ export default function AdminSettings() {
       </div>
 
       {activeTab === "shiftplan" && <ShiftPlanningSettingsPanel embedded />}
+      {activeTab === "teams" && <TeamsCommunicationCenterPanel embedded initialTab="settings" />}
       {activeTab === "tv" && <TVSettingsTab />}
       {activeTab === "thresholds" && <ThresholdsTab />}
       {activeTab === "toggles" && <TogglesTab />}

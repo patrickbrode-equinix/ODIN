@@ -18,6 +18,7 @@ import { getFeatureToggles } from "../api/dashboard";
 import { ProjectsPanel } from "./dashboard/ProjectsPanel";
 import { FeedbackButton } from "./FeedbackButton";
 import { Brain, MessageSquareMore } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 import {
   DropdownMenu,
@@ -456,8 +457,8 @@ export function Header({ onToggleSidebar }: HeaderProps) {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const { status, error } = useHealthStatus();
+  const { language, languages, setLanguage, t } = useLanguage();
 
-  const [language, setLanguage] = useState("de");
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
@@ -583,12 +584,13 @@ export function Header({ onToggleSidebar }: HeaderProps) {
   const memPct = metrics?.system?.memUsedPct ?? null;
 
   const displayName = getUserDisplayName(user);
+  const activeLanguage = languages.find((entry) => entry.code === language) || languages[0];
 
   // Format last update as DD.MM.YYYY HH:mm
   const formatDateTime = (iso: string | null | undefined) => {
-    if (!iso) return "No update available";
+    if (!iso) return t("header.noUpdateAvailable");
     const d = new Date(iso);
-    if (isNaN(d.getTime())) return "No update available";
+    if (isNaN(d.getTime())) return t("header.noUpdateAvailable");
     const dd = String(d.getDate()).padStart(2, "0");
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const yyyy = d.getFullYear();
@@ -620,7 +622,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         <div className="flex-1 flex justify-center pointer-events-none hidden md:flex">
           <div className="bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl px-5 py-2 flex items-center gap-6 text-[13px] shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-blue-500/30 pointer-events-auto">
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">Crawler Update:</span>
+              <span className="text-slate-500 font-medium">{t("header.crawlerUpdate")}:</span>
               <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400" : "text-slate-200"}`}>
                 {formatDateTime(crawlerMeta?.lastUpdate ?? null)}
               </span>
@@ -632,7 +634,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
                 <div className="h-4 w-px bg-red-500/30" />
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                  <span className="text-red-400 font-bold text-[11px] uppercase tracking-wider">Keine aktuellen Crawler-Daten</span>
+                  <span className="text-red-400 font-bold text-[11px] uppercase tracking-wider">{t("header.noCurrentCrawlerData")}</span>
                 </div>
               </>
             )}
@@ -640,7 +642,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <div className="h-4 w-px bg-white/10" />
 
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">Active Tickets:</span>
+              <span className="text-slate-500 font-medium">{t("header.activeTickets")}:</span>
               <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400/50" : "text-blue-400"}`}>
                 {crawlerMeta ? crawlerMeta.count : "—"}
               </span>
@@ -672,9 +674,9 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
             <div className="flex items-center gap-2">
               <Upload className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-500 font-medium">Shiftplan:</span>
+              <span className="text-slate-500 font-medium">{t("header.shiftplan")}:</span>
               <span className="font-bold text-slate-200">
-                {lastShiftplanUpload ? formatDateTime(lastShiftplanUpload) : "No update available"}
+                {lastShiftplanUpload ? formatDateTime(lastShiftplanUpload) : t("header.noUpdateAvailable")}
               </span>
             </div>
           </div>
@@ -699,7 +701,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             title="Informationen und Anweisungen"
           >
             <Info className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">Infos</span>
+            <span className="hidden xl:inline">{t("header.infos")}</span>
           </button>
 
           {/* STATUS: TEAMS BENACHRICHTIGUNGEN */}
@@ -712,7 +714,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           >
             <span className={`w-2 h-2 rounded-full ${teamsActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
             <MessageSquareMore className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">{teamsActive ? "Teams aktiv" : "Teams inaktiv"}</span>
+            <span className="hidden xl:inline">{teamsActive ? t("header.teamsActive") : t("header.teamsInactive")}</span>
           </div>
 
           {/* STATUS: ODIN-LOGIK */}
@@ -725,7 +727,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           >
             <span className={`w-2 h-2 rounded-full ${odinLogicActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
             <Brain className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">{odinLogicActive ? "ODIN-Logik aktiv" : "ODIN-Logik inaktiv"}</span>
+            <span className="hidden xl:inline">{odinLogicActive ? t("header.odinLogicActive") : t("header.odinLogicInactive")}</span>
           </div>
 
           {/* FEEDBACK */}
@@ -748,7 +750,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <div className="absolute right-0 top-10 hidden group-hover:block bg-[#0f172a] border border-white/10 rounded-xl p-4 text-[13px] shadow-2xl w-72 z-50 animate-in fade-in zoom-in-95">
               <div className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-blue-400" />
-                System Metrics
+                {t("header.systemMetrics")}
               </div>
               {!metricsOk ? (
                 <div className="text-rose-400 text-sm bg-rose-500/10 p-2 rounded border border-rose-500/20">
@@ -787,21 +789,23 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300">
-                <img
-                  src={language === "de" ? "/app/flags/de.svg" : "/app/flags/us.svg"}
-                  className="h-3.5 object-contain"
-                  alt="lang"
-                />
+                <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
+                  {activeLanguage.shortLabel}
+                </span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-[#0f172a] border border-white/10 text-slate-200">
-              <DropdownMenuItem onClick={() => setLanguage("de")} className="focus:bg-white/10 focus:text-white">
-                Deutsch
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLanguage("en")} className="focus:bg-white/10 focus:text-white">
-                English
-              </DropdownMenuItem>
+              {languages.map((option) => (
+                <DropdownMenuItem key={option.code} onClick={() => setLanguage(option.code)} className="focus:bg-white/10 focus:text-white">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
+                      {option.shortLabel}
+                    </span>
+                    <span>{option.nativeLabel}</span>
+                  </div>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -822,14 +826,14 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
             <DropdownMenuContent align="end" className="w-48 bg-[#0f172a] border border-white/10 text-slate-200">
               <DropdownMenuItem onClick={() => navigate("/settings")} className="focus:bg-white/10 focus:text-white">
-                Einstellungen
+                {t("common.settings")}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
               >
-                Abmelden
+                {t("common.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

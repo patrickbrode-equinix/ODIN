@@ -102,6 +102,67 @@ interface SpecialPoolEntry {
   is_active: boolean;
 }
 
+interface AdvancedPlanningSettings {
+  issuePanelEnabled: boolean;
+  issueAutoRefresh: boolean;
+  issueShowSolutions: boolean;
+  issuePriorityMode: 'staffing_first' | 'balanced' | 'fairness_first';
+  illnessAutoSwapEnabled: boolean;
+  illnessMinSourceBuffer: number;
+  illnessMinRestHours: number;
+  illnessRequireSkillMatch: boolean;
+  illnessProtectWorklifeBalance: boolean;
+  weekendVolumeEnabled: boolean;
+  weekendBufferPercent: number;
+  weekendMinDispatchers: number;
+}
+
+const DEFAULT_ADVANCED_SETTINGS: AdvancedPlanningSettings = {
+  issuePanelEnabled: true,
+  issueAutoRefresh: true,
+  issueShowSolutions: true,
+  issuePriorityMode: 'balanced',
+  illnessAutoSwapEnabled: false,
+  illnessMinSourceBuffer: 1,
+  illnessMinRestHours: 11,
+  illnessRequireSkillMatch: true,
+  illnessProtectWorklifeBalance: true,
+  weekendVolumeEnabled: false,
+  weekendBufferPercent: 15,
+  weekendMinDispatchers: 1,
+};
+
+function parseBooleanSetting(value: unknown, fallback: boolean) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+  }
+  return fallback;
+}
+
+function parseNumberSetting(value: unknown, fallback: number) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function extractAdvancedPlanningSettings(settings: Record<string, string>): AdvancedPlanningSettings {
+  return {
+    issuePanelEnabled: parseBooleanSetting(settings['shiftplan.issue_panel_enabled'], DEFAULT_ADVANCED_SETTINGS.issuePanelEnabled),
+    issueAutoRefresh: parseBooleanSetting(settings['shiftplan.issue_auto_refresh'], DEFAULT_ADVANCED_SETTINGS.issueAutoRefresh),
+    issueShowSolutions: parseBooleanSetting(settings['shiftplan.issue_show_solutions'], DEFAULT_ADVANCED_SETTINGS.issueShowSolutions),
+    issuePriorityMode: (settings['shiftplan.issue_priority_mode'] as AdvancedPlanningSettings['issuePriorityMode']) || DEFAULT_ADVANCED_SETTINGS.issuePriorityMode,
+    illnessAutoSwapEnabled: parseBooleanSetting(settings['shiftplan.illness_auto_swap_enabled'], DEFAULT_ADVANCED_SETTINGS.illnessAutoSwapEnabled),
+    illnessMinSourceBuffer: parseNumberSetting(settings['shiftplan.illness_min_source_buffer'], DEFAULT_ADVANCED_SETTINGS.illnessMinSourceBuffer),
+    illnessMinRestHours: parseNumberSetting(settings['shiftplan.illness_min_rest_hours'], DEFAULT_ADVANCED_SETTINGS.illnessMinRestHours),
+    illnessRequireSkillMatch: parseBooleanSetting(settings['shiftplan.illness_require_skill_match'], DEFAULT_ADVANCED_SETTINGS.illnessRequireSkillMatch),
+    illnessProtectWorklifeBalance: parseBooleanSetting(settings['shiftplan.illness_protect_worklife_balance'], DEFAULT_ADVANCED_SETTINGS.illnessProtectWorklifeBalance),
+    weekendVolumeEnabled: parseBooleanSetting(settings['shiftplan.weekend_volume_enabled'], DEFAULT_ADVANCED_SETTINGS.weekendVolumeEnabled),
+    weekendBufferPercent: parseNumberSetting(settings['shiftplan.weekend_buffer_percent'], DEFAULT_ADVANCED_SETTINGS.weekendBufferPercent),
+    weekendMinDispatchers: parseNumberSetting(settings['shiftplan.weekend_min_dispatchers'], DEFAULT_ADVANCED_SETTINGS.weekendMinDispatchers),
+  };
+}
+
 function normalizeApplicableDays(value: unknown): number[] {
   const fallback = [1, 2, 3, 4, 5, 6, 0];
 
@@ -194,6 +255,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const [exclusions, setExclusions] = useState<ShiftplanExclusion[]>([]);
   const [employees, setEmployees] = useState<string[]>([]);
   const [dbsPool, setDbsPool] = useState<SpecialPoolEntry[]>([]);
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedPlanningSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
@@ -208,7 +270,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, poolRes] = await Promise.all([
+      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, poolRes, appSettingsRes] = await Promise.all([
         api.get('/shift-config/definitions'),
         api.get('/shift-config/rotation-rules'),
         api.get('/shift-config/fairness-rules'),
@@ -216,6 +278,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         api.get('/shift-config/exclusions'),
         api.get('/shiftplan-control/planning-basis?month=' + new Date().toISOString().slice(0, 7)).catch(() => ({ data: { basis: { employees: [] } } })),
         api.get('/shift-config/special-pools/DBS').catch(() => ({ data: { assignments: [] } })),
+        api.get('/app-settings').catch(() => ({ data: {} })),
       ]);
 
       setDefinitions((defRes.data.definitions || []).map((definition: ShiftDefinition) => ({
@@ -228,6 +291,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       setExclusions((exclRes.data.exclusions || []).filter((entry: ShiftplanExclusion) => entry.is_active));
       setEmployees(basisRes.data.basis?.employees || []);
       setDbsPool(poolRes.data.assignments || []);
+      setAdvancedSettings(extractAdvancedPlanningSettings(appSettingsRes.data || {}));
     } catch (error: any) {
       showToast(error?.response?.data?.error || error.message, 'err');
     } finally {
@@ -286,6 +350,31 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     try {
       await api.put('/shift-config/planning-config', planConfig);
       showToast('Planungskonfiguration gespeichert');
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || 'Fehler', 'err');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveAdvancedSettings = async () => {
+    setSaving('advanced');
+    try {
+      await api.put('/app-settings', {
+        'shiftplan.issue_panel_enabled': advancedSettings.issuePanelEnabled,
+        'shiftplan.issue_auto_refresh': advancedSettings.issueAutoRefresh,
+        'shiftplan.issue_show_solutions': advancedSettings.issueShowSolutions,
+        'shiftplan.issue_priority_mode': advancedSettings.issuePriorityMode,
+        'shiftplan.illness_auto_swap_enabled': advancedSettings.illnessAutoSwapEnabled,
+        'shiftplan.illness_min_source_buffer': advancedSettings.illnessMinSourceBuffer,
+        'shiftplan.illness_min_rest_hours': advancedSettings.illnessMinRestHours,
+        'shiftplan.illness_require_skill_match': advancedSettings.illnessRequireSkillMatch,
+        'shiftplan.illness_protect_worklife_balance': advancedSettings.illnessProtectWorklifeBalance,
+        'shiftplan.weekend_volume_enabled': advancedSettings.weekendVolumeEnabled,
+        'shiftplan.weekend_buffer_percent': advancedSettings.weekendBufferPercent,
+        'shiftplan.weekend_min_dispatchers': advancedSettings.weekendMinDispatchers,
+      });
+      showToast('Autopilot- und Leitstandseinstellungen gespeichert');
     } catch (error: any) {
       showToast(error?.response?.data?.error || 'Fehler', 'err');
     } finally {
@@ -697,6 +786,99 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
           </div>
         ) : null}
       </Section>
+
+      <Section title="Problemerkennung und Leitstand" icon={AlertTriangle}>
+        <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-slate-200">
+          Diese Einstellungen steuern die neue Problem- und Lösungsansicht im Schichtplan. Bestehende Mindestbesetzungsregeln bleiben die fachliche Grundlage, die Oberfläche priorisiert nur ihre Darstellung.
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issuePanelEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePanelEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Problem-Panel im Schichtplan aktivieren
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issueAutoRefresh} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueAutoRefresh: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Hinweise nach Berechnung automatisch aktualisieren
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issueShowSolutions} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueShowSolutions: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Lösungsvorschläge im Panel anzeigen
+          </label>
+        </div>
+
+        <div className="mt-4 max-w-sm">
+          <label className="text-xs text-slate-400">Priorisierungsmodus</label>
+          <select value={advancedSettings.issuePriorityMode} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePriorityMode: event.target.value as AdvancedPlanningSettings['issuePriorityMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+            <option value="staffing_first">Besetzung zuerst</option>
+            <option value="balanced">Ausgewogen</option>
+            <option value="fairness_first">Fairness zuerst</option>
+          </select>
+        </div>
+      </Section>
+
+      <Section title="Autonome Krankheits- und Ersatzplanung" icon={Settings2}>
+        <div className="mb-4 rounded-2xl border border-sky-400/15 bg-sky-500/10 px-4 py-3 text-sm text-slate-200">
+          Diese Regeln schaffen die Grundlage für spätere automatische Schichtwechsel bei Krankheit. Aktiviert wird die eigentliche Automatik erst, wenn der geplante Autopilot-Lauf implementiert ist.
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.illnessAutoSwapEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessAutoSwapEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Automatische Ersatzsuche bei Krankheit vorbereiten
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.illnessRequireSkillMatch} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessRequireSkillMatch: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Skill-Match als Pflichtkriterium erzwingen
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200 lg:col-span-2">
+            <input type="checkbox" checked={advancedSettings.illnessProtectWorklifeBalance} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessProtectWorklifeBalance: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Work-Life-Balance und Folgebelastung bei automatischen Vorschlägen schützen
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <label className="text-xs text-slate-400">Min. Puffer in der Quellschicht</label>
+            <input type="number" min="0" value={advancedSettings.illnessMinSourceBuffer} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinSourceBuffer: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">Min. Ruhezeit in Stunden</label>
+            <input type="number" min="8" value={advancedSettings.illnessMinRestHours} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinRestHours: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Wochenendplanung nach Ticketvolumen" icon={CalendarDays}>
+        <div className="mb-4 rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 px-4 py-3 text-sm text-slate-200">
+          Hier wird vorbereitet, dass Wochenendbesetzung später automatisch aus Ticketlast und Sicherheitsaufschlag abgeleitet werden kann.
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.weekendVolumeEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendVolumeEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            Wochenendplanung auf Ticketvolumen vorbereiten
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <label className="text-xs text-slate-400">Sicherheitsaufschlag (%)</label>
+            <input type="number" min="0" max="100" value={advancedSettings.weekendBufferPercent} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendBufferPercent: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">Min. Dispatcher am Wochenende</label>
+            <input type="number" min="0" value={advancedSettings.weekendMinDispatchers} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendMinDispatchers: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+        </div>
+      </Section>
+
+      <div className="flex justify-end">
+        <button onClick={saveAdvancedSettings} disabled={saving === 'advanced'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+          <Save className="h-4 w-4" />
+          {saving === 'advanced' ? 'Speichert...' : 'Leitstand & Autopilot speichern'}
+        </button>
+      </div>
 
       <Section title="Mitarbeiter-Ausschlüsse" icon={UserX}>
         <div className="mb-4 flex flex-col gap-3 xl:flex-row">

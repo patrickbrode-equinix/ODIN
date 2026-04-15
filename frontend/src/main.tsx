@@ -15,6 +15,7 @@ import "./styles/globals.css";
 import App from "./App";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AuthProvider } from "./context/AuthContext";
+import { LanguageProvider } from "./context/LanguageContext";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toaster } from "./components/ui/sonner";
@@ -27,8 +28,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
-          <App />
-          <Toaster />
+          <LanguageProvider>
+            <App />
+            <Toaster />
+          </LanguageProvider>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

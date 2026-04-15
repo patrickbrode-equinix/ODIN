@@ -4,6 +4,7 @@
 
 import { applyRoleFilter } from '../rules/roleFilter.js';
 import { checkQueuePurity } from '../rules/queuePurity.js';
+import { isShiftCodeActiveNow } from '../candidates/loadCandidates.js';
 
 /**
  * Each rule function returns:
@@ -60,7 +61,20 @@ export function isNotAbsent(worker) {
   return { eligible: true, rule: 'isNotAbsent', reason: 'Worker is not absent' };
 }
 
-export function isShiftActive(worker) {
+export function isShiftActive(worker, ticket, now = Date.now()) {
+  const scheduledReference = ticket?.scheduledStart || (ticket?.type === 'Scheduled' ? ticket?.dueAt : null);
+
+  if (worker.shiftCode && scheduledReference) {
+    const scheduledAt = new Date(scheduledReference);
+    if (!isNaN(scheduledAt.getTime()) && !isShiftCodeActiveNow(worker.shiftCode, scheduledAt)) {
+      return {
+        eligible: false,
+        rule: 'isShiftActive',
+        reason: `${worker.name} ist für den Ticket-Start ${scheduledAt.toISOString()} laut Wochenplanung nicht im aktiven Schichtfenster (${worker.shiftCode})`,
+      };
+    }
+  }
+
   if (worker.shiftActive === false) {
     const shiftLabel = worker.shiftCode ? ` (${worker.shiftCode})` : '';
     return { eligible: false, rule: 'isShiftActive', reason: `${worker.name} ist laut Wochenplanung aktuell nicht im aktiven Schichtfenster${shiftLabel}` };
@@ -157,7 +171,7 @@ export function applyEligibilityRules(worker, ticket, settings, workerCurrentTic
     () => isAvailable(worker),
     () => isNotOnBreak(worker),
     () => isNotAbsent(worker),
-    () => isShiftActive(worker),
+    () => isShiftActive(worker, ticket, now),
     () => checkRole(worker, ticket, now),
     () => matchesSite(worker, ticket, settings),
     () => matchesResponsibility(worker, ticket, settings),

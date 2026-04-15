@@ -4,75 +4,11 @@
 /* ------------------------------------------------ */
 
 import express from "express";
-import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { config } from "../config/index.js";
+import { logTeamsMessage, sendTeamsMessage } from "../services/teamsMessaging.js";
 
 const router = express.Router();
-
-/* ------------------------------------------------ */
-/* TEAMS WEBHOOK SENDER                             */
-/* ------------------------------------------------ */
-
-/**
- * Send an Adaptive Card / simple message via Teams Incoming Webhook.
- * Falls back gracefully if no webhook URL is configured.
- */
-async function sendTeamsMessage(webhookUrl, title, body) {
-  if (!webhookUrl) {
-    console.warn("[Teams] No webhook URL configured – message skipped.");
-    return { skipped: true };
-  }
-
-  const card = {
-    type: "message",
-    attachments: [
-      {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-          type: "AdaptiveCard",
-          version: "1.2",
-          body: [
-            { type: "TextBlock", size: "Large", weight: "Bolder", text: title },
-            { type: "TextBlock", text: body, wrap: true },
-            {
-              type: "TextBlock",
-              text: `ODIN · ${new Date().toLocaleString("de-DE")}`,
-              isSubtle: true,
-              size: "Small",
-            },
-          ],
-        },
-      },
-    ],
-  };
-
-  const res = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(card),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Teams webhook returned ${res.status}: ${text}`);
-  }
-
-  return { sent: true };
-}
-
-/* ------------------------------------------------ */
-/* LOG HELPER                                       */
-/* ------------------------------------------------ */
-
-async function logMessage(type, recipient, channel, content, status, errorMsg) {
-  await db.query(
-    `INSERT INTO teams_message_log (message_type, recipient, channel, content, status, error_msg)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [type, recipient || null, channel || null, content, status, errorMsg || null]
-  );
-}
 
 /* ------------------------------------------------ */
 /* ROUTES                                           */
@@ -115,7 +51,7 @@ router.post("/send", requireAuth, async (req, res) => {
       errorMsg = String(err.message || err);
     }
 
-    await logMessage(type, recipient || null, channel || "channel", `${title}: ${body}`, status, errorMsg);
+    await logTeamsMessage(type, recipient || null, channel || "channel", `${title}: ${body}`, status, errorMsg);
 
     if (status === "failed") {
       return res.status(502).json({ error: "Teams delivery failed", detail: errorMsg });
@@ -149,7 +85,7 @@ router.post("/notify-assignment", requireAuth, async (req, res) => {
       errorMsg = String(err.message || err);
     }
 
-    await logMessage("ASSIGNMENT", employee_name, "personal", body, status, errorMsg);
+    await logTeamsMessage("ASSIGNMENT", employee_name, "personal", body, status, errorMsg);
 
     res.json({ success: true, status });
   } catch (err) {
@@ -173,7 +109,7 @@ router.post("/announce", requireAuth, async (req, res) => {
       errorMsg = String(err.message || err);
     }
 
-    await logMessage("ANNOUNCEMENT", null, "channel", `${title}: ${body}`, status, errorMsg);
+    await logTeamsMessage("ANNOUNCEMENT", null, "channel", `${title}: ${body}`, status, errorMsg);
 
     res.json({ success: true, status });
   } catch (err) {
@@ -181,5 +117,5 @@ router.post("/announce", requireAuth, async (req, res) => {
   }
 });
 
-export { sendTeamsMessage, logMessage };
+export { sendTeamsMessage, logTeamsMessage as logMessage };
 export default router;

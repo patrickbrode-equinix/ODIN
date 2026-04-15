@@ -4,9 +4,9 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import { Loader2, RefreshCw, FileText, Search, BarChart2, UserCircle, CalendarRange, X } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { useLanguage, type LanguageCode, getLanguageLocale } from "../../context/LanguageContext";
 
 /* ---- Module color map ---- */
 const MODULE_COLORS: Record<string, string> = {
@@ -19,7 +19,210 @@ const MODULE_COLORS: Record<string, string> = {
   INGEST: "bg-green-500/15 text-green-300 border-green-500/25",
 };
 
+const PAGE_COPY: Record<LanguageCode, {
+  title: string;
+  subtitle: string;
+  refresh: string;
+  module: string;
+  allModules: string;
+  user: string;
+  actorPlaceholder: string;
+  action: string;
+  actionPlaceholder: string;
+  from: string;
+  to: string;
+  count: string;
+  clearFilters: string;
+  search: string;
+  timestamp: string;
+  actor: string;
+  details: string;
+  noEntries: string;
+  shownEntries: string;
+  filtered: string;
+}> = {
+  de: {
+    title: "PROTOKOLL",
+    subtitle: "Systemaktivitäten und Änderungen nachvollziehen",
+    refresh: "Aktualisieren",
+    module: "Modul",
+    allModules: "Alle Module",
+    user: "Benutzer",
+    actorPlaceholder: "z.B. admin",
+    action: "Aktion",
+    actionPlaceholder: "z.B. UPLOAD",
+    from: "Von",
+    to: "Bis",
+    count: "Anzahl",
+    clearFilters: "Filter zurücksetzen",
+    search: "Suchen",
+    timestamp: "Zeitstempel",
+    actor: "Akteur",
+    details: "Details",
+    noEntries: "Keine Einträge gefunden.",
+    shownEntries: "Einträge angezeigt",
+    filtered: "gefiltert",
+  },
+  en: {
+    title: "LOG",
+    subtitle: "Track system activity and changes",
+    refresh: "Refresh",
+    module: "Module",
+    allModules: "All modules",
+    user: "User",
+    actorPlaceholder: "e.g. admin",
+    action: "Action",
+    actionPlaceholder: "e.g. UPLOAD",
+    from: "From",
+    to: "To",
+    count: "Count",
+    clearFilters: "Clear filters",
+    search: "Search",
+    timestamp: "Timestamp",
+    actor: "Actor",
+    details: "Details",
+    noEntries: "No entries found.",
+    shownEntries: "entries shown",
+    filtered: "filtered",
+  },
+  sq: {
+    title: "PROTOKOLLI",
+    subtitle: "Gjurmo aktivitetet dhe ndryshimet e sistemit",
+    refresh: "Rifresko",
+    module: "Moduli",
+    allModules: "Të gjithë modulet",
+    user: "Përdoruesi",
+    actorPlaceholder: "p.sh. admin",
+    action: "Veprimi",
+    actionPlaceholder: "p.sh. UPLOAD",
+    from: "Nga",
+    to: "Deri",
+    count: "Numri",
+    clearFilters: "Pastro filtrat",
+    search: "Kërko",
+    timestamp: "Koha",
+    actor: "Aktor",
+    details: "Detajet",
+    noEntries: "Nuk u gjet asnjë hyrje.",
+    shownEntries: "hyrje të shfaqura",
+    filtered: "të filtruara",
+  },
+  bs: {
+    title: "PROTOKOL",
+    subtitle: "Pratite sistemske aktivnosti i promjene",
+    refresh: "Osvježi",
+    module: "Modul",
+    allModules: "Svi moduli",
+    user: "Korisnik",
+    actorPlaceholder: "npr. admin",
+    action: "Akcija",
+    actionPlaceholder: "npr. UPLOAD",
+    from: "Od",
+    to: "Do",
+    count: "Broj",
+    clearFilters: "Resetuj filtere",
+    search: "Pretraži",
+    timestamp: "Vremenska oznaka",
+    actor: "Akter",
+    details: "Detalji",
+    noEntries: "Nema pronađenih unosa.",
+    shownEntries: "prikazanih unosa",
+    filtered: "filtrirano",
+  },
+  fr: {
+    title: "JOURNAL",
+    subtitle: "Suivre les activités et changements du système",
+    refresh: "Actualiser",
+    module: "Module",
+    allModules: "Tous les modules",
+    user: "Utilisateur",
+    actorPlaceholder: "ex. admin",
+    action: "Action",
+    actionPlaceholder: "ex. UPLOAD",
+    from: "De",
+    to: "À",
+    count: "Nombre",
+    clearFilters: "Réinitialiser les filtres",
+    search: "Rechercher",
+    timestamp: "Horodatage",
+    actor: "Acteur",
+    details: "Détails",
+    noEntries: "Aucune entrée trouvée.",
+    shownEntries: "entrées affichées",
+    filtered: "filtrées",
+  },
+  es: {
+    title: "PROTOCOLO",
+    subtitle: "Seguir actividades y cambios del sistema",
+    refresh: "Actualizar",
+    module: "Módulo",
+    allModules: "Todos los módulos",
+    user: "Usuario",
+    actorPlaceholder: "p. ej. admin",
+    action: "Acción",
+    actionPlaceholder: "p. ej. UPLOAD",
+    from: "Desde",
+    to: "Hasta",
+    count: "Cantidad",
+    clearFilters: "Restablecer filtros",
+    search: "Buscar",
+    timestamp: "Marca temporal",
+    actor: "Actor",
+    details: "Detalles",
+    noEntries: "No se encontraron registros.",
+    shownEntries: "registros mostrados",
+    filtered: "filtrados",
+  },
+  "pt-BR": {
+    title: "PROTOCOLO",
+    subtitle: "Acompanhar atividades e mudanças do sistema",
+    refresh: "Atualizar",
+    module: "Módulo",
+    allModules: "Todos os módulos",
+    user: "Usuário",
+    actorPlaceholder: "ex.: admin",
+    action: "Ação",
+    actionPlaceholder: "ex.: UPLOAD",
+    from: "De",
+    to: "Até",
+    count: "Quantidade",
+    clearFilters: "Limpar filtros",
+    search: "Buscar",
+    timestamp: "Carimbo de data/hora",
+    actor: "Ator",
+    details: "Detalhes",
+    noEntries: "Nenhum registro encontrado.",
+    shownEntries: "registros exibidos",
+    filtered: "filtrados",
+  },
+  "fa-AF": {
+    title: "گزارش",
+    subtitle: "پیگیری فعالیت‌ها و تغییرات سیستم",
+    refresh: "تازه‌سازی",
+    module: "ماژول",
+    allModules: "همه ماژول‌ها",
+    user: "کاربر",
+    actorPlaceholder: "مثلاً admin",
+    action: "اقدام",
+    actionPlaceholder: "مثلاً UPLOAD",
+    from: "از",
+    to: "تا",
+    count: "تعداد",
+    clearFilters: "پاک کردن فیلترها",
+    search: "جستجو",
+    timestamp: "زمان",
+    actor: "عامل",
+    details: "جزئیات",
+    noEntries: "هیچ موردی پیدا نشد.",
+    shownEntries: "مورد نمایش داده شد",
+    filtered: "فیلتر شده",
+  },
+};
+
 export default function Protokoll() {
+  const { language } = useLanguage();
+  const locale = getLanguageLocale(language);
+  const copy = PAGE_COPY[language];
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [stats, setStats] = useState<{ module: string; count: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,14 +282,14 @@ export default function Protokoll() {
     <EnterprisePageShell>
       {/* HEADER */}
       <EnterpriseHeader
-        title="PROTOKOLL"
-        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Systemaktivitäten und Änderungen nachvollziehen</span>}
+        title={copy.title}
+        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{copy.subtitle}</span>}
         icon={<FileText className="w-5 h-5 text-indigo-400" />}
         rightContent={
           <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loading}
             className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm">
             <RefreshCw className={`w-3.5 h-3.5 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Aktualisieren
+            {copy.refresh}
           </Button>
         }
       />
@@ -116,14 +319,14 @@ export default function Protokoll() {
       {/* FILTER BAR */}
       <EnterpriseCard noPadding={false} className="flex flex-wrap gap-3 items-end">
         {/* Module */}
-        <div className="flex flex-col gap-1 min-w-[150px]">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Modul</label>
+        <div className="flex flex-col gap-1 min-w-37.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{copy.module}</label>
           <Select value={moduleFilter} onValueChange={setModuleFilter}>
             <SelectTrigger className="h-8 text-xs rounded-lg">
-              <SelectValue placeholder="Alle Module" />
+              <SelectValue placeholder={copy.allModules} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Alle Module</SelectItem>
+              <SelectItem value="ALL">{copy.allModules}</SelectItem>
               {["SHIFTPLAN", "YEAR2027", "DASHBOARD", "AUTH", "SYSTEM", "HANDOVER", "INGEST"].map(m => (
                 <SelectItem key={m} value={m}>{m}</SelectItem>
               ))}
@@ -132,12 +335,12 @@ export default function Protokoll() {
         </div>
 
         {/* Actor */}
-        <div className="flex flex-col gap-1 min-w-[160px]">
+        <div className="flex flex-col gap-1 min-w-40">
           <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-            <UserCircle className="w-3 h-3" /> Benutzer
+            <UserCircle className="w-3 h-3" /> {copy.user}
           </label>
           <div className="relative">
-            <Input list="actors-list" placeholder="z.B. admin" value={actorFilter}
+            <Input list="actors-list" placeholder={copy.actorPlaceholder} value={actorFilter}
               onChange={e => setActorFilter(e.target.value)}
               className="h-8 text-xs rounded-lg pr-6" />
             <datalist id="actors-list">
@@ -152,10 +355,10 @@ export default function Protokoll() {
         </div>
 
         {/* Action */}
-        <div className="flex flex-col gap-1 min-w-[160px]">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Aktion</label>
+        <div className="flex flex-col gap-1 min-w-40">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{copy.action}</label>
           <div className="relative">
-            <Input list="actions-list" placeholder="z.B. UPLOAD" value={actionFilter}
+            <Input list="actions-list" placeholder={copy.actionPlaceholder} value={actionFilter}
               onChange={e => setActionFilter(e.target.value)}
               className="h-8 text-xs rounded-lg pr-6" />
             <datalist id="actions-list">
@@ -172,20 +375,20 @@ export default function Protokoll() {
         {/* Date range */}
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-            <CalendarRange className="w-3 h-3" /> Von
+            <CalendarRange className="w-3 h-3" /> {copy.from}
           </label>
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
             className="h-8 text-xs rounded-lg w-36" />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bis</label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{copy.to}</label>
           <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
             className="h-8 text-xs rounded-lg w-36" />
         </div>
 
         {/* Limit */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Anzahl</label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{copy.count}</label>
           <Select value={String(limit)} onValueChange={v => setLimit(Number(v))}>
             <SelectTrigger className="h-8 text-xs rounded-lg w-24">
               <SelectValue />
@@ -201,13 +404,13 @@ export default function Protokoll() {
           {hasActiveFilters && (
             <Button onClick={clearFilters} variant="ghost" size="sm"
               className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">
-              <X className="w-3.5 h-3.5 mr-1" /> Filter zurücksetzen
+              <X className="w-3.5 h-3.5 mr-1" /> {copy.clearFilters}
             </Button>
           )}
           <Button onClick={fetchLogs} disabled={loading} size="sm"
             className="h-8 px-3 text-xs font-bold bg-indigo-600/80 hover:bg-indigo-600 text-white border border-indigo-400/20">
             <Search className="w-3.5 h-3.5 mr-1.5" />
-            Suchen
+            {copy.search}
           </Button>
         </div>
       </EnterpriseCard>
@@ -218,11 +421,11 @@ export default function Protokoll() {
           <Table>
             <TableHeader>
               <TableRow className="border-white/5">
-                <TableHead className="w-[165px] text-[11px] font-bold uppercase tracking-wider">Zeitstempel</TableHead>
-                <TableHead className="w-[140px] text-[11px] font-bold uppercase tracking-wider">Akteur</TableHead>
-                <TableHead className="w-[110px] text-[11px] font-bold uppercase tracking-wider">Modul</TableHead>
-                <TableHead className="w-[160px] text-[11px] font-bold uppercase tracking-wider">Aktion</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-wider">Details</TableHead>
+                <TableHead className="w-41.25 text-[11px] font-bold uppercase tracking-wider">{copy.timestamp}</TableHead>
+                <TableHead className="w-35 text-[11px] font-bold uppercase tracking-wider">{copy.actor}</TableHead>
+                <TableHead className="w-27.5 text-[11px] font-bold uppercase tracking-wider">{copy.module}</TableHead>
+                <TableHead className="w-40 text-[11px] font-bold uppercase tracking-wider">{copy.action}</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-wider">{copy.details}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -236,7 +439,7 @@ export default function Protokoll() {
               {!loading && logs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
-                    Keine Einträge gefunden.
+                    {copy.noEntries}
                   </TableCell>
                 </TableRow>
               )}
@@ -244,10 +447,10 @@ export default function Protokoll() {
                 const modCls = MODULE_COLORS[log.module] ?? "bg-slate-500/10 text-slate-300 border-slate-500/15";
                 const payloadStr = log.payload ? JSON.stringify(log.payload) : "";
                 return (
-                  <TableRow key={log.id} className="border-white/5 hover:bg-white/[0.025]">
+                  <TableRow key={log.id} className="border-white/5 hover:bg-white/2.5">
                     <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                      {new Date(log.ts).toLocaleDateString("de-DE")}{" "}
-                      <span className="text-foreground/80">{new Date(log.ts).toLocaleTimeString("de-DE")}</span>
+                      {new Date(log.ts).toLocaleDateString(locale)}{" "}
+                      <span className="text-foreground/80">{new Date(log.ts).toLocaleTimeString(locale)}</span>
                     </TableCell>
                     <TableCell className="text-sm font-medium">{log.actor || "–"}</TableCell>
                     <TableCell>
@@ -258,7 +461,7 @@ export default function Protokoll() {
                     <TableCell>
                       <span className="font-semibold text-xs tracking-wide">{log.action_type}</span>
                     </TableCell>
-                    <TableCell className="font-mono text-[11px] text-muted-foreground max-w-[400px] truncate" title={payloadStr}>
+                    <TableCell className="font-mono text-[11px] text-muted-foreground max-w-100 truncate" title={payloadStr}>
                       {payloadStr}
                     </TableCell>
                   </TableRow>
@@ -270,7 +473,7 @@ export default function Protokoll() {
       </EnterpriseCard>
 
       <div className="text-right text-[10px] text-muted-foreground">
-        {logs.length} Einträge angezeigt{hasActiveFilters ? " (gefiltert)" : ""}
+        {logs.length} {copy.shownEntries}{hasActiveFilters ? ` (${copy.filtered})` : ""}
       </div>
     </EnterprisePageShell>
   );

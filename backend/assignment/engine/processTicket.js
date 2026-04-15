@@ -12,6 +12,7 @@ import { assignmentOverrideRepository } from '../repositories/index.js';
 import { checkExclusionList } from '../rules/exclusionList.js';
 import { routeHandover } from '../rules/handoverRouter.js';
 import { analyticsTracker } from '../analytics/tracker.js';
+import { notifyDispatcherManualReview } from '../../services/teamsMessaging.js';
 
 function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
   if (initialCandidates.length === 0) {
@@ -150,6 +151,16 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         remainingCandidates: [],
       });
       await persistTicketDecision(runId, log);
+      try {
+        await notifyDispatcherManualReview({
+          ticket,
+          reason: exclusionResult.reason,
+          category: 'system_exclusion',
+          mode: settings.mode,
+        });
+      } catch (notificationError) {
+        console.warn(`[ASSIGNMENT] Dispatcher notification failed for ticket ${ticket?.id}:`, notificationError.message);
+      }
       return log;
     }
 
@@ -180,6 +191,16 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
           remainingCandidates: [],
         });
         await persistTicketDecision(runId, log);
+        try {
+          await notifyDispatcherManualReview({
+            ticket,
+            reason: `Subtype "${subtypeMatch}" is on the subtype exclusion list → manual review`,
+            category: 'subtype_exclusion',
+            mode: settings.mode,
+          });
+        } catch (notificationError) {
+          console.warn(`[ASSIGNMENT] Dispatcher notification failed for ticket ${ticket?.id}:`, notificationError.message);
+        }
         return log;
       }
     }
