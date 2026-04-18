@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import pool from '../db.js';
-import { requirePageAccess } from '../middleware/authMiddleware.js';
+import { requirePageAccess } from '../middleware/requirePageAccess.js';
 
 const router = Router();
 router.use(requirePageAccess('odin_logic', 'write'));

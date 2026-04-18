@@ -33,11 +33,8 @@ const DEFAULT_SLIDE_DURATION_MS: Partial<Record<string, number>> = {
 /** Fetches slide config from backend, falls back to hardcoded defaults */
 async function loadSlideConfig(): Promise<Record<string, { enabled: boolean; duration_ms: number; sort_order: number; only_if_data: boolean }>> {
   try {
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "") || "";
-    const url = baseUrl ? `${baseUrl}/api/tv/config` : "/api/tv/config";
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rows = await res.json();
+    const res = await api.get("/tv/config");
+    const rows = res.data;
     if (!Array.isArray(rows) || rows.length === 0) return {};
     return Object.fromEntries(rows.map((r: any) => [r.slide_id, r]));
   } catch {

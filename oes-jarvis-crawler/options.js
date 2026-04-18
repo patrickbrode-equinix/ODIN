@@ -3,7 +3,7 @@
 // MV3 Options Page logic
 // ==============================
 
-const DEFAULT_BASE_URL = "http://fr2lxcops01.corp.equinix.com:8001";
+const DEFAULT_BASE_URL = "https://eqx-portal.corp.equinix.com";
 const DEFAULT_JARVIS_URL = "https://jarvis-emea.equinix.com/";
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 5;
 const STORAGE_KEY_URL  = "odin_base_url";
@@ -14,9 +14,23 @@ const STORAGE_KEY_REFRESH_INTERVAL = "odin_refresh_interval_minutes";
 const STORAGE_KEY_KEEP_AWAKE = "odin_keep_awake_enabled";
 const STORAGE_KEY_STATUS = "odin_crawler_status";
 
+const LEGACY_BASE_URLS = new Set([
+  "http://fr2lxcops01.corp.equinix.com",
+  "http://fr2lxcops01.corp.equinix.com:8080",
+  "http://fr2lxcops01.corp.equinix.com:8001",
+]);
+
 const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
 
 const $ = (id) => document.getElementById(id);
+
+function normalizeBaseUrl(rawUrl) {
+  const normalized = String(rawUrl || "").trim().replace(/\/$/, "");
+  if (!normalized || LEGACY_BASE_URLS.has(normalized)) {
+    return "";
+  }
+  return normalized;
+}
 
 function setStatus(msg, isError = false) {
   const el = $("status");
@@ -65,12 +79,21 @@ async function loadStoredValues() {
     STORAGE_KEY_KEEP_AWAKE,
     STORAGE_KEY_STATUS,
   ]);
-  const url = stored[STORAGE_KEY_URL] || "";
+  const rawStoredUrl = stored[STORAGE_KEY_URL] || "";
+  const url = normalizeBaseUrl(rawStoredUrl);
   const key = stored[STORAGE_KEY_KEY] || "";
   const enabledQueues = stored[STORAGE_KEY_QUEUES] || ALL_QUEUE_IDS;
   const targetUrl = stored[STORAGE_KEY_TARGET_URL] || DEFAULT_JARVIS_URL;
   const refreshInterval = stored[STORAGE_KEY_REFRESH_INTERVAL] ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
   const keepAwakeEnabled = stored[STORAGE_KEY_KEEP_AWAKE] !== false;
+
+  if (rawStoredUrl && rawStoredUrl !== url) {
+    if (url) {
+      await chrome.storage.local.set({ [STORAGE_KEY_URL]: url });
+    } else {
+      await chrome.storage.local.remove(STORAGE_KEY_URL);
+    }
+  }
 
   $("baseUrl").value = url;
   $("ingestKey").value = key;

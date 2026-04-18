@@ -10,9 +10,23 @@ const STORAGE_KEY_TARGET_URL = "odin_jarvis_target_url";
 const STORAGE_KEY_REFRESH_INTERVAL = "odin_refresh_interval_minutes";
 const STORAGE_KEY_KEEP_AWAKE = "odin_keep_awake_enabled";
 const STORAGE_KEY_STATUS = "odin_crawler_status";
+const DEFAULT_ODIN_BASE_URL = "https://eqx-portal.corp.equinix.com";
+const LEGACY_ODIN_BASE_URLS = new Set([
+  "http://fr2lxcops01.corp.equinix.com",
+  "http://fr2lxcops01.corp.equinix.com:8080",
+  "http://fr2lxcops01.corp.equinix.com:8001",
+]);
 const DEFAULT_JARVIS_URL = "https://jarvis-emea.equinix.com/";
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 5;
 let KEEP_AWAKE_ACTIVE = false;
+
+function resolveOdinBaseUrl(rawUrl) {
+  const normalized = String(rawUrl || "").trim().replace(/\/$/, "");
+  if (!normalized || LEGACY_ODIN_BASE_URLS.has(normalized)) {
+    return DEFAULT_ODIN_BASE_URL;
+  }
+  return normalized;
+}
 
 function log(...args) {
   console.log("[ODIN Crawler]", ...args);
@@ -328,12 +342,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "OES_UPLOAD_SNAPSHOT" && msg.payload) {
     (async () => {
       // Read config from chrome.storage.local.
-      // Default base URL: http://localhost:8001 (ODIN backend, local dev)
-      // VM production (DIRECT to backend — do NOT use :8080 Nginx proxy):
-      //   chrome.storage.local.set({ odin_base_url: "http://fr2lxcops01.corp.equinix.com:8001", odin_ingest_key: "<REAL_KEY>" })
-      //   — or use the Options page: chrome://extensions → OES Jarvis → Extension options
+      // Default base URL: portal ingress (preferred production path).
+      // Local/dev or direct VM routes can still be configured explicitly in options.
       const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
-      const rawBase = (stored?.odin_base_url || "http://fr2lxcops01.corp.equinix.com:8001").replace(/\/$/, "");
+      const rawBase = resolveOdinBaseUrl(stored?.odin_base_url);
       // Trim defensively; options.js trims on save, but direct storage.set calls may not.
       const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
       const keyIsReal = !!stored?.odin_ingest_key && ingestKey !== "CHANGE_ME";
@@ -406,7 +418,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "OES_PREFLIGHT_CHECK") {
     (async () => {
       const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
-      const rawBase = (stored?.odin_base_url || "http://fr2lxcops01.corp.equinix.com:8001").replace(/\/$/, "");
+      const rawBase = resolveOdinBaseUrl(stored?.odin_base_url);
       const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
 
       log("[Preflight] Checking backend reachability...");
