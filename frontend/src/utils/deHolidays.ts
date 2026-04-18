@@ -69,7 +69,7 @@ export const getGermanHolidaysNationwide = getGermanFederalHolidays;
 
 export type HolidayMap = Record<string, string>;
 
-export function getGermanHolidayMap(year: number): HolidayMap {
+export function getGermanHolidayMap(year: number, language: "de" | "en" = "de"): HolidayMap {
   const dates = getGermanFederalHolidays(year);
   const map: HolidayMap = {};
   const format = (d: Date) => {
@@ -80,11 +80,11 @@ export function getGermanHolidayMap(year: number): HolidayMap {
   };
 
   const names: Record<string, string> = {
-    "01-01": "Neujahr",
-    "05-01": "Tag der Arbeit",
-    "10-03": "Tag der Deutschen Einheit",
-    "12-25": "1. Weihnachtstag",
-    "12-26": "2. Weihnachtstag",
+    "01-01": language === "de" ? "Neujahr" : "New Year's Day",
+    "05-01": language === "de" ? "Tag der Arbeit" : "Labour Day",
+    "10-03": language === "de" ? "Tag der Deutschen Einheit" : "German Unity Day",
+    "12-25": language === "de" ? "1. Weihnachtstag" : "Christmas Day",
+    "12-26": language === "de" ? "2. Weihnachtstag" : "Boxing Day",
   };
 
   // Helper to find name if fixed, else generic
@@ -116,11 +116,11 @@ export function getGermanHolidayMap(year: number): HolidayMap {
       // Let's rely on array index if the function is stable.
       // Using indexOf in the original array is safer.
       const idx = dates.findIndex(x => x.getTime() === d.getTime());
-      if (idx === 5) map[key] = "Karfreitag";
-      else if (idx === 6) map[key] = "Ostermontag";
-      else if (idx === 7) map[key] = "Christi Himmelfahrt";
-      else if (idx === 8) map[key] = "Pfingstmontag";
-      else map[key] = "Feiertag";
+      if (idx === 5) map[key] = language === "de" ? "Karfreitag" : "Good Friday";
+      else if (idx === 6) map[key] = language === "de" ? "Ostermontag" : "Easter Monday";
+      else if (idx === 7) map[key] = language === "de" ? "Christi Himmelfahrt" : "Ascension Day";
+      else if (idx === 8) map[key] = language === "de" ? "Pfingstmontag" : "Whit Monday";
+      else map[key] = language === "de" ? "Feiertag" : "Holiday";
     }
   });
 
@@ -135,8 +135,8 @@ export function getGermanHolidayMap(year: number): HolidayMap {
  * Returns a HolidayMap (YYYY-MM-DD -> name) with nationwide + Hessen-specific holidays.
  * Hessen adds Fronleichnam (Easter +60) compared to the national baseline.
  */
-export function getHessenHolidayMap(year: number): HolidayMap {
-  const base = getGermanHolidayMap(year);
+export function getHessenHolidayMap(year: number, language: "de" | "en" = "de"): HolidayMap {
+  const base = getGermanHolidayMap(year, language);
 
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -165,7 +165,7 @@ export function getHessenHolidayMap(year: number): HolidayMap {
     return `${yy}-${mm}-${dd}`;
   };
 
-  return { ...base, [fmt(fronleichnam)]: 'Fronleichnam' };
+  return { ...base, [fmt(fronleichnam)]: language === "de" ? 'Fronleichnam' : 'Corpus Christi' };
 }
 
 /**

@@ -17,6 +17,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "./ui/popover";
+import { useLanguage } from "../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* CONFIG & TYPES                                   */
@@ -57,9 +58,9 @@ function getWeatherIcon(code: number) {
     return <Cloud className="w-4 h-4 text-gray-400" />;
 }
 
-function getDayName(dateStr: string) {
+function getDayName(dateStr: string, locale: string) {
     const date = new Date(dateStr);
-    return date.toLocaleDateString("de-DE", { weekday: "short" });
+    return date.toLocaleDateString(locale, { weekday: "short" });
 }
 
 /* ------------------------------------------------ */
@@ -67,9 +68,12 @@ function getDayName(dateStr: string) {
 /* ------------------------------------------------ */
 
 export function WeatherDisplay() {
+    const { language } = useLanguage();
     const [data, setData] = useState<WeatherData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const isGerman = language === "de";
+    const locale = isGerman ? "de-DE" : "en-GB";
 
     useEffect(() => {
         const fetchWeather = async () => {
@@ -161,7 +165,7 @@ export function WeatherDisplay() {
                 <div className="grid gap-1">
                     {data.daily.time.slice(0, 5).map((t, i) => (
                         <div key={t} className="grid grid-cols-[30px_1fr_auto] items-center gap-2 text-sm py-1">
-                            <span className="text-muted-foreground font-medium text-xs uppercase">{getDayName(t)}</span>
+                            <span className="text-muted-foreground font-medium text-xs uppercase">{getDayName(t, locale)}</span>
                             <div className="flex justify-center">
                                 {getWeatherIcon(data.daily.weatherCode[i])}
                             </div>
@@ -177,7 +181,13 @@ export function WeatherDisplay() {
                     <div className={`mt-2 p-2 rounded text-xs flex items-center gap-2 ${isIce ? 'bg-cyan-500/10 text-cyan-200' : 'bg-orange-500/10 text-orange-200'}`}>
                         <AlertTriangle className="w-4 h-4 shrink-0" />
                         <span>
-                            {isIce ? "Achtung: Glättegefahr möglich." : "Hitzewarnung: Hohe Temperaturen."}
+                            {isIce
+                                ? isGerman
+                                    ? "Achtung: Glättegefahr möglich."
+                                    : "Warning: icy conditions are possible."
+                                : isGerman
+                                    ? "Hitzewarnung: Hohe Temperaturen."
+                                    : "Heat warning: high temperatures."}
                         </span>
                     </div>
                 )}

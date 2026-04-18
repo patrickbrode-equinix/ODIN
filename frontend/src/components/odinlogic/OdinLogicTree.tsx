@@ -3,9 +3,10 @@
 /* Visual tree of the current assignment pipeline   */
 /* ------------------------------------------------ */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight, ChevronDown, Shield, Users, Filter, ArrowDownUp, Zap, AlertTriangle, Ban, GitBranch, HelpCircle } from "lucide-react";
 import { InfoTooltip } from "../ui/InfoTooltip";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ---- Tree Node Types ---- */
 
@@ -225,7 +226,9 @@ const LOGIC_TREE: TreeNode[] = [
               { id: "role-db", label: "Deutsche Börse", description: "Spezialrolle: Erhält nur Trouble Tickets und Cross Connects — letztere nur, wenn die Restlaufzeit mehr als 24 Stunden beträgt. Dies schützt zeitkritische deutsche-Börse-Aufträge.", type: "info" },
               { id: "role-cc", label: "Cross Connect", description: "Reine CC-Spezialisten: Erhalten ausschließlich Cross-Connect-Installationstickets. Keine SmartHands, keine TroubleTickets.", type: "info" },
               { id: "role-support", label: "Support", description: "Sekundäre Rolle — diese Mitarbeiter werden nicht als Ticket-Owner zugewiesen. Sie unterstützen bei Bedarf, erhalten aber keine eigenen Zuweisungen.", type: "info" },
+              { id: "role-kolo", label: "Kolokation", description: "Kolokations-Spezialisten: Werden für standortspezifische Kundenprojekte im Bereich Kolokation eingesetzt. Erhalten reguläre Tickets nur, wenn keine Kolokations-Aufgaben vorliegen.", type: "info" },
               { id: "role-buddy", label: "Buddy / Neustarter", description: "Informelle Rollen für Einarbeitungssituationen. Werden aktuell wie normale Mitarbeiter behandelt — eine spätere Einschränkung ist vorgesehen.", type: "info" },
+              { id: "role-normal", label: "Normal", description: "Standardrolle: Erhält alle Tickettypen gemäß der normalen Priorisierung. Keine besonderen Einschränkungen oder Bevorzugungen.", type: "info" },
             ],
           },
           { id: "elig-site", label: "7. Site stimmt überein?", description: "Wenn die Site-Strenge aktiv ist, muss der Mitarbeiter der gleichen Site zugeordnet sein wie das Ticket. Bei inaktiver Site-Strenge wird diese Prüfung übersprungen.", detail: <p>Konfiguration unter Einstellungen → „Site-Strenge“. Deaktivierung ermöglicht site-übergreifende Zuweisung bei Unterbesetzung.</p>, type: "rule" },
@@ -312,19 +315,90 @@ const TYPE_STYLES: Record<TreeNode["type"], string> = {
   info: "border-slate-500/20 bg-slate-500/5",
 };
 
-const TYPE_BADGE: Record<TreeNode["type"], { label: string; color: string }> = {
-  gate: { label: "Gate", color: "bg-red-500/20 text-red-300 border-red-500/30" },
-  filter: { label: "Filter", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  rule: { label: "Regel", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
-  action: { label: "Aktion", color: "bg-green-500/20 text-green-300 border-green-500/30" },
-  info: { label: "Info", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+type TreeNodeLocalization = {
+  label: string;
+  description: string;
+  detail?: React.ReactNode;
 };
 
-function TreeNodeView({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
+const LOGIC_TREE_EN: Record<string, TreeNodeLocalization> = {
+  "crawler-guard": { label: "Crawler data check", description: "Checks whether Jarvis crawler ticket data is still fresh. Stale data stops the entire run immediately." },
+  "crawler-stale": { label: "Data is stale -> engine stops", description: "If crawler data is older than the configured threshold, the full assignment run is aborted and no ticket is processed." },
+  "crawler-fresh": { label: "Data is fresh -> continue to ticket processing", description: "Crawler data is within the allowed age and the engine continues with ticket loading and normalization." },
+  "ticket-load": { label: "Load and normalize tickets", description: "Active tickets are loaded from queue_items and normalized into a unified internal format through alias tables." },
+  "handover-routing": { label: "Handover routing", description: "Tickets with a handover marker are routed specially: workload handovers continue normally, scheduled handovers become scheduled tickets, and other-teams handovers go only to dispatchers." },
+  "ho-workload": { label: "Workload handover -> normal ticket", description: "Handled as a regular open ticket and sent through the full pipeline." },
+  "ho-terminiert": { label: "Scheduled handover -> Scheduled (Tier 4)", description: "Converted internally to a scheduled ticket with priority tier 4." },
+  "ho-other-teams": { label: "Other teams handover -> dispatcher only", description: "Assigned only to the active dispatcher. Regular technicians are excluded immediately." },
+  "relevance-check": { label: "Relevance check", description: "Checks whether a ticket is fundamentally assignable. Closed, unsupported, or manually blocked tickets are marked as not relevant early." },
+  "priority-sort": { label: "Prioritization (6 levels)", description: "All relevant tickets are sorted deterministically by a fixed tier model before candidate selection starts." },
+  "tier-1": { label: "Tier 1: Trouble Ticket High / Critical", description: "Highest priority. Critical disruptions that require immediate action. Critical ranks above High." },
+  "tier-2": { label: "Tier 2: Trouble Ticket Medium", description: "Second-highest priority for medium urgency incidents that still require timely handling." },
+  "tier-3": { label: "Tier 3: KPI queues (Smart Hands, Cross Connect)", description: "Main operational ticket mass. Sorted by shortest remaining time until commit." },
+  "tier-4": { label: "Tier 4: Scheduled tickets", description: "Scheduled tickets, including scheduled handovers, ordered by planned start time." },
+  "tier-5": { label: "Tier 5: Trouble Ticket Low", description: "Low-priority trouble tickets that are assigned only after higher tiers are covered." },
+  "tier-6": { label: "Tier 6: All remaining tickets", description: "Fallback tier for everything not matched above, sorted by remaining time and age." },
+  "per-ticket": { label: "Per-ticket processing", description: "Each ticket is processed sequentially through the full assignment pipeline in priority order. Earlier assignments change the candidate situation for later tickets." },
+  "override-check": { label: "Override check", description: "Checks for manual interventions on the ticket. Overrides always take precedence over automatic logic." },
+  "exclusion-check": { label: "Exclusion list (system name)", description: "Checks whether the system name is on the manual exclusion list. Excluded systems are always routed to manual review." },
+  "subtype-exclusion": { label: "Exclusion list (subtype / trouble type)", description: "Checks whether the customer trouble type is on the subtype exclusion list. Certain incident types are handled manually only." },
+  "eligibility": { label: "Candidate filtering (9 rules)", description: "All available employees in the current shift are checked against 9 eligibility rules. Only employees passing all 9 remain candidates." },
+  "elig-auto": { label: "1. Auto assignable?", description: "The employee must be marked as autoAssignable. This is a per-person flag controlled in the dispatcher view." },
+  "elig-available": { label: "2. Available (not blocked)?", description: "The employee must not be marked as blocked." },
+  "elig-break": { label: "3. Not on break?", description: "Employees on an active break do not receive new tickets." },
+  "elig-absent": { label: "4. Not absent?", description: "Absent employees are excluded based on imported shift plan absences." },
+  "elig-shift": { label: "5. Shift active?", description: "The employee must belong to an active shift right now." },
+  "elig-role": { label: "6. Role filter", description: "Checks whether the ticket type is allowed based on the employee's current daily role." },
+  "role-dispatcher": { label: "Dispatcher", description: "Receives only other-teams handovers. No regular tickets." },
+  "role-large-order": { label: "Large order", description: "Employees on large-order projects receive no automatic assignments." },
+  "role-projekt": { label: "Project", description: "Project staff receive no regular tickets because they work on planned project tasks." },
+  "role-leads": { label: "Leads", description: "Team leads receive no automatic ticket assignments. Their role is coordination and escalation." },
+  "role-db": { label: "Deutsche Borse", description: "Special role: receives only trouble tickets and cross connects, with extra runtime constraints for cross connects." },
+  "role-cc": { label: "Cross Connect", description: "Pure CC specialists receive only cross-connect installation tickets." },
+  "role-support": { label: "Support", description: "Secondary role. These employees support when needed but are not assigned as ticket owners." },
+  "role-kolo": { label: "Colocation", description: "Colocation specialists: deployed on site-specific colocation customer projects. Receive regular tickets only when no colocation tasks are pending." },
+  "role-buddy": { label: "Buddy / new starter", description: "Informal onboarding roles. Currently treated like normal employees, with stricter logic planned later." },
+  "role-normal": { label: "Normal", description: "Default role: receives all ticket types according to normal prioritization. No special restrictions or preferences." },
+  "elig-site": { label: "7. Site matches?", description: "If site strictness is active, the employee must belong to the same site as the ticket." },
+  "elig-purity": { label: "8. Queue purity", description: "Checks whether the employee's current queue remains type-consistent with the incoming ticket." },
+  "purity-exception": { label: "Exception: resource shortage + CC > 24h", description: "If the resource shortage flag is active, CC workers may receive trouble tickets when all active CC tickets still have more than 24 hours remaining." },
+  "elig-resp": { label: "9. Responsibility area?", description: "If responsibility strictness is active, the worker must match the ticket's responsibility area." },
+  "worker-selection": { label: "Worker selection (tie-breaking)", description: "The final employee is chosen from all valid candidates through a four-stage tie-break process." },
+  "tb-grouping": { label: "1. System grouping", description: "Prefers employees who already work on tickets for the same system to improve on-site efficiency." },
+  "tb-purity": { label: "2. Queue purity", description: "Employees with a pure queue are preferred over mixed queues." },
+  "tb-workload": { label: "3. Lowest workload", description: "If there is still a tie, the employee with the fewest active tickets is preferred." },
+  "tb-id": { label: "4. Fallback tie-breaker", description: "Last decision level: either the lowest worker ID or a random pick, depending on configuration." },
+  "decision-log": { label: "Log decision", description: "The result of every ticket decision is stored fully in the database, including candidates, exclusion reasons, and scores." },
+};
+
+function localizeTreeNodes(nodes: TreeNode[], localizations: Record<string, TreeNodeLocalization>): TreeNode[] {
+  return nodes.map((node) => {
+    const localized = localizations[node.id];
+    return {
+      ...node,
+      label: localized?.label || node.label,
+      description: localized?.description || node.description,
+      detail: localized ? localized.detail : undefined,
+      children: node.children ? localizeTreeNodes(node.children, localizations) : undefined,
+    };
+  });
+}
+
+function getTypeBadge(t: (key: any) => string): Record<TreeNode["type"], { label: string; color: string }> {
+  return {
+    gate: { label: "Gate", color: "bg-red-500/20 text-red-300 border-red-500/30" },
+    filter: { label: "Filter", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+    rule: { label: t("logicTree.badgeRule"), color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+    action: { label: t("logicTree.badgeAction"), color: "bg-green-500/20 text-green-300 border-green-500/30" },
+    info: { label: "Info", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+  };
+}
+
+function TreeNodeView({ node, depth = 0, typeBadge }: { node: TreeNode; depth?: number; typeBadge: Record<TreeNode["type"], { label: string; color: string }> }) {
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children && node.children.length > 0;
   const style = TYPE_STYLES[node.type];
-  const badge = TYPE_BADGE[node.type];
+  const badge = typeBadge[node.type];
 
   return (
     <div className={`${depth > 0 ? "ml-4 border-l border-white/10 pl-3" : ""}`}>
@@ -361,7 +435,7 @@ function TreeNodeView({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
       {expanded && hasChildren && (
         <div className="mt-0.5">
           {node.children!.map((child) => (
-            <TreeNodeView key={child.id} node={child} depth={depth + 1} />
+            <TreeNodeView key={child.id} node={child} depth={depth + 1} typeBadge={typeBadge} />
           ))}
         </div>
       )}
@@ -369,21 +443,41 @@ function TreeNodeView({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
   );
 }
 
+/* ---- Shift Role x Ticket Type Matrix ---- */
+
+const ROLE_MATRIX = [
+  { role: 'Normal',          sh: '✅', cc: '✅', tt: '✅', de: '✅', ho: '❌' },
+  { role: 'Dispatcher',      sh: '❌', cc: '❌', tt: '❌', de: '❌', ho: '✅' },
+  { role: 'Cross Connect',   sh: '❌', cc: '✅', tt: '❌', de: '❌', ho: '❌' },
+  { role: 'Deutsche Börse',  sh: '❌', cc: '⚠️', tt: '✅', de: '❌', ho: '❌' },
+  { role: 'Large Order',     sh: '❌', cc: '❌', tt: '❌', de: '❌', ho: '❌' },
+  { role: 'Projekt',         sh: '❌', cc: '❌', tt: '❌', de: '❌', ho: '❌' },
+  { role: 'Leads',           sh: '❌', cc: '❌', tt: '❌', de: '❌', ho: '❌' },
+  { role: 'Support',         sh: '❌', cc: '❌', tt: '❌', de: '❌', ho: '❌' },
+  { role: 'Kolokation',      sh: '⚠️', cc: '⚠️', tt: '⚠️', de: '❌', ho: '❌' },
+  { role: 'Buddy / Neustarter', sh: '✅', cc: '✅', tt: '✅', de: '✅', ho: '❌' },
+];
+
 /* ---- Main Export ---- */
 
 export default function OdinLogicTree() {
+  const { language, t } = useLanguage();
+  const isGerman = language === "de";
+  const tree = useMemo(() => (isGerman ? LOGIC_TREE : localizeTreeNodes(LOGIC_TREE, LOGIC_TREE_EN)), [isGerman]);
+  const typeBadge = useMemo(() => getTypeBadge(t), [t]);
+
   return (
     <div className="space-y-2 p-1">
       <div className="mb-4">
-        <h3 className="font-semibold text-sm">Zuweisungslogik — Entscheidungsbaum</h3>
+        <h3 className="font-semibold text-sm">{t("logicTree.title")}</h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Visualisiert die aktuelle Pipeline der Assignment Engine. Klicken Sie auf Knoten mit Unterebenen, um diese ein-/auszuklappen.
+          {t("logicTree.description")}
         </p>
       </div>
 
       <div className="space-y-1">
-        {LOGIC_TREE.map((node) => (
-          <TreeNodeView key={node.id} node={node} depth={0} />
+        {tree.map((node) => (
+          <TreeNodeView key={node.id} node={node} depth={0} typeBadge={typeBadge} />
         ))}
       </div>
 
@@ -391,14 +485,71 @@ export default function OdinLogicTree() {
       <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
         <div className="flex items-center gap-2 mb-2">
           <AlertTriangle className="w-4 h-4 text-amber-400" />
-          <h4 className="font-semibold text-sm text-amber-300">Offene Punkte</h4>
+          <h4 className="font-semibold text-sm text-amber-300">{t("logicTree.openPoints")}</h4>
         </div>
         <ul className="text-xs text-muted-foreground space-y-1 ml-6 list-disc">
-          <li><strong>Ressourcenmangel-Definition</strong> — fachlich nicht final definiert. Flag existiert, Regel noch offen.</li>
-          <li><strong>6-Stunden-Restzeit-Schwelle</strong> (CC-Gruppierung) — Arbeitsdefinition, bestätigungsbedürftig.</li>
-          <li><strong>Buddy / Neustarter Sonderlogik</strong> — aktuell informell, spätere Erweiterung möglich.</li>
-          <li><strong>Teams-Reminder für Other-Teams-Handover</strong> — geplant, noch nicht umgesetzt.</li>
+          {isGerman ? (
+            <>
+              <li><strong>Ressourcenmangel-Definition</strong> - fachlich nicht final definiert. Flag existiert, Regel noch offen.</li>
+              <li><strong>6-Stunden-Restzeit-Schwelle</strong> (CC-Gruppierung) - Arbeitsdefinition, bestätigungsbedürftig.</li>
+              <li><strong>Buddy / Neustarter Sonderlogik</strong> - aktuell informell, spätere Erweiterung möglich.</li>
+              <li><strong>Teams-Reminder für Other-Teams-Handover</strong> - geplant, noch nicht umgesetzt.</li>
+            </>
+          ) : (
+            <>
+              <li><strong>Resource shortage definition</strong> - not yet finalized from a business perspective. The flag exists, but the rule is still open.</li>
+              <li><strong>6-hour remaining-time threshold</strong> (CC grouping) - working definition, still needs confirmation.</li>
+              <li><strong>Buddy / new starter special logic</strong> - currently informal, can be expanded later.</li>
+              <li><strong>Teams reminder for other-teams handovers</strong> - planned but not implemented yet.</li>
+            </>
+          )}
         </ul>
+      </div>
+
+      {/* Shift Role Interpretation Reference */}
+      <div className="mt-4 rounded-lg border border-purple-500/30 bg-purple-500/5 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="w-4 h-4 text-purple-400" />
+          <h4 className="font-semibold text-sm text-purple-300">
+            {isGerman ? 'Schichtrollenübersicht' : 'Shift role reference'}
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          {isGerman
+            ? 'Die Tagesrolle bestimmt, welche Tickettypen ein Mitarbeiter während seiner Schicht erhalten darf. Die Rolle kommt vorrangig aus dem Wochenplan (weekplan_roles), ersatzweise aus der Benutzerverwaltung.'
+            : 'The daily role determines which ticket types an employee may receive during their shift. The role is sourced primarily from the week plan (weekplan_roles), with the user profile as fallback.'}
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="text-left border-b border-purple-500/20">
+                <th className="py-1.5 pr-3 text-purple-300 font-medium">{isGerman ? 'Rolle' : 'Role'}</th>
+                <th className="py-1.5 pr-3 text-purple-300 font-medium">Smart Hands</th>
+                <th className="py-1.5 pr-3 text-purple-300 font-medium">Cross Connect</th>
+                <th className="py-1.5 pr-3 text-purple-300 font-medium">Trouble Ticket</th>
+                <th className="py-1.5 pr-3 text-purple-300 font-medium">Deinstall</th>
+                <th className="py-1.5 text-purple-300 font-medium">{isGerman ? 'Handover (OT)' : 'Handover (OT)'}</th>
+              </tr>
+            </thead>
+            <tbody className="text-muted-foreground">
+              {ROLE_MATRIX.map(row => (
+                <tr key={row.role} className="border-b border-white/5">
+                  <td className="py-1.5 pr-3 font-medium text-foreground">{row.role}</td>
+                  <td className="py-1.5 pr-3">{row.sh}</td>
+                  <td className="py-1.5 pr-3">{row.cc}</td>
+                  <td className="py-1.5 pr-3">{row.tt}</td>
+                  <td className="py-1.5 pr-3">{row.de}</td>
+                  <td className="py-1.5">{row.ho}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-muted-foreground/60 mt-2">
+          {isGerman
+            ? '✅ = erhält diesen Tickettyp · ❌ = nie · ⚠️ = nur unter bestimmten Bedingungen · Dispatcher erhält nur Other-Teams-Handovers'
+            : '✅ = receives this ticket type · ❌ = never · ⚠️ = only under certain conditions · Dispatcher receives only other-teams handovers'}
+        </p>
       </div>
     </div>
   );

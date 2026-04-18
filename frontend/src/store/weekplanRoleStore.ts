@@ -11,16 +11,16 @@ import { api } from "../api/api";
 
 /* ---- Role definitions ---- */
 export const WEEKPLAN_ROLES = [
-  { key: "dispatcher", label: "Dispatcher", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  { key: "dbs_project", label: "DBS Project", color: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30" },
-  { key: "colo", label: "COLO", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
-  { key: "largeorder", label: "Largeorder", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
-  { key: "projekt", label: "Projekt", color: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
-  { key: "lead", label: "Lead", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
-  { key: "buddy", label: "Buddy", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" },
-  { key: "neueinsteiger", label: "Neueinsteiger", color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
-  { key: "cc", label: "CC", color: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
-  { key: "support", label: "Support", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+  { key: "dispatcher", label: "Dispatcher", symbol: "D", shortText: "Steuert die Verteilung", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+  { key: "dbs_project", label: "DBS Project", symbol: "DBS", shortText: "DBS-Projektslot", color: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30" },
+  { key: "colo", label: "COLO", symbol: "CO", shortText: "COLO-Fokus", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  { key: "largeorder", label: "Largeorder", symbol: "LO", shortText: "Bearbeitet Grossauftraege", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
+  { key: "projekt", label: "Projekt", symbol: "PR", shortText: "Projektarbeit", color: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
+  { key: "lead", label: "Lead", symbol: "LD", shortText: "Fuehrt den Tag", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+  { key: "buddy", label: "Buddy", symbol: "BD", shortText: "Begleitet Kollegen", color: "bg-teal-500/20 text-teal-300 border-teal-500/30" },
+  { key: "neueinsteiger", label: "Neueinsteiger", symbol: "NE", shortText: "Einarbeitung", color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
+  { key: "cc", label: "CC", symbol: "CC", shortText: "Commit-Compliance", color: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
+  { key: "support", label: "Support", symbol: "SP", shortText: "Springt unterstuetzend ein", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
 ] as const;
 
 export type WeekplanRoleKey = typeof WEEKPLAN_ROLES[number]["key"];

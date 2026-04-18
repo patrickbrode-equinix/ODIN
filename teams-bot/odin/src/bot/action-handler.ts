@@ -21,7 +21,9 @@ import type {
   TicketActionCallback,
   ShiftActionCallback,
   SupervisorActionCallback,
+  VerificationActionCallback,
 } from "../models/index";
+import { buildVerificationFollowUpCard, buildVerificationConfirmationCard } from "../cards/verification.card";
 import { logger } from "../utils/logger";
 
 // ── Human-readable labels for confirmation messages ──
@@ -34,6 +36,10 @@ const ACTION_LABELS: Record<string, string> = {
   [ACTION_TYPES.SHIFT_REJECT]: "Schicht abgelehnt",
   [ACTION_TYPES.SUPERVISOR_APPROVE]: "Freigabe erteilt",
   [ACTION_TYPES.SUPERVISOR_REJECT]: "Freigabe abgelehnt",
+  [ACTION_TYPES.VERIFICATION_YES]: "Verfügbarkeit bestätigt",
+  [ACTION_TYPES.VERIFICATION_NO]: "Nicht verfügbar",
+  [ACTION_TYPES.VERIFICATION_SICK]: "Krankmeldung",
+  [ACTION_TYPES.VERIFICATION_WRONG_SHIFT]: "Andere Schicht",
 };
 
 // ── Register the handler on the App ──
@@ -108,7 +114,49 @@ export function registerActionHandler(
       logger.error(`card.action: callback failed for ${data.action}`, { error: msg });
     }
 
-    // Build confirmation response
+    // ── Special handling for verification "Nein": send follow-up card ──
+    if (data.action === ACTION_TYPES.VERIFICATION_NO) {
+      const vCtx = data.context as Record<string, string> | undefined;
+      const followUpCard = buildVerificationFollowUpCard({
+        employeeName: vCtx?.employeeName || displayName,
+        shiftCode: vCtx?.shiftCode || "",
+        date: vCtx?.date || new Date().toISOString().slice(0, 10),
+      });
+      return {
+        statusCode: 200 as const,
+        type: "application/vnd.microsoft.card.adaptive" as const,
+        value: followUpCard as any,
+      };
+    }
+
+    // ── Verification confirmation cards for yes/sick/wrong_shift ──
+    if (
+      data.action === ACTION_TYPES.VERIFICATION_YES ||
+      data.action === ACTION_TYPES.VERIFICATION_SICK ||
+      data.action === ACTION_TYPES.VERIFICATION_WRONG_SHIFT
+    ) {
+      const vCtx = data.context as Record<string, string> | undefined;
+      const statusMap: Record<string, string> = {
+        [ACTION_TYPES.VERIFICATION_YES]: "verified",
+        [ACTION_TYPES.VERIFICATION_SICK]: "sick",
+        [ACTION_TYPES.VERIFICATION_WRONG_SHIFT]: "wrong_shift",
+      };
+      const confirmCard = buildVerificationConfirmationCard(
+        {
+          employeeName: vCtx?.employeeName || displayName,
+          shiftCode: vCtx?.shiftCode || "",
+          date: vCtx?.date || new Date().toISOString().slice(0, 10),
+        },
+        statusMap[data.action] || "verified"
+      );
+      return {
+        statusCode: 200 as const,
+        type: "application/vnd.microsoft.card.adaptive" as const,
+        value: confirmCard as any,
+      };
+    }
+
+    // Build confirmation response (for non-verification actions)
     const label = ACTION_LABELS[data.action] || data.action;
     const statusText = callbackOk
       ? `✅ ${label} — wurde an ODIN übermittelt.`
@@ -185,6 +233,52 @@ async function routeAction(
         context: ctx,
       };
       return callbackService.sendSupervisorAction(payload);
+    }
+
+    // ── Verification: "Ja" → send callback directly ──
+    case ACTION_TYPES.VERIFICATION_YES: {
+      const vCtx = ctx as Record<string, string> | undefined;
+      const payload: VerificationActionCallback = {
+        action,
+        employeeName: vCtx?.employeeName || user.displayName,
+        date: vCtx?.date || new Date().toISOString().slice(0, 10),
+        shiftCode: vCtx?.shiftCode || "",
+        response: "yes",
+        teamsUserId: user.teamsUserId,
+        aadObjectId: user.aadObjectId,
+        displayName: user.displayName,
+        timestamp: user.timestamp,
+      };
+      return callbackService.sendVerificationAction(payload);
+    }
+
+    // ── Verification: "Nein" → NOT sent to ODIN yet; handled in the action handler above ──
+    case ACTION_TYPES.VERIFICATION_NO: {
+      // Follow-up card is sent inline by the action handler (see registerActionHandler)
+      // This routeAction is a no-op for VERIFICATION_NO
+      return true;
+    }
+
+    // ── Verification: "Krank" or "Andere Schicht" → send callback ──
+    case ACTION_TYPES.VERIFICATION_SICK:
+    case ACTION_TYPES.VERIFICATION_WRONG_SHIFT: {
+      const vCtx2 = ctx as Record<string, string> | undefined;
+      const responseMap: Record<string, string> = {
+        [ACTION_TYPES.VERIFICATION_SICK]: "sick",
+        [ACTION_TYPES.VERIFICATION_WRONG_SHIFT]: "wrong_shift",
+      };
+      const payload: VerificationActionCallback = {
+        action,
+        employeeName: vCtx2?.employeeName || user.displayName,
+        date: vCtx2?.date || new Date().toISOString().slice(0, 10),
+        shiftCode: vCtx2?.shiftCode || "",
+        response: responseMap[action] || action,
+        teamsUserId: user.teamsUserId,
+        aadObjectId: user.aadObjectId,
+        displayName: user.displayName,
+        timestamp: user.timestamp,
+      };
+      return callbackService.sendVerificationAction(payload);
     }
 
     default:

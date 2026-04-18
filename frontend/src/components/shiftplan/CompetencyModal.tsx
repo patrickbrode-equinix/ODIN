@@ -10,6 +10,7 @@ import { X, Star, Plus, Trash2, ChevronDown, GraduationCap, Loader2 } from "luci
 import { api } from "../../api/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ---- Types ---- */
 interface Competency {
@@ -59,6 +60,7 @@ interface Props {
 }
 
 export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
+  const { t } = useLanguage();
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -135,7 +137,7 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
                 <GraduationCap className="w-5 h-5 text-indigo-400" />
                 <div>
                   <Dialog.Title className="text-sm font-black tracking-wider uppercase text-white/90">
-                    Kompetenzen
+                    {t("competency.title")}
                   </Dialog.Title>
                   <p className="text-[11px] text-muted-foreground">{employeeName}</p>
                 </div>
@@ -158,7 +160,7 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
               {!loading && competencies.length === 0 && !showAdd && (
                 <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                   <GraduationCap className="w-10 h-10 opacity-20" />
-                  <p className="text-sm">Keine Kompetenzen hinterlegt</p>
+                  <p className="text-sm">{t("competency.noCompetencies")}</p>
                 </div>
               )}
 
@@ -182,7 +184,7 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
                   <button
                     onClick={() => handleDelete(c.id)}
                     className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 p-1 rounded transition-opacity"
-                    title="Löschen"
+                    title={t("common.delete")}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -192,21 +194,21 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
               {/* Add Form */}
               {showAdd && (
                 <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 space-y-2.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Neue Kompetenz</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">{t("competency.newCompetency")}</p>
                   <Input
-                    placeholder="Fähigkeit (z.B. Cisco Catalyst, Oracle DB…)"
+                    placeholder={t("competency.skillPlaceholder")}
                     value={newCapability}
                     onChange={(e) => setNewCapability(e.target.value)}
                     className="h-8 text-xs rounded-lg"
                     autoFocus
                   />
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">Niveau:</span>
+                    <span className="text-xs text-muted-foreground">{t("competency.level")}:</span>
                     <StarRating level={newLevel} onChange={setNewLevel} />
                     <span className="text-[11px] text-muted-foreground">{LEVEL_LABELS[newLevel]}</span>
                   </div>
                   <Input
-                    placeholder="Notizen (optional)"
+                    placeholder={t("competency.notesPlaceholder")}
                     value={newNotes}
                     onChange={(e) => setNewNotes(e.target.value)}
                     className="h-8 text-xs rounded-lg"
@@ -217,13 +219,13 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
                       onClick={() => setShowAdd(false)}
                       className="h-7 px-2 text-xs text-muted-foreground"
                     >
-                      Abbrechen
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       size="sm" onClick={handleAdd} disabled={saving || !newCapability.trim()}
                       className="h-7 px-3 text-xs bg-indigo-600/80 hover:bg-indigo-600 text-white"
                     >
-                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Hinzufügen"}
+                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : t("competency.add")}
                     </Button>
                   </div>
                 </div>
@@ -238,7 +240,7 @@ export function CompetencyModal({ employeeName, isOpen, onClose }: Props) {
                   className="w-full h-8 text-xs font-bold bg-white/5 hover:bg-white/10 text-white/70 border border-white/10"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Kompetenz hinzufügen
+                  {t("competency.addCompetency")}
                 </Button>
               </div>
             )}

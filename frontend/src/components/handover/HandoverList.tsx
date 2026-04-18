@@ -5,6 +5,7 @@
 import { memo } from "react";
 import { HandoverItem } from "./HandoverItem";
 import { HandoverItem as Item } from "./handover.types";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -33,18 +34,19 @@ function HandoverListComponent({
   onDelete,
   onRestore,
 }: Props) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col h-full rounded-2xl w-full">
       <div className="flex flex-col space-y-1.5 p-6">
         <h3 className="font-semibold leading-none tracking-tight">
-          {showCompleted ? "Erledigte Übergaben" : "Letzte Übergaben"}
+          {showCompleted ? t("handover.completedHandovers") : t("handover.latestHandovers")}
         </h3>
       </div>
 
       <div className="p-6 pt-0 space-y-3">
         {handovers.length === 0 && (
           <p className="text-[13px] text-[#4b5563]">
-            Keine Daten
+            {t("common.noData")}
           </p>
         )}
 

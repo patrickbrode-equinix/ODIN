@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /* ------------------------------------------------ */
 /* UNIT TESTS – Shiftplan Excel Importer            */
 /* Run: npx vitest run src/utils/shiftplanExcelImporter.test.ts */

@@ -15,6 +15,9 @@ export interface TvAssignmentTicket {
   revisedCommitDate: string | null;
   priorityLabel: string;
   priority: string;
+  remainingLabel?: string;
+  status?: string;
+  mode?: string | null;
 }
 
 export interface TvAssignmentClassification {
@@ -60,6 +63,8 @@ export interface TvAssignmentTrace {
   candidatePool: TvCandidateEntry[];
   selectedCandidate: TvSelectedCandidate;
   finalReasons: string[];
+  mode?: string | null;
+  modeLabel?: string;
   decidedAt: string;
   runId: number;
 }

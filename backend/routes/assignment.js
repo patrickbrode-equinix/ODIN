@@ -33,6 +33,29 @@ async function loadLegacyRunDecisions(runId) {
   return rows.map(normalizeLegacyDecisionRow);
 }
 
+async function attachRunModes(decisions = []) {
+  if (!Array.isArray(decisions) || decisions.length === 0) return decisions;
+
+  const runIds = Array.from(new Set(
+    decisions
+      .map((decision) => Number.parseInt(String(decision?.run_id ?? ''), 10))
+      .filter(Number.isInteger)
+  ));
+
+  if (runIds.length === 0) return decisions;
+
+  const { rows } = await pool.query(
+    `SELECT id, mode FROM assignment_runs WHERE id = ANY($1::int[])`,
+    [runIds]
+  );
+  const runModeMap = new Map(rows.map((row) => [row.id, row.mode]));
+
+  return decisions.map((decision) => ({
+    ...decision,
+    run_mode: runModeMap.get(decision.run_id) || null,
+  }));
+}
+
 /* All assignment routes require auth */
 router.use(requireAuth);
 router.use(requirePageAccess('odin_logic', 'view'));
@@ -173,8 +196,8 @@ router.get('/runs/:runId/report', async (req, res) => {
     if (!run) return res.status(404).json({ ok: false, error: 'Run not found' });
 
     // Load all decisions for this run
-    const currentDecisions = await assignmentDecisionRepository.findAll({ runId, limit: 1000 });
-    const legacyDecisions = currentDecisions.length === 0 ? await loadLegacyRunDecisions(runId) : [];
+    const currentDecisions = await attachRunModes(await assignmentDecisionRepository.findAll({ runId, limit: 1000 }));
+    const legacyDecisions = currentDecisions.length === 0 ? await attachRunModes(await loadLegacyRunDecisions(runId)) : [];
     const decisionSource = currentDecisions.length > 0 ? 'current' : (legacyDecisions.length > 0 ? 'legacy' : 'none');
     const decisions = decisionSource === 'legacy' ? legacyDecisions : currentDecisions;
     const realDecisions = decisionSource === 'legacy'
@@ -350,6 +373,60 @@ function readDecisionSubtype(decision) {
   ].find((value) => value != null && String(value).trim() !== '') || null;
 }
 
+function readDecisionActivity(decision) {
+  return [
+    getDecisionObject(decision, 'activity'),
+    getDecisionObject(decision, 'customerTroubleType'),
+    getDecisionObject(decision, 'customer_trouble_type'),
+    getDecisionObject(decision, 'Activity'),
+    getDecisionObject(decision, 'Activity Type'),
+    getDecisionObject(decision, 'Activity Sub Type'),
+    getDecisionObject(decision, 'subtype'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionCurrentOwner(decision) {
+  return [
+    getDecisionObject(decision, 'owner'),
+    getDecisionObject(decision, 'Owner'),
+    getDecisionObject(decision, 'current_owner'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionRemainingHours(decision) {
+  const parsed = Number(
+    getDecisionObject(decision, 'remainingHours')
+    ?? getDecisionObject(decision, 'remaining_hours')
+  );
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readDecisionCommitDate(decision) {
+  return [
+    getDecisionObject(decision, 'dueAt'),
+    getDecisionObject(decision, 'due_at'),
+    getDecisionObject(decision, 'commit_date'),
+    getDecisionObject(decision, 'Commit Date'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionRevisedCommitDate(decision) {
+  return [
+    getDecisionObject(decision, 'revised_commit_date'),
+    getDecisionObject(decision, 'revisedCommitDate'),
+    getDecisionObject(decision, 'Revised Commit Date'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
+function readDecisionScheduledStart(decision) {
+  return [
+    getDecisionObject(decision, 'scheduledStart'),
+    getDecisionObject(decision, 'scheduled_start'),
+    getDecisionObject(decision, 'sched_start'),
+    getDecisionObject(decision, 'Sched. Start'),
+  ].find((value) => value != null && String(value).trim() !== '') || null;
+}
+
 function isQueueBackedDecision(decision) {
   const internalId = parseDecisionInternalTicketId(decision);
   const displayTicketNumber = readDecisionDisplayTicketNumber(decision);
@@ -373,16 +450,25 @@ function buildReportDecision(decision, queueLookup, extras = {}) {
   const queueTicket = resolveQueueTicket(decision, queueLookup);
   const internalTicketId = parseDecisionInternalTicketId(decision);
   const displayTicketNumber = readDecisionDisplayTicketNumber(decision);
+  const remainingHours = readDecisionRemainingHours(decision);
 
   return {
     decisionId: decision.id,
     ticketId: internalTicketId ? String(internalTicketId) : null,
     displayTicketNumber: displayTicketNumber || (internalTicketId ? String(internalTicketId) : 'Unbekannt'),
     internalTicketId: internalTicketId ? String(internalTicketId) : null,
+    mode: decision.run_mode || decision.mode || null,
     queueType: queueTicket?.queue_type || readDecisionQueueOrigin(decision),
     systemName: queueTicket?.system_name || readDecisionSystemName(decision),
     ticketCategory: queueTicket?.queue_type || readDecisionTicketCategory(decision),
     ticketSubtype: queueTicket?.customer_trouble_type || queueTicket?.subtype || readDecisionSubtype(decision),
+    activity: readDecisionActivity(decision),
+    currentOwner: queueTicket?.owner || readDecisionCurrentOwner(decision),
+    recommendedOwner: decision.assigned_worker_name || null,
+    remainingHours,
+    commitDate: readDecisionCommitDate(decision),
+    revisedCommitDate: readDecisionRevisedCommitDate(decision),
+    scheduledStart: readDecisionScheduledStart(decision),
     existsInQueueDb: Boolean(queueTicket),
     ...extras,
   };
@@ -471,15 +557,15 @@ router.get('/runs/:runId', async (req, res) => {
 router.get('/decisions', async (req, res) => {
   try {
     const { limit = 100, offset = 0, result, runId, includeHistorical } = req.query;
-    let decisions = await assignmentDecisionRepository.findAll({
+    let decisions = await attachRunModes(await assignmentDecisionRepository.findAll({
       limit: parseInt(limit),
       offset: parseInt(offset),
       result: result || undefined,
       runId: runId ? parseInt(runId) : undefined,
-    });
+    }));
 
     if (runId && decisions.length === 0) {
-      const legacyDecisions = await loadLegacyRunDecisions(parseInt(runId));
+      const legacyDecisions = await attachRunModes(await loadLegacyRunDecisions(parseInt(runId)));
       decisions = result
         ? legacyDecisions.filter((decision) => decision.result === result)
         : legacyDecisions;
@@ -503,7 +589,9 @@ router.get('/decisions', async (req, res) => {
 
 router.get('/decisions/:decisionId', async (req, res) => {
   try {
-    const decision = await assignmentDecisionRepository.findById(parseInt(req.params.decisionId));
+    const [decision] = await attachRunModes([
+      await assignmentDecisionRepository.findById(parseInt(req.params.decisionId)),
+    ].filter(Boolean));
     if (!decision) return res.status(404).json({ ok: false, error: 'Decision not found' });
     res.json({ ok: true, decision });
   } catch (err) {

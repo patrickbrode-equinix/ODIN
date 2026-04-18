@@ -3,6 +3,7 @@
 /* ================================================ */
 
 import pool from '../../db.js';
+import { getVerificationStatusMap, getVerificationSettings } from '../../services/shiftVerification.js';
 import { findBestMatch, normalizeName } from '../../lib/nameNorm.js';
 import { SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
 
@@ -13,13 +14,23 @@ import { SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
 const WEEKPLAN_TO_ENGINE_ROLE = {
   dispatcher: 'dispatcher',
   dbs_project: 'deutsche_boerse',
+  dbs: 'deutsche_boerse',
+  deutsche_boerse: 'deutsche_boerse',
   colo: 'normal',          // Kolo has no special assignment restriction (informational)
+  normal: 'normal',
   largeorder: 'large_order',
+  large_order: 'large_order',
   projekt: 'project',
+  project: 'project',
   lead: 'leads',
+  leads: 'leads',
   buddy: 'buddy',
   neueinsteiger: 'neustarter',
+  neustarter: 'neustarter',
   cc: 'cross_connect',
+  crossconnect: 'cross_connect',
+  cross_connect: 'cross_connect',
+  'cross connect': 'cross_connect',
   support: 'support',
 };
 
@@ -40,7 +51,8 @@ const SHIFT_WINDOWS = {
 
 export function resolveEffectiveWorkerRole(weekplanRole, assignmentRole) {
   if (weekplanRole) {
-    return WEEKPLAN_TO_ENGINE_ROLE[weekplanRole] || 'normal';
+    const normalizedWeekplanRole = String(weekplanRole || '').trim().toLowerCase();
+    return WEEKPLAN_TO_ENGINE_ROLE[normalizedWeekplanRole] || 'normal';
   }
 
   return 'normal';
@@ -174,6 +186,14 @@ export async function loadCandidateWorkers() {
     ),
   ]);
 
+  // Load verification status map for today (non-blocking — feature may be disabled)
+  let verificationMap = new Map();
+  try {
+    verificationMap = await getVerificationStatusMap(now);
+  } catch (err) {
+    console.warn('[CANDIDATES] Failed to load verification status map:', err?.message || err);
+  }
+
   const userRows = userRes.rows.map(row => ({
     ...row,
     display_name: buildUserDisplayName(row),
@@ -214,6 +234,7 @@ export async function loadCandidateWorkers() {
       userMapped: !!matchedUser,
       planningSource: 'weekly_plan',
       plannedEmployeeName,
+      verificationStatus: verificationMap.get(shiftRow.employee_name)?.status || verificationMap.get(plannedEmployeeName)?.status || null,
     };
   });
 }

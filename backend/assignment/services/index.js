@@ -6,6 +6,7 @@ import { assignmentSettingsRepository, assignmentDecisionRepository, assignmentE
 import { buildTicketExplanation } from '../logging/decisionLog.js';
 import { SETTINGS_KEYS } from '../constants.js';
 import { decisionMatchesTicketIdentifier } from '../lib/ticketIdentity.js';
+import { syncLegacyEngineConfigFromAssignmentSettings } from '../../services/assignmentConfigStore.js';
 
 /* ---- Settings Service ---- */
 
@@ -51,6 +52,7 @@ export const assignmentSettingsService = {
     }
 
     const results = await assignmentSettingsRepository.setMany(filtered, updatedBy);
+    await syncLegacyEngineConfigFromAssignmentSettings(filtered, updatedBy);
     return { updated: results, rejected };
   },
 

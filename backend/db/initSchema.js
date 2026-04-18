@@ -557,6 +557,7 @@ export async function initSchema() {
     can_sh BOOLEAN NOT NULL DEFAULT false,
     can_tt BOOLEAN NOT NULL DEFAULT false,
     can_cc BOOLEAN NOT NULL DEFAULT false,
+    rated_skills JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -839,6 +840,7 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
   /* ------------------------------------------------ */
   await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
   `);
 
   /* ------------------------------------------------ */

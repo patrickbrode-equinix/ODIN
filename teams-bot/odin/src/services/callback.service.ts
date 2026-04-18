@@ -11,9 +11,10 @@ import type {
   TicketActionCallback,
   ShiftActionCallback,
   SupervisorActionCallback,
+  VerificationActionCallback,
 } from "../models/index";
 
-type CallbackPayload = TicketActionCallback | ShiftActionCallback | SupervisorActionCallback;
+type CallbackPayload = TicketActionCallback | ShiftActionCallback | SupervisorActionCallback | VerificationActionCallback;
 
 export class CallbackService {
   private baseUrl: string;
@@ -45,6 +46,13 @@ export class CallbackService {
    */
   async sendSupervisorAction(payload: SupervisorActionCallback): Promise<boolean> {
     return this.post("/api/teams/callback/supervisor-action", payload);
+  }
+
+  /**
+   * Forward a verification action (yes / sick / wrong_shift) to ODIN.
+   */
+  async sendVerificationAction(payload: VerificationActionCallback): Promise<boolean> {
+    return this.post("/api/verification/callback", payload);
   }
 
   /** Generic POST to ODIN with shared secret and timeout */

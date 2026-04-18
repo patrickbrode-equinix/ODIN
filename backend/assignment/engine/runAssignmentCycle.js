@@ -6,6 +6,7 @@ import pool from '../../db.js';
 import { assignmentRunRepository } from '../repositories/index.js';
 import { assignmentSettingsService } from '../services/index.js';
 import { refreshAssignmentRuntimeRules } from '../services/runtimeRules.js';
+import { getVerificationSettings } from '../../services/shiftVerification.js';
 import { normalizeTicket } from '../normalization/normalizeTicket.js';
 import { checkRelevance } from '../relevance/checkRelevance.js';
 import { sortTickets } from '../priority/sortAndSelect.js';
@@ -52,7 +53,17 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     const settings = await assignmentSettingsService.getEngineConfig();
     await refreshAssignmentRuntimeRules();
     const mode = modeOverride || settings.mode;
-    const executionSettings = { ...settings, mode, executionMode: mode };
+
+    // Enrich with verification settings for eligibility rules
+    let verificationCfg = {};
+    try { verificationCfg = await getVerificationSettings(); } catch { /* non-fatal */ }
+    const executionSettings = {
+      ...settings,
+      mode,
+      executionMode: mode,
+      verificationEnabled: verificationCfg.enabled || false,
+      pendingBlocksAssignment: verificationCfg.pendingBlocksAssignment,
+    };
 
     // Live mode safety: only allow if explicitly enabled
     if (mode === 'live') {

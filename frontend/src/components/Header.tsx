@@ -4,9 +4,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, X, Link2, Upload, Camera, Trash2, Eye, EyeOff } from "lucide-react";
+import { User, Sun, Moon, Menu, ChevronDown, Activity, Clock, Info, X, Link2, Upload, Camera, Trash2, Eye, EyeOff, Database, Gauge, UsersRound } from "lucide-react";
 
 import { api } from "../api/api";
+import { fetchEqixQuote, type MarketQuote } from "../api/market";
 import { useTheme } from "./ThemeProvider";
 import { useAuth } from "../context/AuthContext";
 import { useHealthStatus } from "../hooks/useHealthStatus";
@@ -77,6 +78,24 @@ type MetricsResponse = {
       load15?: number;
     };
   };
+  users?: {
+    onlineCount?: number;
+    totalApproved?: number;
+    recentWindowMinutes?: number;
+  };
+  database?: {
+    sizeMB?: number;
+    sizePretty?: string | null;
+    connectionCount?: number;
+  };
+  tickets?: {
+    activeCount?: number;
+    perOnlineUser?: number | null;
+  };
+  utilization?: {
+    overallPct?: number | null;
+    systemLoadPct?: number | null;
+  };
   node?: string;
   timestamp?: string;
 };
@@ -100,6 +119,88 @@ function formatUptime(sec?: number) {
 function fmt1(n?: number | null) {
   if (n === null || n === undefined || !Number.isFinite(n)) return "-";
   return Number(n).toFixed(1);
+}
+
+function formatStorage(sizePretty?: string | null, sizeMB?: number) {
+  if (sizePretty) return sizePretty;
+  if (sizeMB === null || sizeMB === undefined || !Number.isFinite(sizeMB)) return "-";
+  return `${fmt1(sizeMB)} MB`;
+}
+
+function formatQuotePrice(price: number | null, currency: string | null) {
+  if (price === null || !Number.isFinite(price)) return "--";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(price);
+  } catch {
+    return `${price?.toFixed(2) ?? "--"} ${currency || "USD"}`;
+  }
+}
+
+function formatQuoteDelta(changePercent: number | null) {
+  if (changePercent === null || !Number.isFinite(changePercent)) return null;
+  return `${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`;
+}
+
+function EqixStockBadge() {
+  const { language } = useLanguage();
+  const [quote, setQuote] = useState<MarketQuote | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+
+    const loadQuote = async () => {
+      try {
+        const nextQuote = await fetchEqixQuote();
+        if (!alive) return;
+        setQuote(nextQuote);
+      } catch (error) {
+        if (!alive) return;
+        console.error("Failed to fetch EQIX quote", error);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    loadQuote();
+    const interval = setInterval(loadQuote, 300000);
+
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const available = quote?.available === true && Number.isFinite(quote?.price);
+  const delta = formatQuoteDelta(quote?.changePercent ?? null);
+  const positive = (quote?.changePercent ?? 0) >= 0;
+  const isGerman = language === "de";
+  const title = available
+    ? isGerman
+      ? `Equinix-Aktie · ${quote?.stale ? "zwischengespeichert" : "live"}`
+      : `Equinix stock · ${quote?.stale ? "cached" : "live"}`
+    : isGerman
+      ? "Equinix-Aktie aktuell nicht verfügbar"
+      : "Equinix stock price currently unavailable";
+
+  return (
+    <div
+      className="hidden shrink-0 sm:flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-[12px] font-medium text-cyan-100"
+      title={title}
+    >
+      <span className={`h-2 w-2 rounded-full ${available ? (quote?.stale ? "bg-amber-400" : positive ? "bg-emerald-400" : "bg-rose-400") : loading ? "bg-slate-500 animate-pulse" : "bg-slate-500"}`} />
+      <span className="font-semibold tracking-wide text-cyan-200">EQIX</span>
+      <span className="text-slate-100">{available ? formatQuotePrice(quote?.price ?? null, quote?.currency ?? null) : "--"}</span>
+      {available && delta ? (
+        <span className={positive ? "text-emerald-300" : "text-rose-300"}>{delta}</span>
+      ) : null}
+    </div>
+  );
 }
 
 /* ---------------------------------------------------- */
@@ -191,6 +292,7 @@ function ClockDisplay() {
 /* ---------------------------------------------------- */
 
 function EventsPanel() {
+  const { t } = useLanguage();
   const [images, setImages] = useState<Array<{
     id: number;
     url_path: string;
@@ -207,7 +309,7 @@ function EventsPanel() {
       setImages(Array.isArray(res.data) ? res.data : []);
       setLoadError(null);
     } catch {
-      setLoadError("Bilder konnten nicht geladen werden.");
+      setLoadError(t("header.imageLoadError"));
     }
   };
 
@@ -224,19 +326,19 @@ function EventsPanel() {
       });
       await load();
     } catch {
-      alert("Upload fehlgeschlagen.");
+      alert(t("header.uploadFailed"));
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Bild löschen?")) return;
+    if (!window.confirm(t("header.confirmDeleteImage"))) return;
     try {
       await api.delete(`/events/images/${id}`);
       setImages(prev => prev.filter(i => i.id !== id));
     } catch {
-      alert("Löschen fehlgeschlagen.");
+      alert(t("header.deleteFailed"));
     }
   };
 
@@ -245,7 +347,7 @@ function EventsPanel() {
       await api.patch(`/events/images/${id}/visibility`, { is_visible: !current });
       setImages(prev => prev.map(i => i.id === id ? { ...i, is_visible: !current } : i));
     } catch {
-      alert("Sichtbarkeit konnte nicht geändert werden.");
+      alert(t("header.visibilityChangeFailed"));
     }
   };
 
@@ -270,9 +372,9 @@ function EventsPanel() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-sm font-semibold transition disabled:opacity-60"
         >
           <Upload className="w-4 h-4" />
-          {uploading ? "Wird hochgeladen..." : "Bilder hochladen"}
+          {uploading ? t("header.uploading") : t("header.uploadButton")}
         </button>
-        <p className="text-[11px] text-muted-foreground mt-1">JPG, PNG, WebP, GIF · max. 20 MB pro Datei</p>
+        <p className="text-[11px] text-muted-foreground mt-1">{t("header.fileFormats")}</p>
       </div>
 
       {loadError && <p className="text-red-400 text-sm">{loadError}</p>}
@@ -281,7 +383,7 @@ function EventsPanel() {
       {images.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
           <Camera className="w-12 h-12 opacity-20" />
-          <p className="text-sm">Keine Event-Bilder vorhanden</p>
+          <p className="text-sm">{t("header.noImagesAvailable")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -313,14 +415,14 @@ function EventsPanel() {
                         ? 'text-green-400 hover:text-slate-400 hover:bg-white/10'
                         : 'text-slate-500 hover:text-green-400 hover:bg-white/10'
                     }`}
-                    title={img.is_visible ? 'Sichtbar – klicken zum Ausblenden' : 'Ausgeblendet – klicken zum Einblenden'}
+                    title={img.is_visible ? t('header.imageVisibleHint') : t('header.imageHiddenHint')}
                   >
                     {img.is_visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   </button>
                   <button
                     onClick={() => handleDelete(img.id)}
                     className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition"
-                    title="Löschen"
+                    title={t("header.deleteTooltip")}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -339,6 +441,7 @@ function EventsPanel() {
 /* ---------------------------------------------------- */
 
 function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<"instructions" | "projects" | "events">("instructions");
 
   if (!open) return null;
@@ -359,7 +462,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                Anweisungen
+                {t("header.instructions")}
               </button>
               <button
                 onClick={() => setMode("projects")}
@@ -369,7 +472,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                Projekte
+                {t("header.projects")}
               </button>
               <button
                 onClick={() => setMode("events")}
@@ -410,20 +513,21 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 /* ---------------------------------------------------- */
 
 function QuickLinksMenu() {
+  const { t } = useLanguage();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 transition-colors"
-          title="Quick Links"
+          title={t("header.quickLinks")}
         >
           <Link2 className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Links</span>
+          <span className="hidden xl:inline">{t("header.links")}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 bg-[#0f172a] border border-white/10 text-slate-200">
         <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          Quick Links
+          {t("header.quickLinks")}
         </div>
         <DropdownMenuSeparator className="bg-white/10" />
         {QUICK_LINKS.map((link) => (
@@ -579,9 +683,16 @@ export function Header({ onToggleSidebar }: HeaderProps) {
     status?.database === "ok" &&
     !error;
 
-  const metricsOk = !!metrics && !metricsError;
+  const metricsOk = !!metrics;
+  const metricsStale = !!metrics && !!metricsError;
   const cpuPct = metrics?.system?.cpuUsagePct ?? null;
   const memPct = metrics?.system?.memUsedPct ?? null;
+  const onlineUsers = metrics?.users?.onlineCount ?? null;
+  const totalUsers = metrics?.users?.totalApproved ?? null;
+  const dbSize = formatStorage(metrics?.database?.sizePretty, metrics?.database?.sizeMB);
+  const overallUtilization = metrics?.utilization?.overallPct ?? null;
+  const systemLoadPct = metrics?.utilization?.systemLoadPct ?? null;
+  const activeTicketsPerOnlineUser = metrics?.tickets?.perOnlineUser ?? null;
 
   const displayName = getUserDisplayName(user);
   const activeLanguage = languages.find((entry) => entry.code === language) || languages[0];
@@ -607,7 +718,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
       {/* MODALS (rendered outside header flow) */}
       <InfosModal open={infosOpen} onClose={() => setInfosOpen(false)} />
 
-      <header className="sticky top-0 z-40 w-full px-4 md:px-6 pt-4 pb-2 flex items-center justify-between gap-4 bg-transparent pointer-events-none">
+      <header className="sticky top-0 z-40 flex w-full flex-wrap items-start justify-between gap-3 bg-transparent px-3 pb-2 pt-3 pointer-events-none sm:px-4 sm:pt-4 lg:px-6 2xl:items-center">
         {/* LEFT */}
         <div className="flex items-center gap-3 bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl p-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] pointer-events-auto transition-all hover:border-blue-500/30">
           <button
@@ -619,8 +730,8 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         </div>
 
         {/* CENTER: CRAWLER INFO */}
-        <div className="flex-1 flex justify-center pointer-events-none hidden md:flex">
-          <div className="bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl px-5 py-2 flex items-center gap-6 text-[13px] shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-blue-500/30 pointer-events-auto">
+        <div className="order-3 flex basis-full justify-center pointer-events-none">
+          <div className="w-full max-w-[1480px] bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl px-4 py-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12px] shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-blue-500/30 pointer-events-auto">
             <div className="flex items-center gap-2">
               <span className="text-slate-500 font-medium">{t("header.crawlerUpdate")}:</span>
               <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400" : "text-slate-200"}`}>
@@ -683,14 +794,16 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         </div>
 
         {/* RIGHT */}
-        <div className="flex items-center gap-2 bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl p-1.5 px-2 shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] pointer-events-auto transition-all hover:border-blue-500/30">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 rounded-2xl border border-blue-500/15 bg-[rgba(8,12,28,0.72)] p-1.5 px-2 shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] pointer-events-auto transition-all hover:border-blue-500/30">
           {/* GLOBAL CLOCK */}
           <ClockDisplay />
 
           {/* WEATHER */}
-          <div className="hidden lg:block">
+          <div className="hidden shrink-0 lg:block">
             <WeatherDisplay />
           </div>
+
+          <EqixStockBadge />
 
           <div className="h-4 w-px bg-white/10 mx-1" />
 
@@ -698,7 +811,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           <button
             onClick={() => setInfosOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
-            title="Informationen und Anweisungen"
+            title={t("header.infoAndInstructions")}
           >
             <Info className="w-3.5 h-3.5" />
             <span className="hidden xl:inline">{t("header.infos")}</span>
@@ -710,7 +823,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               ? "border-green-500/40 bg-green-500/10 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.25)]"
               : "border-rose-500/40 bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.25)]"
               }`}
-            title={teamsActive ? "Teams Benachrichtigungen sind aktiv – Benachrichtigungsfunktion ist eingeschaltet" : "Teams Benachrichtigungen sind inaktiv – Keine automatischen Benachrichtigungen"}
+            title={teamsActive ? t("header.teamsActiveTooltip") : t("header.teamsInactiveTooltip")}
           >
             <span className={`w-2 h-2 rounded-full ${teamsActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
             <MessageSquareMore className="w-3.5 h-3.5" />
@@ -723,7 +836,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               ? "border-green-500/40 bg-green-500/10 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.25)]"
               : "border-rose-500/40 bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.25)]"
               }`}
-            title={odinLogicActive ? "ODIN-Logik ist aktiv – Automatische Zuweisungslogik ist eingeschaltet" : "ODIN-Logik ist inaktiv – Keine automatische Ticketzuweisung"}
+            title={odinLogicActive ? t("header.odinLogicActiveTooltip") : t("header.odinLogicInactiveTooltip")}
           >
             <span className={`w-2 h-2 rounded-full ${odinLogicActive ? "bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]"}`} />
             <Brain className="w-3.5 h-3.5" />
@@ -740,37 +853,84 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
           {/* METRICS */}
           <div className="relative group">
-            <button className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+            <button className="p-2 hover:bg-white/5 rounded-lg transition-colors" title={t("header.systemMetrics")}>
               <Activity
-                className={`w-4 h-4 ${metricsOk ? "text-slate-300" : "text-rose-400"
+                className={`w-4 h-4 ${metricsOk ? metricsStale ? "text-amber-300" : "text-slate-300" : "text-rose-400"
                   }`}
               />
             </button>
 
-            <div className="absolute right-0 top-10 hidden group-hover:block bg-[#0f172a] border border-white/10 rounded-xl p-4 text-[13px] shadow-2xl w-72 z-50 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 top-10 z-50 hidden w-[22rem] rounded-xl border border-white/10 bg-[#0f172a] p-4 text-[13px] shadow-2xl animate-in fade-in zoom-in-95 group-hover:block">
               <div className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-blue-400" />
                 {t("header.systemMetrics")}
               </div>
               {!metricsOk ? (
                 <div className="text-rose-400 text-sm bg-rose-500/10 p-2 rounded border border-rose-500/20">
-                  {metricsError ?? "not available"}
+                  {metricsError ?? t("header.notAvailable")}
                 </div>
               ) : (
-                <div className="space-y-2 text-slate-300">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500">CPU</span>
-                    <span className="font-medium text-slate-200">{cpuPct === null ? "-" : `${fmt1(cpuPct)} %`}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500">RAM</span>
-                    <span className="font-medium text-slate-200">{memPct === null ? "-" : `${fmt1(memPct)} %`}</span>
-                  </div>
-                  <div className="pt-2 mt-2 border-t border-white/10">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Uptime</span>
-                      <span className="font-medium text-slate-200">{formatUptime(metrics?.uptimeSec)}</span>
+                <div className="space-y-4 text-slate-300">
+                  {metricsStale ? (
+                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                      {language === "de"
+                        ? "Letzte erfolgreiche Metriken werden angezeigt. Das Live-Update ist aktuell gestört."
+                        : "Showing the last successful metrics. Live updates are currently failing."}
                     </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                        <UsersRound className="h-3.5 w-3.5 text-sky-300" />
+                        {t("header.loggedIn")}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-100">{onlineUsers ?? "-"}</div>
+                      <div className="text-[11px] text-slate-500">{`${onlineUsers ?? "-"} / ${totalUsers ?? "-"} ${t("header.ofApprovedUsers")}`}</div>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                        <Gauge className="h-3.5 w-3.5 text-amber-300" />
+                        {t("header.utilization")}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-100">{overallUtilization === null ? "-" : `${fmt1(overallUtilization)} %`}</div>
+                      <div className="text-[11px] text-slate-500">{t("header.systemLoad")} {systemLoadPct === null ? "-" : `${fmt1(systemLoadPct)} %`}</div>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                        <Database className="h-3.5 w-3.5 text-fuchsia-300" />
+                        {t("header.dbStorage")}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-100">{dbSize}</div>
+                      <div className="text-[11px] text-slate-500">{metrics?.database?.connectionCount ?? "-"} {t("header.activeConnections")}</div>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                        <Activity className="h-3.5 w-3.5 text-emerald-300" />
+                        {t("header.ticketLoad")}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-100">{metrics?.tickets?.activeCount ?? "-"}</div>
+                      <div className="text-[11px] text-slate-500">{activeTicketsPerOnlineUser === null ? "-" : `${fmt1(activeTicketsPerOnlineUser)} ${t("header.ticketsPerUser")}`}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t border-white/10 pt-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">CPU</span>
+                      <span className="font-medium text-slate-200">{cpuPct === null ? "-" : `${fmt1(cpuPct)} %`}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">RAM</span>
+                      <span className="font-medium text-slate-200">{memPct === null ? "-" : `${fmt1(memPct)} %`}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Node Heap</span>
+                      <span className="font-medium text-slate-200">{metrics?.process?.heapUsedMB === undefined ? "-" : `${fmt1(metrics?.process?.heapUsedMB)} / ${fmt1(metrics?.process?.heapTotalMB)} MB`}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Uptime</span>
+                    <span className="font-medium text-slate-200">{formatUptime(metrics?.uptimeSec)}</span>
                   </div>
                 </div>
               )}
@@ -789,6 +949,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300">
+                <span className="text-base leading-none">{activeLanguage.flag}</span>
                 <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
                   {activeLanguage.shortLabel}
                 </span>
@@ -799,6 +960,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               {languages.map((option) => (
                 <DropdownMenuItem key={option.code} onClick={() => setLanguage(option.code)} className="focus:bg-white/10 focus:text-white">
                   <div className="flex items-center gap-2">
+                    <span className="text-base leading-none">{option.flag}</span>
                     <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
                       {option.shortLabel}
                     </span>

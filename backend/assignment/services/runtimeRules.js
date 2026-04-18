@@ -34,6 +34,11 @@ const DEFAULT_RUNTIME_RULES = {
   crossConnectOnly: {
     enabled: true,
     allow: ['CrossConnect'],
+    allowMixedTypes: [],
+    allowTroubleTicketWhenResourcesTight: true,
+    minRemainingHoursForTroubleTicket: 24,
+    sameSystemOnly: false,
+    samePriorityOnly: false,
   },
   maxShPerSystem: MAX_SH_PER_WORKER_PER_SYSTEM,
   similarTimeThresholdMs: SIMILAR_TIME_THRESHOLD_MS,
@@ -43,6 +48,9 @@ const DEFAULT_RUNTIME_RULES = {
     mode: 'least_workload',
   },
   maxTicketsPerWorker: 0,
+  maxTicketsPerType: {},
+  maxTicketsPerRole: {},
+  maxTicketsPerRoleAndType: {},
 };
 
 let runtimeRules = DEFAULT_RUNTIME_RULES;
@@ -54,6 +62,47 @@ function asArray(value) {
 function asPositiveNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function getConfigValue(config, ...keys) {
+  for (const key of keys) {
+    if (config && Object.prototype.hasOwnProperty.call(config, key)) {
+      return config[key];
+    }
+  }
+  return undefined;
+}
+
+function normalizeLowerCaseNumberMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [String(key || '').trim().toLowerCase(), asPositiveNumber(entryValue, null)])
+      .filter(([, entryValue]) => entryValue != null)
+  );
+}
+
+function normalizeCaseSensitiveNumberMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [String(key || '').trim(), asPositiveNumber(entryValue, null)])
+      .filter(([key, entryValue]) => key && entryValue != null)
+  );
+}
+
+function normalizeRoleTypeCapMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([roleKey, perType]) => {
+        const normalizedRoleKey = String(roleKey || '').trim().toLowerCase();
+        const normalizedPerType = normalizeCaseSensitiveNumberMap(perType);
+        return [normalizedRoleKey, normalizedPerType];
+      })
+      .filter(([roleKey, perType]) => roleKey && Object.keys(perType).length > 0)
+  );
 }
 
 function normalizePriorityTiers(value) {
@@ -109,6 +158,14 @@ function buildRuntimeRules(rows = []) {
         next.crossConnectOnly = {
           enabled,
           allow: asArray(config.allow).map((item) => String(item || '').trim()).filter(Boolean),
+          allowMixedTypes: asArray(getConfigValue(config, 'allow_mixed_types', 'allowMixedTypes')).map((item) => String(item || '').trim()).filter(Boolean),
+          allowTroubleTicketWhenResourcesTight: getConfigValue(config, 'allow_tt_when_insufficient_resources', 'allowTroubleTicketWhenResourcesTight') !== false,
+          minRemainingHoursForTroubleTicket: asPositiveNumber(
+            getConfigValue(config, 'min_remaining_hours_for_tt', 'minRemainingHoursForTroubleTicket'),
+            DEFAULT_RUNTIME_RULES.crossConnectOnly.minRemainingHoursForTroubleTicket,
+          ),
+          sameSystemOnly: getConfigValue(config, 'allow_same_system_only', 'sameSystemOnly') === true,
+          samePriorityOnly: getConfigValue(config, 'same_priority_only', 'samePriorityOnly') === true,
         };
         break;
       case 'max_sh_per_system':
@@ -130,6 +187,9 @@ function buildRuntimeRules(rows = []) {
         break;
       case 'max_tickets_per_worker':
         next.maxTicketsPerWorker = enabled ? asPositiveNumber(config.max, 0) : 0;
+        next.maxTicketsPerType = enabled ? normalizeCaseSensitiveNumberMap(getConfigValue(config, 'per_type', 'maxTicketsPerType')) : {};
+        next.maxTicketsPerRole = enabled ? normalizeLowerCaseNumberMap(getConfigValue(config, 'per_role', 'maxTicketsPerRole')) : {};
+        next.maxTicketsPerRoleAndType = enabled ? normalizeRoleTypeCapMap(getConfigValue(config, 'per_role_type', 'maxTicketsPerRoleAndType')) : {};
         break;
       default:
         break;

@@ -97,3 +97,57 @@ export function getAssignmentTicketCategory(source: TicketShape): string | null 
     null
   );
 }
+
+export function getAssignmentActivity(source: TicketShape): string | null {
+  const normalized = source.normalizedTicket || source.normalized_ticket || null;
+  const raw = source.rawTicket || source.raw_ticket || null;
+
+  return (
+    readObjectValue(normalized, 'activity') ||
+    readObjectValue(normalized, 'customerTroubleType') ||
+    readObjectValue(raw, 'activity') ||
+    readObjectValue(raw, 'Activity') ||
+    readObjectValue(raw, 'Activity Type') ||
+    readObjectValue(raw, 'Activity Sub Type') ||
+    readObjectValue(raw, 'customer_trouble_type') ||
+    readObjectValue(raw, 'subtype') ||
+    null
+  );
+}
+
+export function getAssignmentCurrentOwner(source: TicketShape): string | null {
+  const normalized = source.normalizedTicket || source.normalized_ticket || null;
+  const raw = source.rawTicket || source.raw_ticket || null;
+
+  return (
+    readObjectValue(normalized, 'owner') ||
+    readObjectValue(raw, 'owner') ||
+    readObjectValue(raw, 'Owner') ||
+    readObjectValue(raw, 'current_owner') ||
+    null
+  );
+}
+
+export function getAssignmentRemainingHours(source: TicketShape): number | null {
+  const normalized = source.normalizedTicket || source.normalized_ticket || null;
+  const raw = source.rawTicket || source.raw_ticket || null;
+  const parsed = Number(
+    readObjectValue(normalized, 'remainingHours') ||
+    readObjectValue(raw, 'remaining_hours')
+  );
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function formatAssignmentRemainingHours(hours: number | null): string | null {
+  if (hours == null || !Number.isFinite(hours)) return null;
+  if (hours < 1) {
+    const minutes = Math.max(1, Math.round(hours * 60));
+    return `${minutes} min`;
+  }
+
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  if (minutes <= 0) return `${wholeHours} h`;
+  return `${wholeHours} h ${minutes} min`;
+}

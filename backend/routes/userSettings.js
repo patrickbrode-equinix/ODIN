@@ -111,6 +111,18 @@ router.put("/user/preferences/shiftplan", requireAuth, async (req, res) => {
 
 const MAX_PREFERRED_COLLEAGUES = 3;
 
+function buildEmployeeNameVariants(row = {}) {
+  const firstName = String(row.first_name || "").trim();
+  const lastName = String(row.last_name || "").trim();
+  const provisionedName = String(row.provisioned_employee_name || "").trim();
+
+  return [...new Set([
+    provisionedName,
+    lastName && firstName ? `${lastName}, ${firstName}` : "",
+    firstName && lastName ? `${firstName} ${lastName}` : "",
+  ].filter(Boolean))];
+}
+
 /**
  * GET /api/user/preferred-colleagues
  * Returns the current user's preferred colleague names.
@@ -160,6 +172,21 @@ router.put("/user/preferred-colleagues", requireAuth, async (req, res) => {
     // Block self-reference
     if (ownName && unique.includes(ownName)) {
       return res.status(400).json({ error: "Selbstauswahl ist nicht erlaubt" });
+    }
+
+    const { rows: employeePreferenceRows } = await db.query(
+      `SELECT avoid_colleagues FROM employee_preferences WHERE user_id = $1`,
+      [req.user.id]
+    );
+    const avoidColleagues = Array.isArray(employeePreferenceRows[0]?.avoid_colleagues)
+      ? employeePreferenceRows[0].avoid_colleagues.map((name) => String(name || '').trim()).filter(Boolean)
+      : [];
+    const avoidSet = new Set(avoidColleagues);
+    const overlap = unique.filter((name) => avoidSet.has(name));
+    if (overlap.length > 0) {
+      return res.status(400).json({
+        error: `Folgende Mitarbeiter sind bereits in der Ausschlussliste: ${overlap.join(", ")}`,
+      });
     }
 
     // Validate that all names exist in shifts (planungsrelevant)
@@ -212,23 +239,45 @@ router.get("/user/eligible-colleagues", requireAuth, async (req, res) => {
   try {
     // Get the logged-in user's name
     const { rows: userRows } = await db.query(
-      `SELECT first_name, last_name FROM users WHERE id = $1`,
+      `SELECT first_name, last_name, provisioned_employee_name FROM users WHERE id = $1`,
       [req.user.id]
     );
-    const ownName = userRows[0]
-      ? `${userRows[0].last_name}, ${userRows[0].first_name}`.trim()
-      : null;
+    const ownNames = new Set(buildEmployeeNameVariants(userRows[0] || {}));
 
-    // Get distinct employee names from shifts (all months — planungsrelevant)
+    // Get distinct employee names from shifts and enrich them with login state.
     const { rows } = await db.query(
-      `SELECT DISTINCT employee_name FROM shifts ORDER BY employee_name`
+      `WITH shift_employees AS (
+         SELECT DISTINCT employee_name
+         FROM shifts
+         WHERE employee_name IS NOT NULL
+           AND trim(employee_name) <> ''
+       )
+       SELECT
+         se.employee_name AS name,
+         matched_user.last_login AS "lastLogin",
+         (matched_user.last_login IS NOT NULL) AS "hasLoggedIn"
+       FROM shift_employees se
+       LEFT JOIN LATERAL (
+         SELECT u.last_login
+         FROM users u
+         WHERE trim(COALESCE(u.provisioned_employee_name, '')) = se.employee_name
+            OR trim(concat_ws(', ', NULLIF(trim(u.last_name), ''), NULLIF(trim(u.first_name), ''))) = se.employee_name
+            OR trim(concat_ws(' ', NULLIF(trim(u.first_name), ''), NULLIF(trim(u.last_name), ''))) = se.employee_name
+         ORDER BY u.last_login DESC NULLS LAST, u.created_at DESC
+         LIMIT 1
+       ) matched_user ON TRUE
+       ORDER BY se.employee_name`
     );
 
-    const names = rows
-      .map(r => r.employee_name)
-      .filter(n => n !== ownName); // exclude self
+    const colleagues = rows
+      .map((row) => ({
+        name: row.name,
+        lastLogin: row.lastLogin || null,
+        hasLoggedIn: row.hasLoggedIn === true,
+      }))
+      .filter((entry) => !ownNames.has(entry.name));
 
-    res.json(names);
+    res.json(colleagues);
   } catch (err) {
     console.error("GET ELIGIBLE COLLEAGUES ERROR:", err);
     res.status(500).json({ error: "Failed to load eligible colleagues" });

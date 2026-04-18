@@ -16,6 +16,7 @@ import {
 } from "./handover.utils";
 import { formatTimestamp } from "../../utils/dateFormat";
 import { HandoverFiles } from "./HandoverFiles";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -45,6 +46,7 @@ function HandoverItemComponent({
   onRestore,
 }: Props) {
   const isOptimistic = handover.id < 0;
+  const { t } = useLanguage();
 
   const isTakenByOther =
     !!handover.takenBy && handover.takenBy !== currentUser;
@@ -56,9 +58,9 @@ function HandoverItemComponent({
   const isDone = handover.status === "Erledigt";
 
   const disabledReason = isOptimistic
-    ? "Wird synchronisiert …"
+    ? t("handover.syncing")
     : isTakenByOther
-      ? "Bereits von anderem Nutzer übernommen"
+      ? t("handover.alreadyTaken")
       : undefined;
 
   // Color Coding based on Type
@@ -221,7 +223,7 @@ function HandoverItemComponent({
                 onClick={() => onTakeOver(handover.id)}
               >
                 <UserCheck className="w-4 h-4 mr-1" />
-                Übernehmen
+                {t("handover.takeOver")}
               </Button>
             )}
 
@@ -235,7 +237,7 @@ function HandoverItemComponent({
                 onClick={() => onComplete(handover.id)}
               >
                 <CheckCircle className="w-4 h-4 mr-1" />
-                Erledigt
+                {t("handover.done")}
               </Button>
             )}
 

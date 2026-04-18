@@ -22,6 +22,7 @@ import queueSnapshotRoute from "./routes/queue/snapshot.route.js";
 import queueRoutes from "./routes/queue.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import marketRoutes from "./routes/market.js";
 import kioskRoutes from "./routes/kiosk.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import userSettingsRoutes from "./routes/userSettings.js";
@@ -45,9 +46,11 @@ import teamsRoutes from "./routes/teams.js";
 import tvRoutes from "./routes/tv.js";
 import eventsRoutes from "./routes/events.js";
 import assignmentRoutes from "./routes/assignment.js";
+import engineRoutes from "./routes/engine.js";
 import feedbackRoutes from "./routes/feedback.js";
 import shiftplanControlRoutes from "./routes/shiftplanControl.js";
 import shiftConfigRoutes from "./routes/shiftConfig.js";
+import verificationRoutes from "./routes/verification.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +61,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = config.PORT;
+
+// Behind reverse proxy (Portal / Nginx / Ingress) — trust X-Forwarded-* headers.
+app.set("trust proxy", true);
 
 /* ------------------------------------------------ */
 /* MIDDLEWARE                                       */
@@ -112,6 +118,7 @@ app.use("/api/tv", tvRoutes);
 // 1. Health + Metrics (proper route files with error handling)
 app.use("/api/health", healthRoutes);
 app.use("/api/metrics", metricsRoutes);
+app.use("/api/market", marketRoutes);
 
 // 2. Auth
 app.use("/api/auth", authRoutes);
@@ -204,6 +211,12 @@ app.use("/api/events", eventsRoutes);
 // Assignment Engine (ODIN-Logik, Phase 1 Shadow Mode)
 app.use("/api/assignment", assignmentRoutes);
 
+// Legacy engine endpoints kept for backwards compatibility
+app.use("/api/engine", engineRoutes);
+
+// Shift Verification (employee self-check via Teams)
+app.use("/api/verification", verificationRoutes);
+
 // Shiftplan Control Center (Draft generation, activation, Excel)
 app.use("/api/shiftplan-control", shiftplanControlRoutes);
 
@@ -236,6 +249,10 @@ app.use("/api/assignment-rules", assignmentRulesRoutes);
 // Settings Audit Log
 import settingsAuditRoutes from "./routes/settingsAudit.js";
 app.use("/api/admin/settings-audit", settingsAuditRoutes);
+
+// Fairness & Variety Settings (ODIN)
+import fairnessSettingsRoutes from "./routes/fairnessSettings.js";
+app.use("/api/admin/fairness-settings", fairnessSettingsRoutes);
 
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */
@@ -322,6 +339,11 @@ async function start() {
     console.log(`✅ [SERVER] Listening on http://0.0.0.0:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/api/health`);
     if (!dbOk) console.warn("   ⚠️  WARNING: Database is NOT connected.");
+
+    // Start verification scheduler (checks every 60s if verifications need sending)
+    import("./services/verificationScheduler.js")
+      .then(({ startVerificationScheduler }) => startVerificationScheduler())
+      .catch((err) => console.warn("[SERVER] Verification scheduler not started:", err?.message));
   });
 
   // 4. Error Handling (EADDRINUSE)

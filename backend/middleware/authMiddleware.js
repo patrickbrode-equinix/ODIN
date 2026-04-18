@@ -7,6 +7,31 @@ import db from "../db.js";
 import { resolveUserRole } from "../auth/accessControl.js";
 import { buildAccessPolicy } from "../auth/accessControl.js";
 
+const LAST_SEEN_TOUCH_INTERVAL_MS = 60 * 1000;
+const lastSeenTouchCache = new Map();
+
+async function touchUserLastSeen(userId) {
+  if (!Number.isInteger(userId)) return;
+
+  const now = Date.now();
+  const lastTouchedAt = lastSeenTouchCache.get(userId) || 0;
+  if (now - lastTouchedAt < LAST_SEEN_TOUCH_INTERVAL_MS) return;
+
+  lastSeenTouchCache.set(userId, now);
+
+  try {
+    await db.query(
+      `UPDATE users
+       SET last_seen_at = NOW()
+       WHERE id = $1
+         AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '45 seconds')`,
+      [userId]
+    );
+  } catch (error) {
+    console.warn("LAST SEEN UPDATE ERROR:", error?.message || error);
+  }
+}
+
 /* ———————————————————————————————— */
 /* REQUIRE AUTH                                     */
 /* ———————————————————————————————— */
@@ -93,6 +118,8 @@ export async function requireAuth(req, res, next) {
         });
       }
     }
+
+    await touchUserLastSeen(user.id);
 
     next();
   } catch (err) {

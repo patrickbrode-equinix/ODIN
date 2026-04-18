@@ -4,6 +4,7 @@
 /* ———————————————————————————————— */
 
 import type { LucideIcon } from "lucide-react";
+import type { TranslationKey } from "../context/LanguageContext";
 import {
   LayoutDashboard,
   Calendar,
@@ -102,3 +103,24 @@ export const PAGE_DEFS = [
 ] as const;
 
 export type PageKey = (typeof PAGE_DEFS)[number]["key"];
+
+const PAGE_LABEL_KEYS: Record<PageKey, TranslationKey> = {
+  dashboard: "nav.dashboard",
+  shiftplan: "nav.shiftplan",
+  handover: "nav.handover",
+  tickets: "nav.tickets",
+  tv_dashboard: "nav.tvDashboard",
+  protokoll: "nav.protokoll",
+  commit_compliance: "nav.commitCompliance",
+  settings: "common.settings",
+  odin_logic: "nav.odinLogic",
+  shiftplan_control: "nav.shiftplanControl",
+  teams_center: "nav.teamsCenter",
+  admin_settings: "nav.adminSettings",
+  user_management: "nav.userManagement",
+  ticket_audit: "nav.ticketAudit",
+};
+
+export function translatePageLabel(pageKey: PageKey, t: (key: TranslationKey) => string): string {
+  return t(PAGE_LABEL_KEYS[pageKey]);
+}

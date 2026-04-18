@@ -5,6 +5,7 @@ import { Switch } from "../ui/switch";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { fetchConstraints, saveConstraints, EmployeeConstraints } from "../../api/constraints";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface Props {
     open: boolean;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function ConstraintDialog({ open, onOpenChange, employeeName, onSave }: Props) {
+    const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [noNight, setNoNight] = useState(false);
     const [onlyEarly, setOnlyEarly] = useState(false);
@@ -54,22 +56,22 @@ export function ConstraintDialog({ open, onOpenChange, employeeName, onSave }: P
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Regeln verwaltet: {employeeName}</DialogTitle>
+                    <DialogTitle>{t("constraints.title")}: {employeeName}</DialogTitle>
                 </DialogHeader>
 
                 <div className="flex flex-col gap-6 py-4">
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="noNight">Keine Nachtschichten</Label>
+                        <Label htmlFor="noNight">{t("constraints.noNight")}</Label>
                         <Switch id="noNight" checked={noNight} onCheckedChange={setNoNight} />
                     </div>
 
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="onlyEarly">Nur Frühschichten (E1/E2)</Label>
+                        <Label htmlFor="onlyEarly">{t("constraints.earlyOnly")}</Label>
                         <Switch id="onlyEarly" checked={onlyEarly} onCheckedChange={setOnlyEarly} />
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                        <Label htmlFor="maxWeekends" className="whitespace-nowrap">Max. Wochenenden</Label>
+                        <Label htmlFor="maxWeekends" className="whitespace-nowrap">{t("constraints.maxWeekends")}</Label>
                         <Input
                             id="maxWeekends"
                             type="number"
@@ -82,8 +84,8 @@ export function ConstraintDialog({ open, onOpenChange, employeeName, onSave }: P
                 </div>
 
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Abbrechen</Button>
-                    <Button onClick={handleSave} disabled={loading}>Speichern</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+                    <Button onClick={handleSave} disabled={loading}>{t("common.save")}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

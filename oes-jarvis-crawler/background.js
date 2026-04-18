@@ -6,6 +6,12 @@ const RECOVERY_ALARM_NAME = "oes_queue_scrape_recovery";
 const RECOVERY_PERIOD_MINUTES = 1;
 
 const STORAGE_KEY_LAST_URL = "oes_last_jarvis_url";
+const STORAGE_KEY_TARGET_URL = "odin_jarvis_target_url";
+const STORAGE_KEY_REFRESH_INTERVAL = "odin_refresh_interval_minutes";
+const STORAGE_KEY_KEEP_AWAKE = "odin_keep_awake_enabled";
+const STORAGE_KEY_STATUS = "odin_crawler_status";
+const DEFAULT_JARVIS_URL = "https://jarvis-emea.equinix.com/";
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 5;
 let KEEP_AWAKE_ACTIVE = false;
 
 function log(...args) {
@@ -23,11 +29,44 @@ function createRecoveryAlarm() {
   log(`Recovery alarm created (${RECOVERY_PERIOD_MINUTES} minute)`);
 }
 
+async function readCrawlerSettings() {
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEY_LAST_URL,
+    STORAGE_KEY_TARGET_URL,
+    STORAGE_KEY_REFRESH_INTERVAL,
+    STORAGE_KEY_KEEP_AWAKE,
+  ]);
+
+  const refreshInterval = Number(stored?.[STORAGE_KEY_REFRESH_INTERVAL]);
+
+  return {
+    lastUrl: stored?.[STORAGE_KEY_LAST_URL] || null,
+    targetUrl: stored?.[STORAGE_KEY_TARGET_URL] || stored?.[STORAGE_KEY_LAST_URL] || DEFAULT_JARVIS_URL,
+    refreshIntervalMinutes: Number.isFinite(refreshInterval) && refreshInterval >= 0 ? refreshInterval : DEFAULT_REFRESH_INTERVAL_MINUTES,
+    keepAwakeEnabled: stored?.[STORAGE_KEY_KEEP_AWAKE] !== false,
+  };
+}
+
+async function updateCrawlerStatus(patch) {
+  const stored = await chrome.storage.local.get([STORAGE_KEY_STATUS]);
+  const current = stored?.[STORAGE_KEY_STATUS] && typeof stored[STORAGE_KEY_STATUS] === "object"
+    ? stored[STORAGE_KEY_STATUS]
+    : {};
+  const next = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  await chrome.storage.local.set({ [STORAGE_KEY_STATUS]: next });
+  return next;
+}
+
 function requestDisplayKeepAwake(reason) {
   if (KEEP_AWAKE_ACTIVE) return;
   chrome.power.requestKeepAwake("display");
   KEEP_AWAKE_ACTIVE = true;
   log(`Display keep-awake enabled (${reason})`);
+  void updateCrawlerStatus({ keepAwakeActive: true, keepAwakeReason: reason });
 }
 
 function releaseDisplayKeepAwake(reason) {
@@ -35,6 +74,7 @@ function releaseDisplayKeepAwake(reason) {
   chrome.power.releaseKeepAwake();
   KEEP_AWAKE_ACTIVE = false;
   log(`Display keep-awake released (${reason})`);
+  void updateCrawlerStatus({ keepAwakeActive: false, keepAwakeReason: reason });
 }
 
 async function getJarvisTabs() {
@@ -43,19 +83,43 @@ async function getJarvisTabs() {
 
 async function syncKeepAwakeWithTabs(reason) {
   const tabs = await getJarvisTabs();
-  if (tabs.length > 0) {
+  const settings = await readCrawlerSettings();
+  if (tabs.length > 0 && settings.keepAwakeEnabled) {
     requestDisplayKeepAwake(reason);
-    return tabs;
+  } else {
+    releaseDisplayKeepAwake(reason);
   }
 
-  releaseDisplayKeepAwake(reason);
+  await updateCrawlerStatus({
+    jarvisTabCount: tabs.length,
+    lastPresenceSyncAt: new Date().toISOString(),
+    keepAwakeConfigured: settings.keepAwakeEnabled,
+  });
   return tabs;
 }
 
-async function waitForTabComplete(tabId) {
+function selectPreferredTab(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return null;
+  return tabs.find((tab) => tab.active) || tabs.find((tab) => !tab.discarded) || tabs[0];
+}
+
+async function waitForTabComplete(tabId, timeoutMs = 30000) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab?.status === "complete") return;
+  } catch (_) {
+    return;
+  }
+
   await new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }, timeoutMs);
+
     const onUpdated = (updatedTabId, info) => {
       if (updatedTabId === tabId && info.status === "complete") {
+        clearTimeout(timeoutId);
         chrome.tabs.onUpdated.removeListener(onUpdated);
         resolve();
       }
@@ -68,44 +132,97 @@ async function sendContinuousStart(tabId, reason) {
   try {
     log(`Starting continuous crawler on tab ${tabId} (${reason})`);
     await chrome.tabs.sendMessage(tabId, { type: "OES_START_CONTINUOUS_SCRAPE", reason });
+    await updateCrawlerStatus({
+      activeCrawlerTabId: tabId,
+      lastStartReason: reason,
+      lastStartSignalAt: new Date().toISOString(),
+    });
   } catch (e) {
     warn("Cannot message tab", tabId, e);
+    await updateCrawlerStatus({
+      lastError: `Cannot message tab ${tabId}: ${String(e?.message || e)}`,
+      lastErrorAt: new Date().toISOString(),
+    });
   }
+}
+
+async function refreshPreferredJarvisTab(reason) {
+  const tabs = await getJarvisTabs();
+  const tab = selectPreferredTab(tabs);
+  if (!tab?.id) {
+    warn("Refresh requested but no Jarvis tab is open.");
+    await ensureCrawlerRunning(`refresh_missing_tab:${reason}`);
+    return;
+  }
+
+  log(`Refreshing Jarvis tab ${tab.id} (${reason})`);
+  await updateCrawlerStatus({
+    lastRefreshAt: new Date().toISOString(),
+    lastRefreshReason: reason,
+    activeCrawlerTabId: tab.id,
+  });
+  await chrome.tabs.reload(tab.id);
+  await waitForTabComplete(tab.id, 45000);
+  await sendContinuousStart(tab.id, `post_refresh:${reason}`);
+}
+
+async function maybeRunScheduledRefresh(reason) {
+  const settings = await readCrawlerSettings();
+  if (!settings.refreshIntervalMinutes || settings.refreshIntervalMinutes <= 0) return;
+
+  const stored = await chrome.storage.local.get([STORAGE_KEY_STATUS]);
+  const status = stored?.[STORAGE_KEY_STATUS] || {};
+  if (status.runActive) {
+    log(`Skipping scheduled refresh because scrape is active (${reason})`);
+    return;
+  }
+
+  const lastRefreshAt = status.lastRefreshAt ? Date.parse(status.lastRefreshAt) : 0;
+  const nextRefreshDueAt = lastRefreshAt + settings.refreshIntervalMinutes * 60 * 1000;
+  if (lastRefreshAt && Date.now() < nextRefreshDueAt) return;
+
+  await refreshPreferredJarvisTab(`interval:${reason}`);
 }
 
 async function ensureCrawlerRunning(reason) {
   let tabs = await syncKeepAwakeWithTabs(reason);
 
   if (tabs.length === 0) {
-    const stored = await chrome.storage.local.get([STORAGE_KEY_LAST_URL]);
-    const lastUrl = stored?.[STORAGE_KEY_LAST_URL];
-    if (!lastUrl) {
-      warn("No Jarvis tabs and no last URL stored yet. Open Jarvis once to initialize.");
-      return;
-    }
-
-    log("No Jarvis tab found. Reopening last Jarvis URL in background...", lastUrl);
-    const created = await chrome.tabs.create({ url: lastUrl, active: false });
+    const settings = await readCrawlerSettings();
+    const openUrl = settings.lastUrl || settings.targetUrl || DEFAULT_JARVIS_URL;
+    log("No Jarvis tab found. Opening configured Jarvis URL in background...", openUrl);
+    await updateCrawlerStatus({
+      lastRecoveryAt: new Date().toISOString(),
+      lastRecoveryReason: reason,
+      lastOpenedUrl: openUrl,
+    });
+    const created = await chrome.tabs.create({ url: openUrl, active: false });
     if (!created?.id) return;
     await waitForTabComplete(created.id);
     tabs = await syncKeepAwakeWithTabs("reopened_jarvis_tab");
   }
 
-  for (const tab of tabs) {
-    if (!tab.id) continue;
-    await sendContinuousStart(tab.id, reason);
-  }
+  const preferredTab = selectPreferredTab(tabs);
+  if (!preferredTab?.id) return;
+  await updateCrawlerStatus({
+    activeCrawlerTabId: preferredTab.id,
+    preferredJarvisUrl: preferredTab.url || null,
+    jarvisTabCount: tabs.length,
+  });
+  await sendContinuousStart(preferredTab.id, reason);
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   log("Extension installed");
   createRecoveryAlarm();
+  void updateCrawlerStatus({ lifecycle: "installed", installedAt: new Date().toISOString() });
   void ensureCrawlerRunning("installed");
 });
 
 chrome.runtime.onStartup.addListener(() => {
   log("Browser startup");
   createRecoveryAlarm();
+  void updateCrawlerStatus({ lifecycle: "startup", startupAt: new Date().toISOString() });
   void ensureCrawlerRunning("startup");
 });
 
@@ -116,8 +233,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   try {
     await ensureCrawlerRunning("recovery_alarm");
+    await maybeRunScheduledRefresh("recovery_alarm");
   } catch (e) {
     err("Recovery alarm failed:", e);
+    await updateCrawlerStatus({ lastError: String(e?.message || e), lastErrorAt: new Date().toISOString() });
   }
 });
 
@@ -129,6 +248,7 @@ chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
   if (info.status !== "complete") return;
   if (!tab.url || !tab.url.startsWith("https://jarvis-emea.equinix.com/")) return;
   void syncKeepAwakeWithTabs("tab_updated");
+  void updateCrawlerStatus({ lastJarvisTabReadyAt: new Date().toISOString(), preferredJarvisUrl: tab.url || null });
 });
 
 // Single message handler
@@ -140,7 +260,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.url && typeof msg.url === "string") {
       chrome.storage.local.set({ [STORAGE_KEY_LAST_URL]: msg.url }).catch(() => { });
     }
-    requestDisplayKeepAwake("content_ready");
+    void updateCrawlerStatus({
+      lastContentReadyAt: new Date().toISOString(),
+      lastReadyUrl: msg.url || null,
+      activeCrawlerTabId: sender.tab?.id || null,
+    });
+    void syncKeepAwakeWithTabs("content_ready");
     if (sender.tab?.id) {
       void sendContinuousStart(sender.tab.id, "content_ready");
     }
@@ -150,14 +275,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "OES_LOOP_STATE") {
     log(`Continuous loop state: running=${msg.running} reason=${msg.reason || "n/a"}`);
+    void updateCrawlerStatus({
+      continuousMode: !!msg.running,
+      lastLoopReason: msg.reason || null,
+      lastLoopStateAt: new Date().toISOString(),
+      activeCrawlerTabId: sender.tab?.id || null,
+    });
     if (msg.running) {
-      requestDisplayKeepAwake("loop_running");
+      void syncKeepAwakeWithTabs("loop_running");
     } else {
       void syncKeepAwakeWithTabs("loop_stopped");
     }
   }
+  if (msg?.type === "OES_SCRAPE_ACTIVITY") {
+    void updateCrawlerStatus({
+      runActive: !!msg.active,
+      lastRunStartedAt: msg.active ? new Date().toISOString() : undefined,
+      lastRunFinishedAt: msg.active ? undefined : new Date().toISOString(),
+      activeCrawlerTabId: sender.tab?.id || null,
+      lastRunReason: msg.reason || null,
+    });
+  }
+  if (msg?.type === "OES_RUN_SUMMARY") {
+    void updateCrawlerStatus({
+      lastRunOutcome: msg.outcome || "unknown",
+      lastRunDurationMs: Number(msg.durationMs) || null,
+      lastRunSummaryAt: new Date().toISOString(),
+      lastRunMeta: msg.meta || null,
+      lastUploadedQueues: Array.isArray(msg.uploadedQueues) ? msg.uploadedQueues : [],
+      lastRunReason: msg.reason || null,
+    });
+  }
   if (msg?.type === "OES_SCRAPE_ERROR") {
     err("Scrape error on:", msg.url, msg.message);
+    void updateCrawlerStatus({
+      lastError: msg.message || "Unknown scrape error",
+      lastErrorAt: new Date().toISOString(),
+      lastErrorUrl: msg.url || null,
+    });
+  }
+  if (msg?.type === "OES_SCRAPE_INCOMPLETE") {
+    void updateCrawlerStatus({
+      lastRunOutcome: "incomplete",
+      lastRunMeta: msg.meta || null,
+      lastRunSummaryAt: new Date().toISOString(),
+      lastError: "No complete queues in run",
+      lastErrorAt: new Date().toISOString(),
+    });
   }
 
   // ✅ Upload snapshot (from content.js) -> ODIN ingest server (configurable)
@@ -213,11 +377,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         log("Upload OK (background):", json);
+        await updateCrawlerStatus({
+          lastUploadAt: new Date().toISOString(),
+          lastUploadStatus: "ok",
+          lastUploadUrl: url,
+          lastUploadResult: json,
+        });
         sendResponse({ ok: true, result: json });
       } catch (e) {
         // Always include context: url, error name, message and stack
         err(`Upload FAILED (background): url=${url} errName=${e?.name} msg=${e?.message}`);
         if (e?.stack) err("Stack:", e.stack);
+        await updateCrawlerStatus({
+          lastUploadAt: new Date().toISOString(),
+          lastUploadStatus: "error",
+          lastUploadUrl: url,
+          lastError: String(e?.message || e),
+          lastErrorAt: new Date().toISOString(),
+        });
         sendResponse({ ok: false, error: String(e?.message || e) });
       }
     })();

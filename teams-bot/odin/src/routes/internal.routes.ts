@@ -13,6 +13,7 @@ import type {
   TicketNotifyPayload,
   ShiftOpenNotifyPayload,
   SupervisorApprovalPayload,
+  VerificationNotifyPayload,
 } from "../models/index";
 import { getConfig, isGraphEnabled } from "../config/index";
 import { GraphService, GraphError } from "../services/graph.service";
@@ -102,6 +103,20 @@ export function createInternalRoutes(deps: InternalRouteDeps): Router {
 
     logger.info(`Notify supervisor-approval: entityId=${payload.entityId}`);
     const result = await notificationService.sendSupervisorApproval(payload);
+    res.status(result.success ? 200 : 422).json(result);
+  });
+
+  // ── POST /api/internal/notify/verification ──
+  router.post("/notify/verification", async (req: Request, res: Response) => {
+    const payload = req.body as VerificationNotifyPayload;
+
+    if (!payload.employeeName || !payload.shiftCode || !payload.date) {
+      res.status(400).json({ error: "Missing required fields: employeeName, shiftCode, date" });
+      return;
+    }
+
+    logger.info(`Notify verification: ${payload.employeeName} (${payload.shiftCode}) on ${payload.date}`);
+    const result = await notificationService.sendVerificationNotification(payload);
     res.status(result.success ? 200 : 422).json(result);
   });
 

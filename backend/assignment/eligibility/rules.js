@@ -4,12 +4,61 @@
 
 import { applyRoleFilter } from '../rules/roleFilter.js';
 import { checkQueuePurity } from '../rules/queuePurity.js';
+import { evaluateTicketCapacity } from '../rules/ticketCapacity.js';
 import { isShiftCodeActiveNow } from '../candidates/loadCandidates.js';
 
 /**
  * Each rule function returns:
  *   { eligible: boolean, rule: string, reason: string }
  */
+
+/**
+ * Check shift verification status.
+ * Workers who haven't confirmed availability (pending/sick/wrong_shift/absent)
+ * are excluded from automatic assignment when the feature is active.
+ */
+export function isVerified(worker, settings = {}) {
+  // Feature disabled or no verification data loaded → skip rule
+  if (!settings.verificationEnabled) {
+    return { eligible: true, rule: 'isVerified', reason: 'Verification feature is disabled' };
+  }
+
+  const status = worker.verificationStatus;
+
+  // No verification record yet → treat based on config
+  if (!status || status === 'no_record') {
+    if (settings.pendingBlocksAssignment === true || settings.pendingBlocksAssignment === 'true') {
+      return {
+        eligible: false,
+        rule: 'isVerified',
+        reason: `${worker.name} hat sich noch nicht verifiziert (kein Eintrag) — Zuweisung blockiert`,
+      };
+    }
+    return { eligible: true, rule: 'isVerified', reason: 'No verification record; assignment allowed by config' };
+  }
+
+  if (status === 'verified') {
+    return { eligible: true, rule: 'isVerified', reason: `${worker.name} ist verifiziert und verfügbar` };
+  }
+
+  if (status === 'pending') {
+    if (settings.pendingBlocksAssignment === true || settings.pendingBlocksAssignment === 'true') {
+      return {
+        eligible: false,
+        rule: 'isVerified',
+        reason: `${worker.name} hat die Verfügbarkeit noch nicht bestätigt (Pending)`,
+      };
+    }
+    return { eligible: true, rule: 'isVerified', reason: `${worker.name} is pending but assignment allowed by config` };
+  }
+
+  // sick, wrong_shift, absent, no_response, failed → always block
+  return {
+    eligible: false,
+    rule: 'isVerified',
+    reason: `${worker.name} Verifizierungsstatus ist '${status}' — nicht für Zuweisung freigegeben`,
+  };
+}
 
 export function isWorkerAutoAssignable(worker) {
   if (!worker.autoAssignable) {
@@ -153,6 +202,10 @@ export function checkQueueClean(worker, ticket, workerCurrentTickets = [], insuf
   };
 }
 
+export function checkTicketCapacity(worker, ticket, workerCurrentTickets = []) {
+  return evaluateTicketCapacity(worker, ticket, workerCurrentTickets);
+}
+
 /**
  * Apply all eligibility rules to a single worker for a given ticket.
  * Returns { eligible, exclusions: [{rule, reason}] }
@@ -171,11 +224,13 @@ export function applyEligibilityRules(worker, ticket, settings, workerCurrentTic
     () => isAvailable(worker),
     () => isNotOnBreak(worker),
     () => isNotAbsent(worker),
+    () => isVerified(worker, settings),
     () => isShiftActive(worker, ticket, now),
     () => checkRole(worker, ticket, now),
     () => matchesSite(worker, ticket, settings),
     () => matchesResponsibility(worker, ticket, settings),
     () => checkQueueClean(worker, ticket, workerCurrentTickets, insufficientResources, now),
+    () => checkTicketCapacity(worker, ticket, workerCurrentTickets),
   ];
 
   const exclusions = [];

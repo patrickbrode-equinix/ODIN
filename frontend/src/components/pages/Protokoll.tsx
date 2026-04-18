@@ -7,6 +7,7 @@ import { Button } from "../ui/button";
 import { Loader2, RefreshCw, FileText, Search, BarChart2, UserCircle, CalendarRange, X } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import { useLanguage, type LanguageCode, getLanguageLocale } from "../../context/LanguageContext";
+import { TextRepairBoundary, repairTextDeep } from "../../utils/textRepair";
 
 /* ---- Module color map ---- */
 const MODULE_COLORS: Record<string, string> = {
@@ -19,7 +20,7 @@ const MODULE_COLORS: Record<string, string> = {
   INGEST: "bg-green-500/15 text-green-300 border-green-500/25",
 };
 
-const PAGE_COPY: Record<LanguageCode, {
+const PAGE_COPY: Partial<Record<LanguageCode, {
   title: string;
   subtitle: string;
   refresh: string;
@@ -40,10 +41,10 @@ const PAGE_COPY: Record<LanguageCode, {
   noEntries: string;
   shownEntries: string;
   filtered: string;
-}> = {
+}>> = {
   de: {
     title: "PROTOKOLL",
-    subtitle: "Systemaktivitäten und Änderungen nachvollziehen",
+    subtitle: "SystemaktivitÃƒÂ¤ten und Ãƒâ€žnderungen nachvollziehen",
     refresh: "Aktualisieren",
     module: "Modul",
     allModules: "Alle Module",
@@ -54,13 +55,13 @@ const PAGE_COPY: Record<LanguageCode, {
     from: "Von",
     to: "Bis",
     count: "Anzahl",
-    clearFilters: "Filter zurücksetzen",
+    clearFilters: "Filter zurÃƒÂ¼cksetzen",
     search: "Suchen",
     timestamp: "Zeitstempel",
     actor: "Akteur",
     details: "Details",
-    noEntries: "Keine Einträge gefunden.",
-    shownEntries: "Einträge angezeigt",
+    noEntries: "Keine EintrÃƒÂ¤ge gefunden.",
+    shownEntries: "EintrÃƒÂ¤ge angezeigt",
     filtered: "gefiltert",
   },
   en: {
@@ -85,144 +86,12 @@ const PAGE_COPY: Record<LanguageCode, {
     shownEntries: "entries shown",
     filtered: "filtered",
   },
-  sq: {
-    title: "PROTOKOLLI",
-    subtitle: "Gjurmo aktivitetet dhe ndryshimet e sistemit",
-    refresh: "Rifresko",
-    module: "Moduli",
-    allModules: "Të gjithë modulet",
-    user: "Përdoruesi",
-    actorPlaceholder: "p.sh. admin",
-    action: "Veprimi",
-    actionPlaceholder: "p.sh. UPLOAD",
-    from: "Nga",
-    to: "Deri",
-    count: "Numri",
-    clearFilters: "Pastro filtrat",
-    search: "Kërko",
-    timestamp: "Koha",
-    actor: "Aktor",
-    details: "Detajet",
-    noEntries: "Nuk u gjet asnjë hyrje.",
-    shownEntries: "hyrje të shfaqura",
-    filtered: "të filtruara",
-  },
-  bs: {
-    title: "PROTOKOL",
-    subtitle: "Pratite sistemske aktivnosti i promjene",
-    refresh: "Osvježi",
-    module: "Modul",
-    allModules: "Svi moduli",
-    user: "Korisnik",
-    actorPlaceholder: "npr. admin",
-    action: "Akcija",
-    actionPlaceholder: "npr. UPLOAD",
-    from: "Od",
-    to: "Do",
-    count: "Broj",
-    clearFilters: "Resetuj filtere",
-    search: "Pretraži",
-    timestamp: "Vremenska oznaka",
-    actor: "Akter",
-    details: "Detalji",
-    noEntries: "Nema pronađenih unosa.",
-    shownEntries: "prikazanih unosa",
-    filtered: "filtrirano",
-  },
-  fr: {
-    title: "JOURNAL",
-    subtitle: "Suivre les activités et changements du système",
-    refresh: "Actualiser",
-    module: "Module",
-    allModules: "Tous les modules",
-    user: "Utilisateur",
-    actorPlaceholder: "ex. admin",
-    action: "Action",
-    actionPlaceholder: "ex. UPLOAD",
-    from: "De",
-    to: "À",
-    count: "Nombre",
-    clearFilters: "Réinitialiser les filtres",
-    search: "Rechercher",
-    timestamp: "Horodatage",
-    actor: "Acteur",
-    details: "Détails",
-    noEntries: "Aucune entrée trouvée.",
-    shownEntries: "entrées affichées",
-    filtered: "filtrées",
-  },
-  es: {
-    title: "PROTOCOLO",
-    subtitle: "Seguir actividades y cambios del sistema",
-    refresh: "Actualizar",
-    module: "Módulo",
-    allModules: "Todos los módulos",
-    user: "Usuario",
-    actorPlaceholder: "p. ej. admin",
-    action: "Acción",
-    actionPlaceholder: "p. ej. UPLOAD",
-    from: "Desde",
-    to: "Hasta",
-    count: "Cantidad",
-    clearFilters: "Restablecer filtros",
-    search: "Buscar",
-    timestamp: "Marca temporal",
-    actor: "Actor",
-    details: "Detalles",
-    noEntries: "No se encontraron registros.",
-    shownEntries: "registros mostrados",
-    filtered: "filtrados",
-  },
-  "pt-BR": {
-    title: "PROTOCOLO",
-    subtitle: "Acompanhar atividades e mudanças do sistema",
-    refresh: "Atualizar",
-    module: "Módulo",
-    allModules: "Todos os módulos",
-    user: "Usuário",
-    actorPlaceholder: "ex.: admin",
-    action: "Ação",
-    actionPlaceholder: "ex.: UPLOAD",
-    from: "De",
-    to: "Até",
-    count: "Quantidade",
-    clearFilters: "Limpar filtros",
-    search: "Buscar",
-    timestamp: "Carimbo de data/hora",
-    actor: "Ator",
-    details: "Detalhes",
-    noEntries: "Nenhum registro encontrado.",
-    shownEntries: "registros exibidos",
-    filtered: "filtrados",
-  },
-  "fa-AF": {
-    title: "گزارش",
-    subtitle: "پیگیری فعالیت‌ها و تغییرات سیستم",
-    refresh: "تازه‌سازی",
-    module: "ماژول",
-    allModules: "همه ماژول‌ها",
-    user: "کاربر",
-    actorPlaceholder: "مثلاً admin",
-    action: "اقدام",
-    actionPlaceholder: "مثلاً UPLOAD",
-    from: "از",
-    to: "تا",
-    count: "تعداد",
-    clearFilters: "پاک کردن فیلترها",
-    search: "جستجو",
-    timestamp: "زمان",
-    actor: "عامل",
-    details: "جزئیات",
-    noEntries: "هیچ موردی پیدا نشد.",
-    shownEntries: "مورد نمایش داده شد",
-    filtered: "فیلتر شده",
-  },
 };
 
 export default function Protokoll() {
   const { language } = useLanguage();
   const locale = getLanguageLocale(language);
-  const copy = PAGE_COPY[language];
+  const copy = repairTextDeep(PAGE_COPY[language] || PAGE_COPY.en!);
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [stats, setStats] = useState<{ module: string; count: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -279,7 +148,8 @@ export default function Protokoll() {
   const totalCount = stats.reduce((s, r) => s + parseInt(r.count ?? "0"), 0);
 
   return (
-    <EnterprisePageShell>
+    <TextRepairBoundary>
+      <EnterprisePageShell>
       {/* HEADER */}
       <EnterpriseHeader
         title={copy.title}
@@ -452,7 +322,7 @@ export default function Protokoll() {
                       {new Date(log.ts).toLocaleDateString(locale)}{" "}
                       <span className="text-foreground/80">{new Date(log.ts).toLocaleTimeString(locale)}</span>
                     </TableCell>
-                    <TableCell className="text-sm font-medium">{log.actor || "–"}</TableCell>
+                    <TableCell className="text-sm font-medium">{log.actor || "Ã¢â‚¬â€œ"}</TableCell>
                     <TableCell>
                       <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${modCls}`}>
                         {log.module}
@@ -475,6 +345,7 @@ export default function Protokoll() {
       <div className="text-right text-[10px] text-muted-foreground">
         {logs.length} {copy.shownEntries}{hasActiveFilters ? ` (${copy.filtered})` : ""}
       </div>
-    </EnterprisePageShell>
+      </EnterprisePageShell>
+    </TextRepairBoundary>
   );
 }

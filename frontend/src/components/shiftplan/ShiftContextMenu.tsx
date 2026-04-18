@@ -1,6 +1,7 @@
 
 import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Card } from "../ui/card";
+import { useLanguage } from "../../context/LanguageContext";
 
 type ShiftType = string;
 
@@ -15,6 +16,7 @@ interface Props {
 
 export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClose, onSelect }: Props) {
     const ref = useRef<HTMLDivElement>(null);
+    const { t } = useLanguage();
     // Start invisible; reveal only after clamped position is computed.
     const [style, setStyle] = useState<CSSProperties>({ top: y, left: x, opacity: 0 });
 
@@ -52,26 +54,26 @@ export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClos
         >
             <Card className="p-1 shadow-xl border border-border bg-popover text-popover-foreground flex flex-col gap-0.5">
                 <div className="px-2 py-1.5 text-xs text-muted-foreground border-b border-border/50 mb-1 flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground">Mitarbeiter: {employeeName || "—"}</span>
-                    <span>{selectedCount > 1 ? `${selectedCount} Tage ausgewählt` : "1 Tag ausgewählt"}</span>
+                    <span className="font-semibold text-foreground">{t("shiftContext.employee")}: {employeeName || "—"}</span>
+                    <span>{selectedCount > 1 ? `${selectedCount} ${t("shiftContext.daysSelected")}` : `1 ${t("shiftContext.daySelected")}`}</span>
                 </div>
-                <MenuItem label="Früh 1 (E1)" onClick={() => onSelect('E1')} />
-                <MenuItem label="Früh 2 (E2)" onClick={() => onSelect('E2')} />
-                <MenuItem label="Spät 1 (L1)" onClick={() => onSelect('L1')} />
-                <MenuItem label="Spät 2 (L2)" onClick={() => onSelect('L2')} />
-                <MenuItem label="Nacht (N)" onClick={() => onSelect('N')} />
+                <MenuItem label={t("shiftContext.early1")} onClick={() => onSelect('E1')} />
+                <MenuItem label={t("shiftContext.early2")} onClick={() => onSelect('E2')} />
+                <MenuItem label={t("shiftContext.late1")} onClick={() => onSelect('L1')} />
+                <MenuItem label={t("shiftContext.late2")} onClick={() => onSelect('L2')} />
+                <MenuItem label={t("shiftContext.night")} onClick={() => onSelect('N')} />
                 <div className="h-px bg-border my-1" />
-                <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground">ABWESENHEIT</div>
-                <MenuItem label="Urlaub (U)" onClick={() => onSelect('ABSENCE:VACATION')} />
-                <MenuItem label="Krank (K)" onClick={() => onSelect('ABSENCE:SICK')} />
-                <MenuItem label="Training (T)" onClick={() => onSelect('ABSENCE:TRAINING')} />
-                <MenuItem label="Offsite (O)" onClick={() => onSelect('ABSENCE:OFFSITE')} />
+                <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground">{t("shiftContext.absence")}</div>
+                <MenuItem label={t("shiftContext.vacation")} onClick={() => onSelect('ABSENCE:VACATION')} />
+                <MenuItem label={t("shiftContext.sick")} onClick={() => onSelect('ABSENCE:SICK')} />
+                <MenuItem label={t("shiftContext.training")} onClick={() => onSelect('ABSENCE:TRAINING')} />
+                <MenuItem label={t("shiftContext.offsite")} onClick={() => onSelect('ABSENCE:OFFSITE')} />
                 <div className="h-px bg-border my-1" />
-                <MenuItem label="Frei / Löschen" onClick={() => onSelect('')} danger />
+                <MenuItem label={t("shiftContext.clearDelete")} onClick={() => onSelect('')} danger />
                 <div className="h-px bg-border my-1" />
-                <MenuItem label="Kompetenzen" onClick={() => onSelect('COMPETENCIES')} />
-                <MenuItem label="Änderungshistorie" onClick={() => onSelect('HISTORY')} />
-                <MenuItem label="Regeln verwalten" onClick={() => onSelect('CONSTRAINTS')} />
+                <MenuItem label={t("shiftContext.competencies")} onClick={() => onSelect('COMPETENCIES')} />
+                <MenuItem label={t("shiftContext.changeHistory")} onClick={() => onSelect('HISTORY')} />
+                <MenuItem label={t("shiftContext.manageRules")} onClick={() => onSelect('CONSTRAINTS')} />
             </Card>
         </div>
     );

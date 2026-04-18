@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { Eye, EyeOff, Info } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -20,6 +21,21 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
+  const { t } = useLanguage();
+  const copy = {
+    loginFailed: t("login.loginFailed"),
+    emailHint: t("login.emailHint"),
+    email: t("login.email"),
+    emailPlaceholder: t("login.emailPlaceholder"),
+    password: t("login.password"),
+    hidePassword: t("login.hidePassword"),
+    showPassword: t("login.showPassword"),
+    loggingIn: t("login.loggingIn"),
+    login: t("login.loginButton"),
+    forgotPassword: t("login.forgotPassword"),
+    noAccount: t("login.noAccount"),
+    register: t("login.register"),
+  };
 
   const from = location.state?.from?.pathname || "/dashboard";
 
@@ -55,7 +71,7 @@ export default function Login() {
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
-        "Login fehlgeschlagen. Bitte prüfen."
+        copy.loginFailed
       );
     } finally {
       setLoading(false);
@@ -107,19 +123,16 @@ export default function Login() {
             {/* Login hint */}
             <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 border border-blue-400/20 p-3">
               <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-blue-200/80">
-                Melde dich mit deiner <strong>Firmen-E-Mail-Adresse</strong> an.
-                Falls du noch kein Konto hast, kannst du dich unten registrieren.
-              </p>
+              <p className="text-xs text-blue-200/80">{copy.emailHint}</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email">E-Mail</Label>
+                <Label htmlFor="email">{copy.email}</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="vorname.nachname@firma.de"
+                  placeholder={copy.emailPlaceholder}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -129,7 +142,7 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Passwort</Label>
+                <Label htmlFor="password">{copy.password}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -145,7 +158,7 @@ export default function Login() {
                     tabIndex={-1}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                    aria-label={showPassword ? copy.hidePassword : copy.showPassword}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -163,7 +176,7 @@ export default function Login() {
                 className="w-full h-11 text-base"
                 disabled={loading}
               >
-                {loading ? "Anmelden…" : "Login"}
+                {loading ? copy.loggingIn : copy.login}
               </Button>
             </form>
 
@@ -172,13 +185,13 @@ export default function Login() {
                 to="/forgot-password"
                 className="text-muted-foreground hover:text-primary transition"
               >
-                Passwort vergessen?
+                {copy.forgotPassword}
               </Link>
 
               <div className="text-xs text-muted-foreground">
-                Noch kein Konto?{" "}
+                {copy.noAccount}{" "}
                 <Link to="/register" className="text-primary hover:underline">
-                  Registrieren
+                  {copy.register}
                 </Link>
               </div>
             </div>

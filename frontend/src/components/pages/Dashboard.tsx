@@ -48,6 +48,7 @@ import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
 import { api } from "../../api/api"; // Added missing import
 import { useCrawlerStaleness } from "../../hooks/useCrawlerStaleness";
 import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
+import { useLanguage, type LanguageCode } from "../../context/LanguageContext";
 
 /* UI */
 import { DateTimeBadge } from "../ui/DateTimeBadge";
@@ -55,6 +56,119 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useDashboardData } from "../../hooks/useDashboardData";
 import { useRealtimeUpdates } from "../../hooks/useRealtimeUpdates";
 // DashboardInfoBar and DashboardToggles are now rendered in Header modals
+
+const DASHBOARD_COPY: Partial<Record<LanguageCode, {
+  greeting: string;
+  startsIn: string;
+  from: string;
+  endsIn: string;
+  until: string;
+  ended: string;
+  noData: string;
+  showLess: string;
+  showMore: string;
+  loadingStats: string;
+  ticketTypes: string;
+  commitHealth: string;
+  ticketStatus: string;
+  earlyShift: string;
+  lateShift: string;
+  nightShift: string;
+  staffingOk: string;
+  understaffing: string;
+  understaffingDetails: string;
+  today: string;
+  noUnderstaffing: string;
+  warning: string;
+  commitToday: string;
+  commitTodayTitle: string;
+  serviceToday: string;
+  ownersOnly: string;
+  activeOnly: string;
+  warnings: string;
+  criticalOnly: string;
+  noShifts: string;
+  assignCategory: string;
+  projectCategory: string;
+  dbsProjectCategory: string;
+  newJoinersCategory: string;
+  clearCategory: string;
+}>> = {
+  de: {
+    greeting: "Hallo",
+    startsIn: "Beginnt in",
+    from: "ab",
+    endsIn: "Endet in",
+    until: "bis",
+    ended: "Beendet",
+    noData: "Keine Daten",
+    showLess: "Weniger anzeigen",
+    showMore: "weitere anzeigen",
+    loadingStats: "Lade Statistiken...",
+    ticketTypes: "Tickertypes",
+    commitHealth: "Commit Health",
+    ticketStatus: "Ticket Status",
+    earlyShift: "Frühschicht",
+    lateShift: "Spätschicht",
+    nightShift: "Nachtschicht",
+    staffingOk: "Besetzung OK",
+    understaffing: "Unterbesetzung",
+    understaffingDetails: "Unterbesetzung Details",
+    today: "Heute",
+    noUnderstaffing: "Keine Unterbesetzung erkannt.",
+    warning: "Warnung",
+    commitToday: "Terminiert heute",
+    commitTodayTitle: "COMMIT ≤ 72h / HEUTE",
+    serviceToday: "DIENST HEUTE",
+    ownersOnly: "Nur Ticket-Owner",
+    activeOnly: "Nur Aktive",
+    warnings: "Warnungen",
+    criticalOnly: "Nur Kritische",
+    noShifts: "Keine Schichten verfügbar",
+    assignCategory: "Kategorie zuweisen",
+    projectCategory: "Projekt",
+    dbsProjectCategory: "DBS Projekt",
+    newJoinersCategory: "Neueinsteiger",
+    clearCategory: "Zurücksetzen",
+  },
+  en: {
+    greeting: "Hello",
+    startsIn: "Starts in",
+    from: "from",
+    endsIn: "Ends in",
+    until: "until",
+    ended: "Ended",
+    noData: "No data",
+    showLess: "Show less",
+    showMore: "more",
+    loadingStats: "Loading statistics...",
+    ticketTypes: "Ticket types",
+    commitHealth: "Commit health",
+    ticketStatus: "Ticket status",
+    earlyShift: "Early shift",
+    lateShift: "Late shift",
+    nightShift: "Night shift",
+    staffingOk: "Staffing OK",
+    understaffing: "Understaffing",
+    understaffingDetails: "Understaffing details",
+    today: "Today",
+    noUnderstaffing: "No understaffing detected.",
+    warning: "Warning",
+    commitToday: "Scheduled today",
+    commitTodayTitle: "COMMIT ≤ 72h / TODAY",
+    serviceToday: "SERVICE TODAY",
+    ownersOnly: "Ticket owners only",
+    activeOnly: "Active only",
+    warnings: "Warnings",
+    criticalOnly: "Critical only",
+    noShifts: "No shifts available",
+    assignCategory: "Assign category",
+    projectCategory: "Project",
+    dbsProjectCategory: "DBS project",
+    newJoinersCategory: "New joiners",
+    clearCategory: "Reset",
+  },
+};
 
 /* ------------------------------------------------ */
 /* HELPERS                                          */
@@ -94,13 +208,13 @@ function buildRangeForToday(timeRange: string, base: Date) {
   return { start, end };
 }
 
-function timerLabel(now: Date, range: { start: Date; end: Date } | null) {
+function timerLabel(now: Date, range: { start: Date; end: Date } | null, copy: NonNullable<(typeof DASHBOARD_COPY)["en"]>) {
   if (!range) return "—";
 
   const { start, end } = range;
 
   if (now.getTime() < start.getTime()) {
-    return `Beginnt in ${formatDuration(start.getTime() - now.getTime())} (ab ${pad2(
+    return `${copy.startsIn} ${formatDuration(start.getTime() - now.getTime())} (${copy.from} ${pad2(
       start.getHours()
     )}:${pad2(start.getMinutes())})`;
   }
@@ -108,10 +222,10 @@ function timerLabel(now: Date, range: { start: Date; end: Date } | null) {
   if (now.getTime() <= end.getTime()) {
     // "Endet in ..." logic
     const diff = end.getTime() - now.getTime();
-    return `Endet in ${formatDuration(diff)} (bis ${pad2(end.getHours())}:${pad2(end.getMinutes())})`;
+    return `${copy.endsIn} ${formatDuration(diff)} (${copy.until} ${pad2(end.getHours())}:${pad2(end.getMinutes())})`;
   }
 
-  return `Beendet (${pad2(end.getHours())}:${pad2(end.getMinutes())})`;
+  return `${copy.ended} (${pad2(end.getHours())}:${pad2(end.getMinutes())})`;
 }
 
 function isRangeActive(now: Date, range: { start: Date; end: Date } | null) {
@@ -142,9 +256,20 @@ function EmployeeItem({
   crawlerStale?: boolean;
   todayDateStr?: string;
 }) {
+  const { language } = useLanguage();
+  const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
   const { setCategory, getCategory } = useEmployeeMetaStore();
   const currentCategory = getCategory(employee.name);
   const [expanded, setExpanded] = useState(false);
+  const categoryOptions = [
+    { value: "CC", label: "CC" },
+    { value: "Projekt", label: copy.projectCategory },
+    { value: "DBS Projekt", label: copy.dbsProjectCategory },
+    { value: "SH", label: "SH" },
+    { value: "Other", label: "Other" },
+    { value: "Neueinsteiger", label: copy.newJoinersCategory },
+  ];
+  const currentCategoryLabel = categoryOptions.find((option) => option.value === currentCategory)?.label || currentCategory;
 
   // Weekplan role for this employee today
   const { getRole, setRole: setWeekplanRole, removeRole } = useWeekplanRoleStore();
@@ -158,7 +283,7 @@ function EmployeeItem({
       return (
         <div className="mt-2 px-2 py-3 text-center">
           <div className="text-red-400 font-bold text-[0.85em] uppercase tracking-wider">
-            NO RECENT CRAWLER DATA INPUT
+            {language === 'de' ? 'KEINE AKTUELLEN CRAWLER-DATEN' : 'NO RECENT CRAWLER DATA INPUT'}
           </div>
         </div>
       );
@@ -171,7 +296,7 @@ function EmployeeItem({
     if (list.length === 0) {
       return (
         <div className="text-[13px] text-[#4b5563] px-2 pb-2">
-          Keine Daten
+          {copy.noData}
         </div>
       );
     }
@@ -183,8 +308,8 @@ function EmployeeItem({
         {/* Header for Ticket Grid */}
         <div className="grid grid-cols-[1.5fr_1fr_1fr_0.8fr] gap-2 px-2 py-1 text-[0.7em] uppercase font-bold text-muted-foreground/80 border-b border-white/5 bg-black/40 rounded-t-sm tracking-wider">
           <div>ID</div>
-          <div>System</div>
-          <div>Activity</div>
+          <div>{language === 'de' ? 'System' : 'System'}</div>
+          <div>{copy.activity}</div>
           <div className="text-right">Restzeit</div>
         </div>
 
@@ -207,7 +332,7 @@ function EmployeeItem({
               <div
                 key={`${employee.name}-${uniqueKey}`}
                 data-testid="employee-ticket-grid"
-                className="grid grid-cols-[1.5fr_1fr_1fr_0.8fr] gap-2 px-2 py-1.5 items-center bg-black/20 rounded-sm hover:bg-black/40 border border-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors mb-0.5"
+                className="grid grid-cols-[1.5fr_1fr_1fr_0.8fr] gap-2 px-2 py-1.5 items-center bg-black/20 rounded-sm hover:bg-black/40 border border-white/2 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors mb-0.5"
               >
                 <div className="truncate font-medium flex items-center gap-1.5">
                   <span className={`px-1.5 py-0.5 text-[0.95em] rounded ${tierColor} text-white font-mono`}>
@@ -215,8 +340,8 @@ function EmployeeItem({
                   </span>
                   <CopyTicketButton ticketId={displayId} />
                 </div>
-                <div className="text-muted-foreground text-[0.9em] break-words whitespace-normal leading-snug" title={sysName}>{sysName}</div>
-                <div className="text-muted-foreground text-[0.9em] break-words whitespace-normal leading-snug" title={activity}>{activity}</div>
+                <div className="text-muted-foreground text-[0.9em] wrap-break-word whitespace-normal leading-snug" title={sysName}>{sysName}</div>
+                <div className="text-muted-foreground text-[0.9em] wrap-break-word whitespace-normal leading-snug" title={activity}>{activity}</div>
                 <div className={`text-right font-bold font-mono text-[0.9em] ${ms !== null && ms < 0 ? "text-red-400" : "text-white/90"}`}>
                   {time}
                 </div>
@@ -236,11 +361,11 @@ function EmployeeItem({
           >
             {expanded ? (
               <>
-                <ChevronDown className="w-3 h-3" /> Weniger anzeigen
+                <ChevronDown className="w-3 h-3" /> {copy.showLess}
               </>
             ) : (
               <>
-                <ChevronRight className="w-3 h-3" /> +{list.length - 4} weitere anzeigen
+                <ChevronRight className="w-3 h-3" /> +{list.length - 4} {copy.showMore}
               </>
             )}
           </div>
@@ -260,7 +385,7 @@ function EmployeeItem({
               <div className="text-[1.05em] font-bold text-slate-100 group-hover:text-white transition-colors tracking-wide">{employee.name}</div>
               {currentCategory && (
                 <div className="bg-indigo-500/20 text-indigo-300 text-[0.65em] px-1.5 py-0.5 rounded-sm uppercase tracking-wider font-extrabold border border-indigo-500/30">
-                  {currentCategory}
+                  {currentCategoryLabel}
                 </div>
               )}
               {roleDef && (
@@ -278,24 +403,24 @@ function EmployeeItem({
       </ContextMenu.Trigger>
 
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-[180px] bg-sky-950 text-white rounded-md border border-white/20 p-1 shadow-md animate-in fade-in-80 z-50">
+        <ContextMenu.Content className="min-w-45 bg-sky-950 text-white rounded-md border border-white/20 p-1 shadow-md animate-in fade-in-80 z-50">
           <ContextMenu.Label className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-            KATEGORIE ZUWEISEN
+            {copy.assignCategory}
           </ContextMenu.Label>
           <ContextMenu.Separator className="h-px bg-white/10 my-1" />
 
-          {["CC", "Projekt", "DBS Projekt", "SH", "Other", "Neueinsteiger"].map((cat) => (
+          {categoryOptions.map((cat) => (
             <ContextMenu.Item
-              key={cat}
+              key={cat.value}
               className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
-              onSelect={() => setCategory(employee.name, cat === currentCategory ? "" : cat)}
+              onSelect={() => setCategory(employee.name, cat.value === currentCategory ? "" : cat.value)}
             >
-              {currentCategory === cat && (
+              {currentCategory === cat.value && (
                 <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
                   <Check className="h-4 w-4" />
                 </span>
               )}
-              {cat}
+              {cat.label}
             </ContextMenu.Item>
           ))}
 
@@ -309,7 +434,7 @@ function EmployeeItem({
                 <Check className="h-4 w-4" />
               </span>
             ) : null}
-            ZURÜCKSETZEN
+            {copy.clearCategory}
           </ContextMenu.Item>
 
           {/* ROLLE ZUWEISEN */}
@@ -385,6 +510,8 @@ function ShiftCodeGroup({
   crawlerStale?: boolean;
   todayDateStr?: string;
 }) {
+  const { language } = useLanguage();
+  const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
   const { employees, range, active, ownersWithTickets, topOwners } = item;
   const info = shiftTypes[code];
   const ticketCount = (employees ?? []).reduce(
@@ -401,7 +528,7 @@ function ShiftCodeGroup({
           >
             {code}
           </span>
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{timerLabel(now, range)}</span>
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{timerLabel(now, range, copy)}</span>
           {showOnlyActiveShifts ? null : (
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
               {active ? "• AKTIV" : "• INAKTIV"}
@@ -418,7 +545,7 @@ function ShiftCodeGroup({
 
       <div className="px-2 pb-2 space-y-1 mt-1">
         {(employees?.length ?? 0) === 0 ? (
-          <div className="text-[13px] text-[#4b5563] py-1">Keine Daten</div>
+          <div className="text-[13px] text-[#4b5563] py-1">{copy.noData}</div>
         ) : (
           (employees ?? []).map((e: any) => (
             <EmployeeItem
@@ -465,8 +592,8 @@ function ShiftGroup({
 
   return (
     <div className="stat-card" style={{ ...ENT_CARD_BASE, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", height: "100%" }}>
-      <div className="px-4 py-3 flex items-center justify-between border-b border-white/10 flex-none bg-white/[0.02]">
-        <div style={ENT_SECTION_TITLE} className="!mb-0 uppercase tracking-wider">{group.title}</div>
+      <div className="px-4 py-3 flex items-center justify-between border-b border-white/10 flex-none bg-white/2">
+        <div style={ENT_SECTION_TITLE} className="mb-0! uppercase tracking-wider">{group.title}</div>
         <div className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-2">
           <Clock className="w-3.5 h-3.5" />
           <span>{groupEmployees} MA</span>
@@ -537,9 +664,9 @@ function KpiTile({ icon, title, count, children, className }: {
 /* ------------------------------------------------ */
 function getShiftInfoForTime(date: Date) {
   const h = date.getHours();
-  if (h >= 6 && h < 14) return { code: "E", label: "Früh", color: "bg-amber-500" }; // Standard Amber for Early
-  if (h >= 14 && h < 22) return { code: "L", label: "Spät", color: "bg-blue-500" };  // Standard Blue for Late
-  return { code: "N", label: "Nacht", color: "bg-slate-600" }; // Standard Slate for Night
+  if (h >= 6 && h < 14) return { code: "E", label: "Early", color: "bg-amber-500" };
+  if (h >= 14 && h < 22) return { code: "L", label: "Late", color: "bg-blue-500" };
+  return { code: "N", label: "Night", color: "bg-slate-600" };
 }
 
 /* ------------------------------------------------ */
@@ -589,6 +716,8 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 function StatisticsPanel() {
+  const { language } = useLanguage();
+  const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
   // data.status is now a Map<string, number>
   const [data, setData] = useState<{ types: any, status: Record<string, number>, health: any }>({ types: {}, status: {}, health: {} });
   const [loading, setLoading] = useState(true);
@@ -608,7 +737,7 @@ function StatisticsPanel() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-8 text-center text-[0.9em] text-muted-foreground">Lade Statistiken...</div>;
+  if (loading) return <div className="p-8 text-center text-[0.9em] text-muted-foreground">{copy.loadingStats}</div>;
 
   // Prepare Data helpers
   const prep = (obj: any, keys: string[], labels: string[], colors: string[]) => {
@@ -665,7 +794,7 @@ function StatisticsPanel() {
       </div>
       <div className="flex items-center flex-1 min-h-0 p-2">
         {/* Donut Chart */}
-        <div className="w-[80px] h-[80px] flex-none relative">
+        <div className="w-20 h-20 flex-none relative">
           {data.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center text-[0.7em] text-muted-foreground/30">No Data</div>
           ) : (
@@ -690,7 +819,7 @@ function StatisticsPanel() {
         </div>
 
         {/* Legend */}
-        <div className="flex-1 min-w-0 pl-2 space-y-1 overflow-y-auto max-h-[100px] scrollbar-thin scrollbar-thumb-white/10">
+        <div className="flex-1 min-w-0 pl-2 space-y-1 overflow-y-auto max-h-25 scrollbar-thin scrollbar-thumb-white/10">
           {data.length === 0 ? (
             <div className="text-[0.75em] text-muted-foreground italic text-center">—</div>
           ) : (
@@ -711,9 +840,9 @@ function StatisticsPanel() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 h-full">
-      {renderSection("Tickertypes", typeData)}
-      {renderSection("Commit Health", healthData)}
-      {renderSection("Ticket Status", statusData)}
+      {renderSection(copy.ticketTypes, typeData)}
+      {renderSection(copy.commitHealth, healthData)}
+      {renderSection(copy.ticketStatus, statusData)}
     </div>
   );
 }
@@ -723,6 +852,8 @@ function StatisticsPanel() {
 /* ------------------------------------------------ */
 
 export default function Dashboard() {
+  const { language } = useLanguage();
+  const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
   const { user } = useAuth();
   const displayName = getUserDisplayName(user);
   const { isHidden } = useHiddenEmployees();
@@ -764,6 +895,7 @@ export default function Dashboard() {
   const [showOnlyOwnersWithTickets, toggleOwners] = usePersistentToggle("dashboard.filter.ownersWithTickets", false);
   const [showOnlyActiveShifts, toggleActive] = usePersistentToggle("dashboard.filter.activeShifts", false);
   const [showOnlyCritical, toggleCritical] = usePersistentToggle("dashboard.filter.critical", false);
+  const [showWarnings, toggleWarnings] = usePersistentToggle("dashboard.filter.warnings", false);
 
   /* COLLAPSIBLE SECTIONS UND CONFIG */
   const [dbConfig, setDbConfig] = useState<{ info_expanded: boolean; settings_expanded: boolean }>({
@@ -1093,9 +1225,9 @@ export default function Dashboard() {
     };
 
     const groups = [
-      make("Frühschicht", [...EARLY_SHIFT_CODES], earlyByCode),
-      make("Spätschicht", [...LATE_SHIFT_CODES], lateByCode),
-      make("Nachtschicht", ["N"], nightByCode),
+      make(copy.earlyShift, [...EARLY_SHIFT_CODES], earlyByCode),
+      make(copy.lateShift, [...LATE_SHIFT_CODES], lateByCode),
+      make(copy.nightShift, ["N"], nightByCode),
     ];
 
     return groups.filter((g) => g.items.length > 0);
@@ -1290,7 +1422,7 @@ export default function Dashboard() {
   const Resizer = ({ colKey }: { colKey: string }) => (
     <div
       onPointerDown={(e) => handleResizeStart(e, colKey)}
-      className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize hover:bg-blue-400/50 transition-colors z-10 touch-none"
+      className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400/50 transition-colors z-10 touch-none"
       onClick={(e) => e.stopPropagation()}
     />
   );
@@ -1304,47 +1436,49 @@ export default function Dashboard() {
         {/* Header Row */}
         <EnterpriseHeader
           icon={<ChartIcon style={{ width: 18, height: 18, color: "#818cf8" }} />}
-          title={<>Hallo, <span style={{ color: "#e2e8f0" }}>{displayName}</span></>}
+          title={<>{copy.greeting}, <span style={{ color: "#e2e8f0" }}>{displayName}</span></>}
           rightContent={
             <div className="flex items-center gap-2">
               <DateTimeBadge />
 
               {/* UNTERBESETZUNG BADGE */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[0.85em] rounded-lg border transition-colors ${understaffToday.count === 0 ? "bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20" : "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"}`}>
-                    <Users className="w-3.5 h-3.5" />
-                    <span className="font-semibold">{understaffToday.count === 0 ? "Besetzung OK" : "Unterbesetzung"}</span>
-                    {understaffToday.count > 0 && <span className="ml-1 bg-red-500/20 px-1 rounded text-[0.7em] font-bold">{understaffToday.count}</span>}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0 bg-slate-900 border-white/20 text-white shadow-xl backdrop-blur-md" align="end">
-                  <div className="p-3 font-medium border-b border-white/10 flex items-center justify-between">
-                    <span>Unterbesetzung Details</span>
-                    <span className="text-xs text-muted-foreground">Heute</span>
-                  </div>
-                  <div className="p-2 space-y-1">
-                    {understaffToday.count === 0 ? (
-                      <div className="flex items-center gap-2 p-2 text-green-400 text-sm">
-                        <Check className="w-4 h-4" />
-                        <span>Keine Unterbesetzung erkannt.</span>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        {understaffToday.labels.map((label, i) => (
-                          <div key={i} className="flex items-start gap-2 p-2 rounded hover:bg-white/5 text-sm">
-                            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                            <div>
-                              <div className="font-semibold text-red-300">Warnung</div>
-                              <div className="text-muted-foreground text-xs">{label}</div>
+              {showWarnings && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[0.85em] rounded-lg border transition-colors ${understaffToday.count === 0 ? "bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20" : "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20"}`}>
+                      <Users className="w-3.5 h-3.5" />
+                      <span className="font-semibold">{understaffToday.count === 0 ? copy.staffingOk : copy.understaffing}</span>
+                      {understaffToday.count > 0 && <span className="ml-1 bg-red-500/20 px-1 rounded text-[0.7em] font-bold">{understaffToday.count}</span>}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0 bg-slate-900 border-white/20 text-white shadow-xl backdrop-blur-md" align="end">
+                    <div className="p-3 font-medium border-b border-white/10 flex items-center justify-between">
+                      <span>{copy.understaffingDetails}</span>
+                      <span className="text-xs text-muted-foreground">{copy.today}</span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {understaffToday.count === 0 ? (
+                        <div className="flex items-center gap-2 p-2 text-green-400 text-sm">
+                          <Check className="w-4 h-4" />
+                          <span>{copy.noUnderstaffing}</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {understaffToday.labels.map((label, i) => (
+                            <div key={i} className="flex items-start gap-2 p-2 rounded hover:bg-white/5 text-sm">
+                              <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                              <div>
+                                <div className="font-semibold text-red-300">{copy.warning}</div>
+                                <div className="text-muted-foreground text-xs">{label}</div>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           }
         />
@@ -1355,12 +1489,12 @@ export default function Dashboard() {
             <div className="flex items-center gap-5">
               <div className="uppercase tracking-widest text-[12px] font-extrabold flex items-center gap-2 text-indigo-300 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]">
                 <Clock className="w-4 h-4 text-indigo-400" />
-                COMMIT &le; 72h / HEUTE
+                {copy.commitTodayTitle}
               </div>
 
               {/* SUMMARY BADGES */}
               <div className="flex items-center gap-3 text-[0.75em] font-bold text-slate-300">
-                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-indigo-200">Terminiert heute: <span className="text-white font-mono">{stats.termToday}</span></span>
+                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-indigo-200">{copy.commitToday}: <span className="text-white font-mono">{stats.termToday}</span></span>
                 <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-blue-300">SH: <span className="text-white font-mono">{stats.sh}</span></span>
                 <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-red-400">TT: <span className="text-white font-mono">{stats.tt}</span></span>
                 <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-amber-400">CC: <span className="text-white font-mono">{stats.cc}</span></span>
@@ -1375,28 +1509,28 @@ export default function Dashboard() {
           <div className="flex-1 overflow-auto rounded-b-2xl scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
             {crawlerStaleness.isStale ? (
               <div className="p-8 flex flex-col items-center justify-center gap-2">
-                <div className="text-red-400 font-bold text-sm uppercase tracking-wider">NO RECENT CRAWLER DATA INPUT</div>
-                <div className="text-[13px] text-muted-foreground">Ticket-Daten werden ausgeblendet, da keine aktuellen Crawler-Daten vorliegen.</div>
+                <div className="text-red-400 font-bold text-sm uppercase tracking-wider">{language === 'de' ? 'KEINE AKTUELLEN CRAWLER-DATEN' : 'NO RECENT CRAWLER DATA INPUT'}</div>
+                <div className="text-[13px] text-muted-foreground">{language === 'de' ? 'Ticket-Daten werden ausgeblendet, da keine aktuellen Crawler-Daten vorliegen.' : 'Ticket data is hidden because no recent crawler data is available.'}</div>
               </div>
             ) : urgentTickets.length === 0 ? (
-              <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">Keine Daten</div>
+              <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">{copy.noData}</div>
             ) : (
-              <div className="min-w-[1100px] w-full flex flex-col h-full relative">
+              <div className="min-w-275 w-full flex flex-col h-full relative">
                 {/* HEADERS */}
                 <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-2 text-[11px] font-extrabold text-indigo-300/80 uppercase tracking-wider border-b border-indigo-500/20 bg-indigo-500/5 sticky top-0 z-10 shadow-sm backdrop-blur-sm">
-                  <div>Activity</div>
+                  <div>{copy.activity}</div>
                   <div>Systemname</div>
                   <div>Status</div>
-                  <div>Owner</div>
+                  <div>{copy.owner}</div>
                   <div className="text-center">Terminiert</div>
                   <div className="text-center">Expedite</div>
-                  <div className="text-right">Sched. Start</div>
-                  <div className="text-right">Revised Commit</div>
+                  <div className="text-right">{language === 'de' ? 'Geplanter Start' : 'Scheduled start'}</div>
+                  <div className="text-right">{language === 'de' ? 'Geänderter Commit' : 'Revised commit'}</div>
                   <div className="text-right">Restzeit</div>
                 </div>
 
                 {/* ROWS */}
-                <div className="flex-1 divide-y divide-white/[0.03]">
+                <div className="flex-1 divide-y divide-white/3">
                   {urgentTickets.map((t: any, i) => {
                     const id = String(t.external_id ?? t.ticketNumber ?? t.ticket ?? t.id ?? "?");
                     const sysName = String(t.systemName ?? t.system_name ?? "—").trim();
@@ -1431,22 +1565,22 @@ export default function Dashboard() {
                     return (
                       <div
                         key={`${id}-${i}`}
-                        className={`grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-3 items-center hover:bg-white/[0.04] transition-all group rounded-lg mb-0.5 ${isTTStyling} ${rowGlow}`}
+                        className={`grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-3 items-center hover:bg-white/4 transition-all group rounded-lg mb-0.5 ${isTTStyling} ${rowGlow}`}
                       >
                         {/* 1) Activity */}
                         <div className="flex flex-col min-w-0 pr-2">
                           <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                            <span className={`px-1.5 py-[1px] text-[10px] font-bold rounded ${tierColor} text-white font-mono shadow-sm`}>
+                            <span className={`px-1.5 py-px text-[10px] font-bold rounded ${tierColor} text-white font-mono shadow-sm`}>
                               {id}
                             </span>
                             <div className="scale-75 origin-left -ml-0.5"><CopyTicketButton ticketId={id} /></div>
-                            {hasHandover && <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-1 py-[1px] rounded text-[9px] uppercase font-bold tracking-wider">HND</span>}
+                            {hasHandover && <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-1 py-px rounded text-[9px] uppercase font-bold tracking-wider">HND</span>}
                           </div>
                           <span className="text-[13px] font-medium text-slate-100 truncate" title={activity}>{activity}</span>
                         </div>
 
                         {/* 2) Systemname */}
-                        <div className="text-[12px] text-slate-300 break-words whitespace-normal leading-snug pr-2 font-mono" title={sysName}>
+                        <div className="text-[12px] text-slate-300 wrap-break-word whitespace-normal leading-snug pr-2 font-mono" title={sysName}>
                           {sysName}
                         </div>
 
@@ -1466,18 +1600,18 @@ export default function Dashboard() {
                         {/* 5) Terminiert (Yes/No) */}
                         <div className="flex justify-center items-center">
                           {isScheduled ? (
-                            <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Yes</span>
+                            <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{language === 'de' ? 'Ja' : 'Yes'}</span>
                           ) : (
-                            <span className="bg-slate-800 text-slate-500 border border-slate-700 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">No</span>
+                            <span className="bg-slate-800 text-slate-500 border border-slate-700 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{language === 'de' ? 'Nein' : 'No'}</span>
                           )}
                         </div>
 
                         {/* 6) Expedite (Yes/No) */}
                         <div className="flex justify-center items-center">
                           {isExpedite ? (
-                            <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Yes</span>
+                            <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{language === 'de' ? 'Ja' : 'Yes'}</span>
                           ) : (
-                            <span className="bg-slate-800 text-slate-500 border border-slate-700 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">No</span>
+                            <span className="bg-slate-800 text-slate-500 border border-slate-700 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{language === 'de' ? 'Nein' : 'No'}</span>
                           )}
                         </div>
 
@@ -1508,23 +1642,26 @@ export default function Dashboard() {
         <div className="flex-1 min-h-0 flex flex-col mt-2">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between px-5 py-4 border-b border-indigo-500/20 bg-[#070b19]/90 backdrop-blur-md flex-none rounded-t-2xl shadow-[0_4px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] z-10">
             <div className="text-[13px] font-extrabold tracking-[0.15em] text-indigo-300 uppercase drop-shadow-[0_0_8px_rgba(99,102,241,0.5)] flex items-center gap-2">
-              DIENST HEUTE
+              {copy.serviceToday}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant={showOnlyOwnersWithTickets ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyOwnersWithTickets ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleOwners}>
-                Nur Ticket-Owner
+                {copy.ownersOnly}
               </Button>
               <Button variant={showOnlyActiveShifts ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyActiveShifts ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleActive}>
-                Nur Aktive
+                {copy.activeOnly}
+              </Button>
+              <Button variant={showWarnings ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showWarnings ? (understaffToday.count > 0 ? 'bg-red-600/80 hover:bg-red-600 text-white border-transparent' : 'bg-emerald-600/80 hover:bg-emerald-600 text-white border-transparent') : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleWarnings}>
+                {copy.warnings}{understaffToday.count > 0 ? ` (${understaffToday.count})` : ""}
               </Button>
               <Button variant={showOnlyCritical ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyCritical ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleCritical}>
-                Nur Kritische
+                {copy.criticalOnly}
               </Button>
             </div>
           </div>
 
           {grouped.length === 0 ? (
-            <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">Keine Schichten verfügbar</div>
+            <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">{copy.noShifts}</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0">
               {grouped.map((g) => (

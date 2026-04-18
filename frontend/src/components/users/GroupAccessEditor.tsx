@@ -22,7 +22,8 @@ import {
 } from "../ui/select";
 
 import type { AccessLevel } from "../../context/AuthContext";
-import { PAGE_DEFS } from "../../config/navigation";
+import { PAGE_DEFS, translatePageLabel } from "../../config/navigation";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ———————————————————————————————— */
 /* TYPES                                            */
@@ -42,12 +43,6 @@ type GroupAccessEditorProps = {
 };
 
 /* 🔑 FINAL LEVELS (kein manage) */
-const LEVEL_OPTIONS: { value: AccessLevel; label: string }[] = [
-  { value: "none", label: "Kein Zugriff" },
-  { value: "view", label: "Lesen" },
-  { value: "write", label: "Schreiben" },
-];
-
 function normalizeGroupKey(input: string) {
   return String(input || "")
     .trim()
@@ -65,8 +60,33 @@ export function GroupAccessEditor({
   variant = "card",
   showTitle,
 }: GroupAccessEditorProps) {
+  const { t } = useLanguage();
   const useCard = variant === "card";
   const useTitle = showTitle ?? useCard;
+  const levelOptions: { value: AccessLevel; label: string }[] = [
+    { value: "none", label: t("groupAccess.noAccess") },
+    { value: "view", label: t("groupAccess.read") },
+    { value: "write", label: t("groupAccess.write") },
+  ];
+  const copy = {
+    loadFailed: t("groupAccess.loadFailed"),
+    saveFailed: t("groupAccess.saveFailed"),
+    keyLabelRequired: t("groupAccess.keyLabelRequired"),
+    createFailed: t("groupAccess.createFailed"),
+    selectDepartment: t("groupAccess.selectDepartment"),
+    refresh: t("common.refresh"),
+    saving: t("common.saving"),
+    save: t("common.save"),
+    newDepartment: t("groupAccess.newDepartment"),
+    keyPlaceholder: t("groupAccess.keyPlaceholder"),
+    labelPlaceholder: t("groupAccess.labelPlaceholder"),
+    create: t("groupAccess.create"),
+    hint: t("groupAccess.hint"),
+    page: t("groupAccess.page"),
+    departmentStandard: t("groupAccess.departmentStandard"),
+    selectAccess: t("groupAccess.selectAccess"),
+    title: t("groupAccess.title"),
+  };
 
   /* ———————————————————————————————— */
   /* STATE                                           */
@@ -103,7 +123,7 @@ export function GroupAccessEditor({
         : fallback;
       setSelectedKey(key);
     } catch (e: any) {
-      setError(e?.response?.data?.message || "Konnte Abteilungen nicht laden");
+      setError(e?.response?.data?.message || copy.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -143,7 +163,7 @@ export function GroupAccessEditor({
       );
       await load();
     } catch (e: any) {
-      setError(e?.response?.data?.message || "Speichern fehlgeschlagen");
+      setError(e?.response?.data?.message || copy.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -154,7 +174,7 @@ export function GroupAccessEditor({
     const label = newLabel.trim();
 
     if (!key || !label) {
-      setError("Key und Label sind erforderlich");
+      setError(copy.keyLabelRequired);
       return;
     }
 
@@ -169,7 +189,7 @@ export function GroupAccessEditor({
     } catch (e: any) {
       setError(
         e?.response?.data?.message ||
-        "Abteilung konnte nicht erstellt werden"
+        copy.createFailed
       );
     } finally {
       setSaving(false);
@@ -191,11 +211,11 @@ export function GroupAccessEditor({
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="w-full md:w-80">
           <div className="mb-1 text-xs text-muted-foreground">
-            Abteilung auswählen
+            {copy.selectDepartment}
           </div>
           <Select value={selectedKey} onValueChange={setSelectedKey}>
             <SelectTrigger>
-              <SelectValue placeholder="Abteilung auswählen" />
+              <SelectValue placeholder={copy.selectDepartment} />
             </SelectTrigger>
             <SelectContent>
               {groups.map((g) => (
@@ -213,43 +233,43 @@ export function GroupAccessEditor({
             onClick={load}
             disabled={loading || saving}
           >
-            Aktualisieren
+            {copy.refresh}
           </Button>
           <Button
             onClick={savePolicy}
             disabled={saving || loading || !selectedGroup}
           >
-            {saving ? "Speichern…" : "Speichern"}
+            {saving ? copy.saving : copy.save}
           </Button>
         </div>
       </div>
 
       <div className="rounded-lg border p-3">
-        <div className="mb-2 text-sm font-medium">Neue Abteilung anlegen</div>
+        <div className="mb-2 text-sm font-medium">{copy.newDepartment}</div>
         <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <Input
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
-            placeholder="Key (z.B. qa-team)"
+            placeholder={copy.keyPlaceholder}
           />
           <Input
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            placeholder="Label (z.B. QA Team)"
+            placeholder={copy.labelPlaceholder}
           />
           <Button onClick={createGroup} disabled={saving}>
-            Anlegen
+            {copy.create}
           </Button>
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
-          Hinweis: Keys werden automatisch normalisiert (c_ops → c-ops).
+          {copy.hint}
         </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border">
         <div className="grid grid-cols-12 border-b bg-muted/40 px-3 py-2 text-xs font-medium">
-          <div className="col-span-7">Seite</div>
-          <div className="col-span-5">Abteilungsstandard</div>
+          <div className="col-span-7">{copy.page}</div>
+          <div className="col-span-5">{copy.departmentStandard}</div>
         </div>
 
         <div className="divide-y">
@@ -262,7 +282,7 @@ export function GroupAccessEditor({
                 className="grid grid-cols-12 items-center px-3 py-2"
               >
                 <div className="col-span-7">
-                  <div className="text-sm">{p.label}</div>
+                  <div className="text-sm">{translatePageLabel(p.key, t)}</div>
                   <div className="text-xs text-muted-foreground">{p.key}</div>
                 </div>
 
@@ -277,10 +297,10 @@ export function GroupAccessEditor({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Zugriff auswählen" />
+                      <SelectValue placeholder={copy.selectAccess} />
                     </SelectTrigger>
                     <SelectContent>
-                      {LEVEL_OPTIONS.map((opt) => (
+                      {levelOptions.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>
@@ -308,7 +328,7 @@ export function GroupAccessEditor({
     <Card className="mt-6">
       {useTitle ? (
         <CardHeader>
-          <CardTitle>Abteilung Access (Pages)</CardTitle>
+          <CardTitle>{copy.title}</CardTitle>
         </CardHeader>
       ) : null}
 

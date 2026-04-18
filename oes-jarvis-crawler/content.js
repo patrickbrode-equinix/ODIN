@@ -112,6 +112,31 @@ function notifyLoopState(running, reason) {
   } catch (_) { }
 }
 
+function notifyScrapeActivity(active, reason) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "OES_SCRAPE_ACTIVITY",
+      active,
+      reason,
+      url: location.href,
+    });
+  } catch (_) { }
+}
+
+function notifyRunSummary(outcome, meta, durationMs, uploadedQueues, reason) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "OES_RUN_SUMMARY",
+      outcome,
+      meta,
+      durationMs,
+      uploadedQueues,
+      reason,
+      url: location.href,
+    });
+  } catch (_) { }
+}
+
 function clearNextRunTimer() {
   if (OES_NEXT_RUN_TIMER) {
     clearTimeout(OES_NEXT_RUN_TIMER);
@@ -1117,6 +1142,7 @@ async function scrapeAllQueuesAndUpload() {
 
   OES_IS_RUNNING = true;
   const runStartTime = Date.now();
+  notifyScrapeActivity(true, "scrape_all_queues");
   try {
     // ── Step 0: Read enabled queues configuration ──
     const enabledQueues = await getEnabledQueues();
@@ -1128,6 +1154,7 @@ async function scrapeAllQueuesAndUpload() {
 
     if (enabledQueues.length === 0) {
       warn("[Run] No queues enabled. Aborting scrape run.");
+      notifyRunSummary("skipped", {}, Date.now() - runStartTime, [], "no_enabled_queues");
       return;
     }
 
@@ -1142,6 +1169,7 @@ async function scrapeAllQueuesAndUpload() {
       try {
         chrome.runtime.sendMessage({ type: "OES_SCRAPE_ERROR", url: location.href, message: `Preflight failed: ${preflightErr?.message}` });
       } catch (_) { }
+      notifyRunSummary("failed", {}, Date.now() - runStartTime, [], "preflight_failed");
       return;
     }
 
@@ -1306,6 +1334,7 @@ async function scrapeAllQueuesAndUpload() {
       try {
         chrome.runtime.sendMessage({ type: "OES_SCRAPE_INCOMPLETE", url: location.href, meta });
       } catch (_) { }
+      notifyRunSummary("incomplete", meta, Date.now() - runStartTime, [], "no_complete_queues");
       return;
     }
 
@@ -1337,8 +1366,10 @@ async function scrapeAllQueuesAndUpload() {
     const resp = await uploadSnapshotViaBackground(payload);
     log("[Run] Upload OK:", resp);
     log(`[Run] ======== Scrape run complete (${((Date.now() - runStartTime) / 1000).toFixed(1)}s) ========`);
+    notifyRunSummary("success", meta, Date.now() - runStartTime, Object.keys(queuesToUpload), "upload_ok");
   } finally {
     OES_IS_RUNNING = false;
+    notifyScrapeActivity(false, "scrape_all_queues");
   }
 }
 

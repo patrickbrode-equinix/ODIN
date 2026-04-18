@@ -22,6 +22,7 @@ import { CompetencyModal } from "../shiftplan/CompetencyModal";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 
 import {
   fetchSchedule,
@@ -80,12 +81,42 @@ function parseIssueToggleSetting(value: unknown, fallback: boolean) {
   return fallback;
 }
 
-function formatShiftTypeLabel(value: string) {
+function formatShiftTypeLabel(value: string, labels?: { early: string; late: string; night: string }) {
   const upper = String(value || "").toUpperCase();
-  if (upper === "EARLY") return "Früh";
-  if (upper === "LATE") return "Spät";
-  if (upper === "NIGHT") return "Nacht";
+  if (upper === "EARLY") return labels?.early || "Early";
+  if (upper === "LATE") return labels?.late || "Late";
+  if (upper === "NIGHT") return labels?.night || "Night";
   return value;
+}
+
+function formatIssuePriorityMode(mode: IssuePriorityMode, isGerman: boolean) {
+  switch (mode) {
+    case "staffing_first":
+      return isGerman ? "Besetzung zuerst" : "Staffing first";
+    case "fairness_first":
+      return isGerman ? "Fairness zuerst" : "Fairness first";
+    default:
+      return isGerman ? "Ausgewogen" : "Balanced";
+  }
+}
+
+function formatIssueSource(source: ShiftplanIssueInsight["source"], isGerman: boolean) {
+  switch (source) {
+    case "understaffing":
+      return isGerman ? "Unterbesetzung" : "Understaffing";
+    case "staffing":
+      return isGerman ? "Staffing-Regel" : "Staffing rule";
+    case "coverage":
+      return isGerman ? "Skill-Abdeckung" : "Skill coverage";
+    case "validation":
+      return isGerman ? "Validierung" : "Validation";
+    case "absence":
+      return isGerman ? "Abwesenheit" : "Absence";
+    case "constraint":
+      return isGerman ? "Restriktion" : "Constraint";
+    default:
+      return source;
+  }
 }
 
 /* ------------------------------------------------ */
@@ -96,9 +127,16 @@ export default function Shiftplan() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shiftStore = useShiftStore();
   const { canWrite } = useAuth();
+  const { language, t } = useLanguage();
   const wellbeingStore = useWellbeingStore(); // [NEW]
+  const isGerman = language === "de";
+  const shiftTypeLabels = {
+    early: t("shiftplan.shiftEarly"),
+    late: t("shiftplan.shiftLate"),
+    night: t("shiftplan.shiftNight"),
+  };
 
-  const locale: "de-DE" | "en-US" = "de-DE";
+  const locale: "de-DE" | "en-US" = isGerman ? "de-DE" : "en-US";
 
   /* ------------------------------------------------ */
   /* STATE                                            */
@@ -131,6 +169,7 @@ export default function Shiftplan() {
 
   // Panels visibility
   const [warningsVisible, setWarningsVisible] = useState(false);
+  const [warningDialogOpen, setWarningDialogOpen] = useState(false);
   const [hiddenPanelVisible, setHiddenPanelVisible] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
   // [NEW] Wellbeing Panel
@@ -209,6 +248,7 @@ export default function Shiftplan() {
   const [issuePanelEnabled, setIssuePanelEnabled] = useState(true);
   const [issueShowSolutions, setIssueShowSolutions] = useState(true);
   const [issuePriorityMode, setIssuePriorityMode] = useState<IssuePriorityMode>("balanced");
+  const [skillsEnabled, setSkillsEnabled] = useState(false);
 
   // [NEW] Ramadan State (Centralized)
   const [ramadanMeta, setRamadanMeta] = useState<RamadanMeta | null>(null);
@@ -240,6 +280,7 @@ export default function Shiftplan() {
         const settings = res.data || {};
         setIssuePanelEnabled(parseIssueToggleSetting(settings["shiftplan.issue_panel_enabled"], true));
         setIssueShowSolutions(parseIssueToggleSetting(settings["shiftplan.issue_show_solutions"], true));
+        setSkillsEnabled(parseIssueToggleSetting(settings["shiftplan.skills_enabled"], false));
         const nextMode = settings["shiftplan.issue_priority_mode"];
         if (nextMode === "staffing_first" || nextMode === "balanced" || nextMode === "fairness_first") {
           setIssuePriorityMode(nextMode);
@@ -249,14 +290,15 @@ export default function Shiftplan() {
         setIssuePanelEnabled(true);
         setIssueShowSolutions(true);
         setIssuePriorityMode("balanced");
+        setSkillsEnabled(false);
       });
   }, []);
 
   // Load Hessen Holidays per year
   useEffect(() => {
     // Use frontend calculation for instant results (no backend call needed)
-    setHolidayMap(getHessenHolidayMap(selectedYear));
-  }, [selectedYear]);
+    setHolidayMap(getHessenHolidayMap(selectedYear, isGerman ? "de" : "en"));
+  }, [isGerman, selectedYear]);
 
   // Save Preferences (Debounced for search?) 
   // For simplicity, save strictly when values change.
@@ -290,7 +332,7 @@ export default function Shiftplan() {
 
   const monthIndex1 = selectedMonthIndex + 1;
 
-  const holidays = useMemo(() => getHessenHolidayMap(selectedYear), [selectedYear]);
+  const holidays = useMemo(() => getHessenHolidayMap(selectedYear, isGerman ? "de" : "en"), [isGerman, selectedYear]);
 
   const warningsComputed = useMemo(
     () => computeUnderstaffWarnings(schedule || {}, selectedYear, monthIndex1, daysInMonth),
@@ -311,14 +353,19 @@ export default function Shiftplan() {
 
     warningsComputed.forEach((warning, index) => {
       const delta = Math.max((warning.target || 0) - (warning.actual || 0), 0);
+      const shiftLabel = formatShiftTypeLabel(warning.kind, shiftTypeLabels);
       items.push({
         id: `warning-${index}`,
         source: "understaffing",
         severity: delta >= 2 || warning.actual === 0 ? "high" : "medium",
-        title: "Unterbesetzung erkannt",
-        detected: `${warning.label} am ${warning.dateKey}: ${warning.kind.toUpperCase()} ist mit ${warning.actual}/${warning.target} besetzt.`,
-        solution: `Besetzung in ${warning.kind.toUpperCase()} erhöhen, Reserve/DBS prüfen oder einen verfügbaren Mitarbeiter aus einer weniger kritischen Schicht verschieben.`,
-        meta: `Soll ${warning.target}, Ist ${warning.actual}`,
+        title: isGerman ? "Unterbesetzung erkannt" : "Understaffing detected",
+        detected: isGerman
+          ? `${warning.label} am ${warning.dateKey}: ${shiftLabel} ist mit ${warning.actual}/${warning.target} besetzt.`
+          : `${warning.label} on ${warning.dateKey}: ${shiftLabel} is staffed with ${warning.actual}/${warning.target}.`,
+        solution: isGerman
+          ? `Besetzung in ${shiftLabel} erhöhen, Reserve/DBS prüfen oder einen verfügbaren Mitarbeiter aus einer weniger kritischen Schicht verschieben.`
+          : `Increase staffing in ${shiftLabel}, check reserve/DBS capacity, or move an available employee from a less critical shift.`,
+        meta: isGerman ? `Soll ${warning.target}, Ist ${warning.actual}` : `Target ${warning.target}, actual ${warning.actual}`,
       });
     });
 
@@ -327,10 +374,12 @@ export default function Shiftplan() {
         id: `staffing-${index}`,
         source: "staffing",
         severity: entry.status === "FAIL" ? "high" : "medium",
-        title: "Mindestbesetzung verletzt",
-        detected: `${entry.date}: ${formatShiftTypeLabel(entry.shift_type)} hat ${entry.actual}/${entry.min} Mitarbeiter.`,
-        solution: "Mindeststaffing-Regel für diesen Tag prüfen und gezielt Mitarbeiter mit passender Schichtfähigkeit nachziehen.",
-        meta: `Status ${entry.status}`,
+        title: t("shiftplan.minStaffingViolated"),
+        detected: isGerman
+          ? `${entry.date}: ${formatShiftTypeLabel(entry.shift_type, shiftTypeLabels)} hat ${entry.actual}/${entry.min} Mitarbeiter.`
+          : `${entry.date}: ${formatShiftTypeLabel(entry.shift_type, shiftTypeLabels)} has ${entry.actual}/${entry.min} employees.`,
+        solution: t("shiftplan.minStaffingSolution"),
+        meta: isGerman ? `Status ${entry.status}` : `Status ${entry.status}`,
       });
     });
 
@@ -344,10 +393,12 @@ export default function Shiftplan() {
         id: `coverage-${index}`,
         source: "coverage",
         severity: "high",
-        title: "Skill-Lücke erkannt",
-        detected: `${entry.date}: ${formatShiftTypeLabel(entry.shift_type)} fehlt Qualifikation ${missing || "unbekannt"}.`,
-        solution: "Mitarbeiter mit passender Skill-Matrix einplanen oder die Schichtbesetzung so tauschen, dass die Mindestskills erhalten bleiben.",
-        meta: missing || "Skill-Lücke",
+        title: t("shiftplan.skillGapDetected"),
+        detected: isGerman
+          ? `${entry.date}: ${formatShiftTypeLabel(entry.shift_type, shiftTypeLabels)} fehlt Qualifikation ${missing || "unbekannt"}.`
+          : `${entry.date}: ${formatShiftTypeLabel(entry.shift_type, shiftTypeLabels)} is missing skill ${missing || "unknown"}.`,
+        solution: t("shiftplan.skillGapSolution"),
+        meta: missing || t("shiftplan.skillGapMeta"),
       });
     });
 
@@ -356,11 +407,15 @@ export default function Shiftplan() {
         id: `validation-${index}`,
         source: "validation",
         severity: "medium",
-        title: entry.violation_type === "REST_TIME" ? "Ruhezeit verletzt" : "Harter Schichtwechsel erkannt",
-        detected: `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`,
+        title: entry.violation_type === "REST_TIME"
+          ? t("shiftplan.restTimeViolated")
+          : t("shiftplan.hardTransitionDetected"),
+        detected: isGerman
+          ? `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`
+          : `${entry.employee_name} on ${entry.date}: ${entry.details.msg}`,
         solution: entry.violation_type === "REST_TIME"
-          ? "Genug Ruhezeit herstellen, indem der Folgetag auf frei oder eine spätere Schicht umgestellt wird."
-          : "Wechselkette glätten und harte Sprünge zwischen Nacht-, Spät- und Frühschicht reduzieren.",
+          ? t("shiftplan.restTimeSolution")
+          : t("shiftplan.hardTransitionSolution"),
         meta: `${entry.details.prev} -> ${entry.details.curr}`,
       });
     });
@@ -370,9 +425,13 @@ export default function Shiftplan() {
         id: `absence-${index}`,
         source: "absence",
         severity: "high",
-        title: "Abwesenheitskonflikt",
-        detected: `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`,
-        solution: "Entweder Abwesenheit oder Schichteintrag anpassen und anschließend Staffing erneut berechnen.",
+        title: isGerman ? "Abwesenheitskonflikt" : "Absence conflict",
+        detected: isGerman
+          ? `${entry.employee_name} am ${entry.date}: ${entry.details.msg}`
+          : `${entry.employee_name} on ${entry.date}: ${entry.details.msg}`,
+        solution: isGerman
+          ? "Entweder Abwesenheit oder Schichteintrag anpassen und anschließend Staffing erneut berechnen."
+          : "Adjust either the absence entry or the scheduled shift and then recalculate staffing.",
         meta: entry.details.shift_code,
       });
     });
@@ -382,9 +441,13 @@ export default function Shiftplan() {
         id: `constraint-${index}`,
         source: "constraint",
         severity: "medium",
-        title: "Persönliche Restriktion verletzt",
-        detected: `${entry.employee_name}: ${entry.details?.msg || entry.constraint_key}`,
-        solution: "Schicht an die hinterlegte Mitarbeiterrestriktion anpassen oder die Restriktion fachlich aktualisieren.",
+        title: isGerman ? "Persönliche Restriktion verletzt" : "Personal constraint violated",
+        detected: isGerman
+          ? `${entry.employee_name}: ${entry.details?.msg || entry.constraint_key}`
+          : `${entry.employee_name}: ${entry.details?.msg || entry.constraint_key}`,
+        solution: isGerman
+          ? "Schicht an die hinterlegte Mitarbeiterrestriktion anpassen oder die Restriktion fachlich aktualisieren."
+          : "Adjust the shift to the stored employee constraint or update the constraint definition.",
         meta: entry.constraint_key,
       });
     });
@@ -851,10 +914,10 @@ export default function Shiftplan() {
 
       shiftStore.setSchedule(activeMonthLabel, schedule);
       setIsDirty(false);
-      toast.success("Änderungen erfolgreich gespeichert"); // [NEW]
+      toast.success(t("shiftplan.changesSaved"));
     } catch (err) {
       console.error("SAVE ERROR:", err);
-      toast.error("Speichern fehlgeschlagen"); // [NEW]
+      toast.error(t("shiftplan.saveFailed"));
     } finally {
       setLoading(false);
     }
@@ -873,7 +936,7 @@ export default function Shiftplan() {
 
     const yearMatch = file.name.match(/(20\d{2})/);
     if (!yearMatch) {
-      alert("Dateiname muss ein Jahr enthalten (z. B. 2026)");
+      alert(t("shiftplan.filenameMustContainYear"));
       return;
     }
     const importYear = Number(yearMatch[1]);
@@ -901,7 +964,7 @@ export default function Shiftplan() {
       else await loadSchedule(activeMonthLabel);
     } catch (err) {
       console.error("IMPORT ERROR:", err);
-      alert("Fehler beim Excel-Import");
+      alert(t("shiftplan.excelImportFailed"));
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -918,7 +981,7 @@ export default function Shiftplan() {
       }
     } catch (e) {
       console.error("EXPORT FAILED:", e);
-      alert("Export fehlgeschlagen.");
+      alert(t("shiftplan.exportFailed"));
     } finally {
       setLoading(false);
     }
@@ -942,7 +1005,7 @@ export default function Shiftplan() {
 
       {/* HEADER */}
       <EnterpriseHeader
-        title="SCHICHTPLAN"
+        title={t("shiftplan.title")}
         icon={<Calendar className="w-5 h-5 text-indigo-400" />}
         rightContent={
           <div className="flex items-center gap-2 flex-wrap">
@@ -965,27 +1028,11 @@ export default function Shiftplan() {
                 size="sm"
                 className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showHolidayOverlay ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
                 onClick={() => setShowHolidayOverlay(v => !v)}
-                onContextMenu={(e) => { e.preventDefault(); setHolidayListOpen(v => !v); }}
-                title="Feiertage (Hessen) – Links: overlay, Rechts: Liste"
+                onContextMenu={(e) => { e.preventDefault(); setHolidayListOpen(true); }}
+                title={t("shiftplan.holidayTooltip")}
               >
-                {showHolidayOverlay ? "Feiertage: an" : "Feiertage"}
+                {showHolidayOverlay ? t("shiftplan.holidaysOn") : t("shiftplan.holidays")}
               </Button>
-              {holidayListOpen && (
-                <div className="absolute top-full left-0 mt-1 z-[100] bg-[#0c1428] border border-indigo-500/30 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.8)] p-3 min-w-[240px] max-h-80 overflow-auto">
-                  <div className="text-xs font-bold text-indigo-400 mb-2 uppercase tracking-wider">Feiertage Hessen {selectedYear}</div>
-                  <div className="space-y-1">
-                    {Object.entries(holidayMap)
-                      .sort((a, b) => a[0].localeCompare(b[0]))
-                      .map(([date, name]) => (
-                        <div key={date} className="flex items-center justify-between gap-3 text-xs text-white py-0.5">
-                          <span className="font-mono text-indigo-300 shrink-0">{date.slice(5).split('-').reverse().join('.')}</span>
-                          <span className="font-medium">{name}</span>
-                        </div>
-                      ))}
-                  </div>
-                  <button onClick={() => setHolidayListOpen(false)} className="mt-3 text-xs text-indigo-400 hover:text-white w-full text-right transition">Schließen ×</button>
-                </div>
-              )}
             </div>
 
             <div className="w-px h-5 bg-white/10 mx-1" />
@@ -995,8 +1042,13 @@ export default function Shiftplan() {
               size="sm"
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${warningsVisible ? 'bg-red-500/80 hover:bg-red-500 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
               onClick={() => setWarningsVisible(!warningsVisible)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setWarningDialogOpen(true);
+              }}
+              title={t("shiftplan.warningsTooltip")}
             >
-              {warningsVisible ? "Warnungen: an" : "Warnungen"}
+              {warningsVisible ? t("shiftplan.warningsOn") : t("shiftplan.warnings")}
             </Button>
 
             <Button
@@ -1005,7 +1057,7 @@ export default function Shiftplan() {
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${wellbeingVisible ? 'bg-blue-500/80 hover:bg-blue-500 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-blue-400 border border-blue-500/30 auto shadow-sm'}`}
               onClick={() => setWellbeingVisible(!wellbeingVisible)}
             >
-              Wellbeing
+              {t("shiftplan.wellbeing")}
             </Button>
 
             <Button
@@ -1014,7 +1066,7 @@ export default function Shiftplan() {
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${hiddenPanelVisible ? 'bg-sky-600/80 hover:bg-sky-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
               onClick={() => setHiddenPanelVisible(!hiddenPanelVisible)}
             >
-              {hiddenPanelVisible ? `Ausgebl.: ${hiddenEmployees.size}` : `Ausgebl. (${hiddenEmployees.size})`}
+              {hiddenPanelVisible ? `${t("shiftplan.hiddenOn")}: ${hiddenEmployees.size}` : `${t("shiftplan.hidden")} (${hiddenEmployees.size})`}
             </Button>
 
             {canEdit && (
@@ -1026,7 +1078,7 @@ export default function Shiftplan() {
                   onClick={saveChanges}
                   disabled={!isDirty || loading}
                 >
-                  Speichern
+                  {t("common.save")}
                 </Button>
               </>
             )}
@@ -1101,46 +1153,8 @@ export default function Shiftplan() {
 
       {/* PANELS */}
       {
-        (issuePanelEnabled || warningsVisible || hiddenPanelVisible || statsVisible || wellbeingVisible) && (
+        (hiddenPanelVisible || statsVisible || wellbeingVisible) && (
           <div className="flex flex-col gap-4">
-
-            {issuePanelEnabled && (
-              <div className={`rounded-xl border p-4 ${issueInsights.length > 0 ? 'border-amber-500/20 bg-amber-500/10' : 'border-emerald-500/20 bg-emerald-500/10'}`}>
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                      {issueInsights.length > 0 ? <AlertTriangle className="h-4 w-4 text-amber-300" /> : <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
-                      Problem- und Lösungsansicht
-                    </div>
-                    <div className="mt-1 text-sm text-slate-300">
-                      {issueInsights.length > 0
-                        ? `${issueCounts.total} Hinweise erkannt, davon ${issueCounts.high} kritisch priorisiert.`
-                        : 'Für den aktuellen Monat wurden in den geladenen Prüfdaten keine akuten Probleme erkannt.'}
-                    </div>
-                  </div>
-                  <div className="text-xs uppercase tracking-wider text-slate-400">Priorisierung: {issuePriorityMode.replace('_', ' ')}</div>
-                </div>
-
-                {issueInsights.length > 0 && (
-                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
-                    {issueInsights.map((issue) => (
-                      <div key={issue.id} className={`rounded-xl border p-3 ${issue.severity === 'high' ? 'border-red-400/20 bg-red-500/10' : 'border-amber-400/20 bg-slate-950/30'}`}>
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-100">{issue.title}</div>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${issue.severity === 'high' ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
-                            {issue.severity === 'high' ? 'kritisch' : 'Hinweis'}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-sm text-slate-200">{issue.detected}</div>
-                        {issueShowSolutions && <div className="mt-2 text-sm text-slate-300"><span className="font-semibold text-sky-200">Lösung:</span> {issue.solution}</div>}
-                        <div className="mt-2 text-xs text-slate-400">Quelle: {issue.source} · {issue.meta}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* WELLBEING / FAIRNESS PANEL */}
             {wellbeingVisible && (
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
@@ -1192,24 +1206,6 @@ export default function Shiftplan() {
                 <ShiftStatsPanel stats={monthlyStats} />
               </div>
             )}
-
-            {warningsVisible && warningsSummary.total > 0 && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-red-400 font-medium">Unterbesetzung erkannt ({warningsSummary.total})</span>
-                </div>
-
-                {/* LIST OF WARNINGS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                  {warningsComputed.map((w, idx) => (
-                    <div key={idx} className="text-xs bg-red-500/10 p-2 rounded border border-red-500/20 flex flex-col">
-                      <span className="font-bold text-red-300">{w.label} – {w.dateKey}</span>
-                      <span className="text-muted-foreground">{w.kind.toUpperCase()} (Ist: {w.actual} / Soll: {w.target})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {hiddenPanelVisible && (
               <div className="bg-secondary/20 border rounded-xl p-3 flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm">Ausgeblendet:</span>
@@ -1248,7 +1244,7 @@ export default function Shiftplan() {
                 highlightRequest={highlightRequest}
                 // [NEW] Pass metrics
                 // [NEW] Coverage Props
-                showSkillsOverlay={showSkills}
+                showSkillsOverlay={showSkills && skillsEnabled}
                 employeeSkills={employeeSkills}
                 coverageViolations={coverageViolations}
                 // [NEW] Staffing
@@ -1291,42 +1287,155 @@ export default function Shiftplan() {
 
       </>)}
 
+      <Dialog open={holidayListOpen} onOpenChange={setHolidayListOpen}>
+        <DialogContent className="max-w-2xl border border-indigo-500/30 bg-[#0c1428] text-white shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+          <DialogHeader>
+            <DialogTitle>{isGerman ? `Feiertage Hessen ${selectedYear}` : `Public holidays Hesse ${selectedYear}`}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-2 overflow-auto pr-1">
+            {Object.entries(holidayMap).length > 0 ? (
+              Object.entries(holidayMap)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([date, name]) => (
+                  <div key={date} className="flex items-center justify-between gap-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-sm">
+                    <span className="font-mono text-indigo-300">{date.slice(5).split('-').reverse().join('.')}</span>
+                    <span className="font-medium text-slate-100">{name}</span>
+                  </div>
+                ))
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-300">
+                {t("shiftplan.noHolidays")}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={warningDialogOpen} onOpenChange={setWarningDialogOpen}>
+        <DialogContent className="max-w-4xl border border-red-500/30 bg-[#150d12] text-white shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+          <DialogHeader>
+            <DialogTitle>{isGerman ? "Warnungsdetails für " : "Warning details for "}{formatMonthLabel(selectedYear, selectedMonthIndex + 1, locale)}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-red-200/70">{t("common.total")}</div>
+              <div className="mt-2 text-2xl font-semibold text-red-100">{warningsSummary.total}</div>
+            </div>
+            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-blue-200/70">{shiftTypeLabels.early}</div>
+              <div className="mt-2 text-2xl font-semibold text-blue-100">{warningsSummary.early.length}</div>
+            </div>
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-amber-200/70">{shiftTypeLabels.late}</div>
+              <div className="mt-2 text-2xl font-semibold text-amber-100">{warningsSummary.late.length}</div>
+            </div>
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-violet-200/70">{shiftTypeLabels.night}</div>
+              <div className="mt-2 text-2xl font-semibold text-violet-100">{warningsSummary.night.length}</div>
+            </div>
+          </div>
+          <div className="max-h-[60vh] space-y-2 overflow-auto pr-1">
+            {warningsComputed.length > 0 ? (
+              warningsComputed.map((warning, index) => (
+                <div key={`${warning.dateKey}-${warning.kind}-${warning.label}-${index}`} className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <div className="text-sm font-semibold text-red-100">{warning.label}</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-red-200/70">{formatShiftTypeLabel(warning.kind, shiftTypeLabels)}</div>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-200">{warning.dateKey}</div>
+                  <div className="mt-1 text-xs text-slate-400">{isGerman ? "Ist" : "Actual"}: {warning.actual} | {isGerman ? "Soll" : "Target"}: {warning.target}</div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
+                {isGerman
+                  ? "Für den aktuellen Monat wurden keine Unterbesetzungen erkannt."
+                  : "No understaffing gaps were detected for the current month."}
+              </div>
+            )}
+          </div>
+          {issuePanelEnabled ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">{isGerman ? "Problem- und Lösungsansicht" : "Issue and resolution view"}</div>
+                  <div className="text-xs text-slate-400">
+                    {issueInsights.length > 0
+                      ? isGerman
+                        ? `${issueCounts.total} Hinweise erkannt, davon ${issueCounts.high} kritisch priorisiert.`
+                        : `${issueCounts.total} insights detected, ${issueCounts.high} prioritised as critical.`
+                      : isGerman
+                        ? "Keine weiteren Probleme in den geladenen Prüfdaten erkannt."
+                        : "No further issues were detected in the loaded validation data."}
+                  </div>
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{isGerman ? "Priorisierung" : "Priority"}: {formatIssuePriorityMode(issuePriorityMode, isGerman)}</div>
+              </div>
+
+              <div className="max-h-[34vh] space-y-2 overflow-auto pr-1">
+                {issueInsights.length > 0 ? (
+                  issueInsights.map((issue) => (
+                    <div key={issue.id} className={`rounded-2xl border px-4 py-3 ${issue.severity === 'high' ? 'border-red-400/20 bg-red-500/10' : 'border-amber-400/20 bg-slate-950/40'}`}>
+                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                        <div className="text-sm font-semibold text-slate-100">{issue.title}</div>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${issue.severity === 'high' ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
+                          {issue.severity === 'high' ? (isGerman ? 'Kritisch' : 'Critical') : (isGerman ? 'Hinweis' : 'Notice')}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-slate-200">{issue.detected}</div>
+                      {issueShowSolutions ? <div className="mt-2 text-sm text-slate-300"><span className="font-semibold text-sky-200">{isGerman ? 'Lösung' : 'Solution'}:</span> {issue.solution}</div> : null}
+                      <div className="mt-2 text-xs text-slate-400">{isGerman ? 'Quelle' : 'Source'}: {formatIssueSource(issue.source, isGerman)} | {issue.meta}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-200">
+                    {isGerman
+                      ? "Die kombinierte Warnungsanalyse meldet für diesen Monat aktuell keine akuten Probleme."
+                      : "The combined warning analysis currently reports no acute issues for this month."}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {/* EDIT DIALOG */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Schicht ändern</DialogTitle>
+            <DialogTitle>{t("shiftplan.changeShift")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-muted-foreground">Mitarbeiter</label>
+                <label className="text-xs text-muted-foreground">{t("ticketAudit.employee")}</label>
                 <div className="font-medium">{editTarget?.employeeName}</div>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Datum</label>
+                <label className="text-xs text-muted-foreground">{t("common.date")}</label>
                 <div className="font-medium">{editTarget?.day}. {activeMonthLabel}</div>
               </div>
             </div>
             <Select value={editValue} onValueChange={setEditValue}>
               <SelectTrigger>
-                <SelectValue placeholder="Schicht wählen" />
+                <SelectValue placeholder={t("shiftplan.selectShift")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={EMPTY}>(Leer / Löschen)</SelectItem>
-                <SelectItem value="E1">E1 (Früh 1)</SelectItem>
-                <SelectItem value="E2">E2 (Früh 2)</SelectItem>
-                <SelectItem value="L1">L1 (Spät 1)</SelectItem>
-                <SelectItem value="L2">L2 (Spät 2)</SelectItem>
-                <SelectItem value="N">N  (Nacht)</SelectItem>
-                <SelectItem value="FS">FS (Frei/WE)</SelectItem>
-                <SelectItem value="ABW">ABW (Abwesend)</SelectItem>
+                <SelectItem value={EMPTY}>{t("shiftplan.emptyShift")}</SelectItem>
+                <SelectItem value="E1">E1 ({t("shiftplan.early1")})</SelectItem>
+                <SelectItem value="E2">E2 ({t("shiftplan.early2")})</SelectItem>
+                <SelectItem value="L1">L1 ({t("shiftplan.late1")})</SelectItem>
+                <SelectItem value="L2">L2 ({t("shiftplan.late2")})</SelectItem>
+                <SelectItem value="N">N ({t("shiftplan.shiftNight")})</SelectItem>
+                <SelectItem value="FS">FS ({t("shiftplan.offWeekend")})</SelectItem>
+                <SelectItem value="ABW">ABW ({t("shiftplan.absent")})</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditOpen(false)}>Abbrechen</Button>
-            <Button onClick={applyEdit}>Übernehmen</Button>
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={applyEdit}>{t("common.apply")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

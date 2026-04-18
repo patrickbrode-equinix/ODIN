@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, BarChart3 } from "lucide-react";
 import { Card } from "../ui/card";
 import { EmployeeStats } from "../../hooks/useShiftStats";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface Props {
     stats: EmployeeStats[];
@@ -10,6 +11,7 @@ interface Props {
 
 export function ShiftStatsPanel({ stats }: Props) {
     const [isOpen, setIsOpen] = useState(false);
+    const { t } = useLanguage();
 
     if (stats.length === 0) return null;
 
@@ -21,7 +23,7 @@ export function ShiftStatsPanel({ stats }: Props) {
             >
                 {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 <BarChart3 className="w-4 h-4" />
-                Statistik {isOpen ? "(Ausblenden)" : "(Anzeigen)"}
+                {isOpen ? t("stats.hide") : t("stats.show")}
             </button>
 
             {isOpen && (
@@ -30,10 +32,10 @@ export function ShiftStatsPanel({ stats }: Props) {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-border/50 text-left text-muted-foreground">
-                                    <th className="py-2 px-2 font-medium">Mitarbeiter</th>
-                                    <th className="py-2 px-2 font-medium text-right">Nachtschichten</th>
-                                    <th className="py-2 px-2 font-medium text-right">Wochenendschichten</th>
-                                    <th className="py-2 px-2 font-medium">Konflikte</th>
+                                    <th className="py-2 px-2 font-medium">{t("common.employee")}</th>
+                                    <th className="py-2 px-2 font-medium text-right">{t("stats.nightShifts")}</th>
+                                    <th className="py-2 px-2 font-medium text-right">{t("stats.weekendShifts")}</th>
+                                    <th className="py-2 px-2 font-medium">{t("stats.conflicts")}</th>
                                 </tr>
                             </thead>
                             <tbody>

@@ -17,7 +17,8 @@ import {
 } from "../ui/select";
 
 import type { AccessLevel } from "../../context/AuthContext";
-import { PAGE_DEFS } from "../../config/navigation";
+import { PAGE_DEFS, translatePageLabel } from "../../config/navigation";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ———————————————————————————————— */
 /* TYPES                                            */
@@ -57,14 +58,14 @@ function safeLevel(level: any): AccessLevel {
   return "none";
 }
 
-function levelLabel(level: AccessLevel) {
+function levelLabel(level: AccessLevel, t: (key: any) => string) {
   switch (level) {
     case "view":
-      return "Lesen";
+      return t("userAccess.read");
     case "write":
-      return "Schreiben";
+      return t("userAccess.write");
     default:
-      return "Kein Zugriff";
+      return t("userAccess.noAccess");
   }
 }
 
@@ -90,6 +91,25 @@ export function UserAccessEditor({
   userEmail,
   userGroup,
 }: UserAccessEditorProps) {
+  const { t } = useLanguage();
+  const copy = {
+    loadFailed: t("userAccess.loadFailed"),
+    saveFailed: t("userAccess.saveFailed"),
+    resetFailed: t("userAccess.resetFailed"),
+    title: t("userAccess.title"),
+    department: t("userAccess.department"),
+    role: t("userAccess.role"),
+    overrideHint: t("userAccess.overrideHint"),
+    loading: t("userAccess.loading"),
+    standard: t("userAccess.standard"),
+    departmentDefault: t("userAccess.departmentDefault"),
+    noAccess: t("userAccess.noAccess"),
+    read: t("userAccess.read"),
+    write: t("userAccess.write"),
+    clearOverrides: t("userAccess.clearOverrides"),
+    saving: t("common.saving"),
+    save: t("common.save"),
+  };
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -123,7 +143,7 @@ export function UserAccessEditor({
       setRole(overrideRes.data?.role === "admin" ? "admin" : "user");
     } catch (e: any) {
       setError(
-        e?.response?.data?.message || "Konnte User-Rechte nicht laden"
+        e?.response?.data?.message || copy.loadFailed
       );
     } finally {
       setLoading(false);
@@ -154,12 +174,12 @@ export function UserAccessEditor({
 
       return {
         key: p.key,
-        label: p.label,
+        label: translatePageLabel(p.key, t),
         base,
         selected,
       };
     });
-  }, [basePolicy, override]);
+  }, [basePolicy, override, t]);
 
   /* ------------------------------------------------ */
   /* CHANGE HANDLER                                  */
@@ -194,7 +214,7 @@ export function UserAccessEditor({
       await load();
     } catch (e: any) {
       setError(
-        e?.response?.data?.message || "Konnte Änderungen nicht speichern"
+        e?.response?.data?.message || copy.saveFailed
       );
     } finally {
       setSaving(false);
@@ -213,7 +233,7 @@ export function UserAccessEditor({
       await load();
     } catch (e: any) {
       setError(
-        e?.response?.data?.message || "Konnte Overrides nicht zurücksetzen"
+        e?.response?.data?.message || copy.resetFailed
       );
     } finally {
       setSaving(false);
@@ -227,18 +247,18 @@ export function UserAccessEditor({
   return (
     <Card className="border border-border/60 bg-card">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-base">User Rechte</CardTitle>
+        <CardTitle className="text-base">{copy.title}</CardTitle>
 
         <div className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">{userEmail}</span>
           <span className="mx-2">•</span>
-          Abteilung: <span className="font-medium">{normalizedGroup}</span>
+          {copy.department}: <span className="font-medium">{normalizedGroup}</span>
           <span className="mx-2">•</span>
-          Rolle: <span className="font-medium uppercase">{role}</span>
+          {copy.role}: <span className="font-medium uppercase">{role}</span>
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Kein Override gesetzt = Rollenstandard gilt. Overrides koennen Reiter explizit sperren oder freigeben.
+          {copy.overrideHint}
         </div>
       </CardHeader>
 
@@ -250,7 +270,7 @@ export function UserAccessEditor({
         )}
 
         {loading ? (
-          <div className="text-sm text-muted-foreground">Lade Rechte…</div>
+          <div className="text-sm text-muted-foreground">{copy.loading}</div>
         ) : (
           <div className="space-y-2">
             {rows.map((r) => (
@@ -261,7 +281,7 @@ export function UserAccessEditor({
                 <div>
                   <div className="font-medium">{r.label}</div>
                   <div className="text-xs text-muted-foreground">
-                    Standard: <strong>{levelLabel(r.base)}</strong> • {r.key}
+                    {copy.standard}: <strong>{levelLabel(r.base, t)}</strong> • {r.key}
                   </div>
                 </div>
 
@@ -277,11 +297,11 @@ export function UserAccessEditor({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__default__">
-                        Abteilungsstandard
+                        {copy.departmentDefault}
                       </SelectItem>
-                      <SelectItem value="none">Kein Zugriff</SelectItem>
-                      <SelectItem value="view">Lesen</SelectItem>
-                      <SelectItem value="write">Schreiben</SelectItem>
+                      <SelectItem value="none">{copy.noAccess}</SelectItem>
+                      <SelectItem value="view">{copy.read}</SelectItem>
+                      <SelectItem value="write">{copy.write}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -296,11 +316,11 @@ export function UserAccessEditor({
             onClick={resetOverrides}
             disabled={saving || loading}
           >
-            Alle Overrides löschen
+            {copy.clearOverrides}
           </Button>
 
           <Button onClick={save} disabled={saving || loading}>
-            {saving ? "Speichern…" : "Speichern"}
+            {saving ? copy.saving : copy.save}
           </Button>
         </div>
       </CardContent>

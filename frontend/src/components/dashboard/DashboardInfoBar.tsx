@@ -12,8 +12,11 @@ import {
     DashboardInfoEntry,
     updateInfoEntry
 } from "../../api/dashboard";
+import { useLanguage } from "../../context/LanguageContext";
 
 export function DashboardInfoBar() {
+    const { language, t } = useLanguage();
+    const locale = language === "de" ? "de-DE" : "en-US";
     const [info, setInfo] = useState<DashboardInfo | null>(null);
     const [entries, setEntries] = useState<DashboardInfoEntry[]>([]);
     const [newContent, setNewContent] = useState("");
@@ -72,7 +75,7 @@ export function DashboardInfoBar() {
     };
 
     const handleDelete = async (id: number) => {
-        if (!window.confirm("Eintrag wirklich löschen?")) return;
+        if (!window.confirm(t("dashboardInfo.deleteEntryConfirm"))) return;
         try {
             await deleteInfoEntry(id);
             setEntries(entries.filter(e => e.id !== id));
@@ -112,7 +115,7 @@ export function DashboardInfoBar() {
             {info && (
                 <div className="flex items-center justify-between flex-none">
                     <div className={`text-[0.85em] px-2 py-0.5 rounded ${info.is_visible ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                        {info.is_visible ? "ANZEIGE AKTIV" : "VERBORGEN"}
+                        {info.is_visible ? t("dashboardInfo.displayActive") : t("dashboardInfo.hidden")}
                     </div>
                     <Button
                         variant={info.is_visible ? "destructive" : "secondary"}
@@ -120,7 +123,7 @@ export function DashboardInfoBar() {
                         onClick={toggleVisibility}
                         className="h-7 text-[0.85em]"
                     >
-                        {info.is_visible ? "Ausblenden" : "Anzeigen"}
+                        {info.is_visible ? t("dashboardInfo.hideButton") : t("dashboardInfo.showButton")}
                     </Button>
                 </div>
             )}
@@ -128,7 +131,7 @@ export function DashboardInfoBar() {
             {/* Entry list (Scrollable GRID) */}
             <div className="flex-1 overflow-y-auto min-h-0 pr-1 custom-scrollbar">
                 {entries.length === 0 ? (
-                    <div className="text-[0.9em] text-muted-foreground italic">Keine Einträge vorhanden.</div>
+                    <div className="text-[0.9em] text-muted-foreground italic">{t("dashboardInfo.noEntries")}</div>
                 ) : (
                     <div className="grid grid-cols-1 gap-2 pb-2">
                         {entries.map((entry) => {
@@ -151,24 +154,24 @@ export function DashboardInfoBar() {
                                     <div className="flex items-center justify-between mb-2">
                                         <div className={`text-[0.75em] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${isInstruction ? "bg-amber-500/20 text-amber-300" : "bg-blue-500/20 text-blue-300"
                                             }`}>
-                                            {isInstruction ? "Anweisung" : "Information"}
+                                            {isInstruction ? t("dashboardInfo.typeInstruction") : t("dashboardInfo.typeInformation")}
                                         </div>
                                         <Info className={`w-3.5 h-3.5 ${isInstruction ? "text-amber-400" : "text-blue-400"}`} />
                                     </div>
 
                                     {/* Content */}
-                                    <div className="text-[1em] leading-relaxed whitespace-pre-wrap break-words flex-1 mb-2">
+                                    <div className="text-[1em] leading-relaxed whitespace-pre-wrap wrap-break-word flex-1 mb-2">
                                         {entry.content}
                                     </div>
 
                                     {/* Footer: Date + Auto-Delete Badge */}
                                     <div className="flex items-center justify-between mt-auto pt-2 border-t border-white/5">
                                         <div className="text-[0.75em] text-muted-foreground">
-                                            {new Date(entry.created_at).toLocaleDateString("de-DE")}
+                                            {new Date(entry.created_at).toLocaleDateString(locale)}
                                         </div>
                                         {entry.delete_at && (
                                             <div className="text-[0.7em] bg-red-500/20 text-red-300 px-1 py-0.5 rounded border border-red-500/10">
-                                                Löschung: {new Date(entry.delete_at).toLocaleDateString("de-DE")}
+                                                {t("dashboardInfo.deletionBadge")}: {new Date(entry.delete_at).toLocaleDateString(locale)}
                                             </div>
                                         )}
                                     </div>
@@ -197,8 +200,8 @@ export function DashboardInfoBar() {
                 <Textarea
                     value={newContent}
                     onChange={(e) => setNewContent(e.target.value)}
-                    placeholder="Neue Information hinzufügen..."
-                    className="min-h-[60px] bg-background flex-1 text-[0.9em] resize-none"
+                    placeholder={t("dashboardInfo.addPlaceholder")}
+                    className="min-h-15 bg-background flex-1 text-[0.9em] resize-none"
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleAdd();
                     }}
@@ -210,18 +213,18 @@ export function DashboardInfoBar() {
                     className="self-end h-8 text-[0.9em]"
                 >
                     <Save className="w-4 h-4 mr-1" />
-                    Speichern
+                    {t("common.save")}
                 </Button>
             </div>
 
             {/* CONTEXT MENU */}
             {contextMenu && (
                 <div
-                    className="fixed z-[9999] bg-[#0f172a] border border-white/20 rounded-lg shadow-2xl p-2 w-60 animate-in fade-in zoom-in-95 text-[0.85em]"
+                    className="fixed z-9999 bg-[#0f172a] border border-white/20 rounded-lg shadow-2xl p-2 w-60 animate-in fade-in zoom-in-95 text-[0.85em]"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="px-2 py-1 mb-1 text-muted-foreground font-semibold">Einstellungen</div>
+                    <div className="px-2 py-1 mb-1 text-muted-foreground font-semibold">{t("dashboardInfo.settingsMenu")}</div>
 
                     {/* INFO / INSTRUCTION SWITCH */}
                     <div className="space-y-1 mb-2">
@@ -229,19 +232,19 @@ export function DashboardInfoBar() {
                             className="px-2 py-1.5 hover:bg-white/10 rounded cursor-pointer flex items-center gap-2"
                             onClick={() => handleUpdate({ type: 'info' })}
                         >
-                            <div className="w-2 h-2 rounded-full bg-blue-400"></div> Als Information markieren
+                            <div className="w-2 h-2 rounded-full bg-blue-400"></div> {t("dashboardInfo.markAsInfo")}
                         </div>
                         <div
                             className="px-2 py-1.5 hover:bg-white/10 rounded cursor-pointer flex items-center gap-2"
                             onClick={() => handleUpdate({ type: 'instruction' })}
                         >
-                            <div className="w-2 h-2 rounded-full bg-amber-400"></div> Als Anweisung markieren
+                            <div className="w-2 h-2 rounded-full bg-amber-400"></div> {t("dashboardInfo.markAsInstruction")}
                         </div>
                     </div>
 
                     <div className="h-px bg-white/10 my-1"></div>
 
-                    <div className="px-2 py-1 mb-1 text-muted-foreground font-semibold">Automatische Löschung</div>
+                    <div className="px-2 py-1 mb-1 text-muted-foreground font-semibold">{t("dashboardInfo.autoDeletion")}</div>
                     <input
                         type="date"
                         className="w-full bg-black/20 border border-white/10 rounded px-2 py-1 text-[0.85em] text-white mb-1"
@@ -254,7 +257,7 @@ export function DashboardInfoBar() {
                         className="px-2 py-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer"
                         onClick={() => handleUpdate({ deleteAt: null })}
                     >
-                        Auto-Löschung entfernen
+                        {t("dashboardInfo.removeAutoDeletion")}
                     </div>
                 </div>
             )}

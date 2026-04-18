@@ -13,6 +13,10 @@ export const ACTION_TYPES = {
   SHIFT_REJECT: "shift.reject",
   SUPERVISOR_APPROVE: "supervisor.approve",
   SUPERVISOR_REJECT: "supervisor.reject",
+  VERIFICATION_YES: "verification.yes",
+  VERIFICATION_NO: "verification.no",
+  VERIFICATION_SICK: "verification.sick",
+  VERIFICATION_WRONG_SHIFT: "verification.wrong_shift",
 } as const;
 
 export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];
@@ -99,4 +103,29 @@ export interface SupervisorApprovalPayload {
   endAt?: string;
   supervisorEmployeeId: string;
   reason?: string;
+}
+
+// ── Shift Verification Payloads ──
+
+export interface VerificationNotifyPayload {
+  employeeName: string;
+  shiftCode: string;
+  date: string;
+  /** Optional: resolved employee ID for user mapping lookup */
+  employeeId?: string;
+  /** Optional: email fallback for Graph resolution */
+  email?: string;
+}
+
+export interface VerificationActionCallback {
+  action: "verification.yes" | "verification.sick" | "verification.wrong_shift";
+  employeeName: string;
+  date: string;
+  shiftCode: string;
+  /** Maps to: 'yes' | 'sick' | 'wrong_shift' */
+  response: string;
+  teamsUserId: string;
+  aadObjectId?: string;
+  displayName: string;
+  timestamp: string;
 }

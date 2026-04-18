@@ -4,7 +4,7 @@
 
 import type { AssignmentHealth, AssignmentRun } from '../../types/assignment';
 import { Activity, CheckCircle, AlertTriangle, XCircle, Clock, Eye, AlertCircle } from 'lucide-react';
-import { InfoTooltip } from '../ui/InfoTooltip';
+import { getLanguageLocale, useLanguage } from '../../context/LanguageContext';
 
 interface Props {
   health: AssignmentHealth | null;
@@ -25,13 +25,16 @@ const resultBadge: Record<string, { label: string; className: string }> = {
 };
 
 export function AssignmentStatusCards({ health, lastRun }: Props) {
+  const { language } = useLanguage();
+  const isGerman = language === 'de';
+  const locale = getLanguageLocale(language);
   const mode = health?.mode || 'shadow';
   const mb = modeBadge[mode] || modeBadge.shadow;
   const rb = lastRun ? (resultBadge[lastRun.status] || resultBadge.completed) : null;
 
   const cards = [
     {
-      label: 'Modus',
+      label: isGerman ? 'Modus' : 'Mode',
       icon: Eye,
       value: (
         <span className={`text-xs font-black px-2 py-0.5 rounded border ${mb.className}`}>
@@ -40,10 +43,10 @@ export function AssignmentStatusCards({ health, lastRun }: Props) {
       ),
     },
     {
-      label: 'Letzter Run',
+      label: isGerman ? 'Letzter Lauf' : 'Last run',
       icon: Clock,
       value: lastRun
-        ? new Date(lastRun.started_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+        ? new Date(lastRun.started_at).toLocaleString(locale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
         : '–',
     },
     {
@@ -56,19 +59,19 @@ export function AssignmentStatusCards({ health, lastRun }: Props) {
       ) : '–',
     },
     {
-      label: 'Assigned',
+      label: isGerman ? 'Zugewiesen' : 'Assigned',
       icon: CheckCircle,
       value: lastRun?.assigned ?? '–',
       valueClass: 'text-green-400',
     },
     {
-      label: 'Manual Review',
+      label: isGerman ? 'Manuelle Prüfung' : 'Manual review',
       icon: AlertTriangle,
       value: lastRun?.manual_review ?? '–',
       valueClass: 'text-amber-400',
     },
     {
-      label: 'Errors',
+      label: isGerman ? 'Fehler' : 'Errors',
       icon: XCircle,
       value: lastRun?.errors ?? '–',
       valueClass: 'text-red-400',
@@ -98,17 +101,17 @@ export function AssignmentStatusCards({ health, lastRun }: Props) {
         <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-red-400 mb-0.5">Letzter Run fehlgeschlagen</div>
+            <div className="text-xs font-semibold text-red-400 mb-0.5">{isGerman ? 'Letzter Lauf fehlgeschlagen' : 'Last run failed'}</div>
             <p className="text-sm text-red-300">{lastRun.failure_reason}</p>
             {lastRun.failure_step && (
-              <p className="text-xs text-muted-foreground mt-1">Fehlgeschlagener Schritt: <span className="font-mono">{lastRun.failure_step}</span></p>
+              <p className="text-xs text-muted-foreground mt-1">{isGerman ? 'Fehlgeschlagener Schritt:' : 'Failed step:'} <span className="font-mono">{lastRun.failure_step}</span></p>
             )}
           </div>
           {lastRun.error_category && (
             <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-red-500/20 text-red-300 border-red-500/30 uppercase tracking-wider">
-              {lastRun.error_category === 'technical_error' ? 'Technisch' :
-               lastRun.error_category === 'controlled_stop' ? 'Kontrolliert' :
-               lastRun.error_category === 'critical_error_stop' ? 'Kritisch' :
+              {lastRun.error_category === 'technical_error' ? (isGerman ? 'Technisch' : 'Technical') :
+               lastRun.error_category === 'controlled_stop' ? (isGerman ? 'Kontrolliert' : 'Controlled') :
+               lastRun.error_category === 'critical_error_stop' ? (isGerman ? 'Kritisch' : 'Critical') :
                lastRun.error_category}
             </span>
           )}

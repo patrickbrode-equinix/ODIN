@@ -34,8 +34,10 @@ import { applyRoleFilter } from '../assignment/rules/roleFilter.js';
 import { checkExclusionList } from '../assignment/rules/exclusionList.js';
 import { routeHandover } from '../assignment/rules/handoverRouter.js';
 import { checkQueuePurity } from '../assignment/rules/queuePurity.js';
+import { evaluateTicketCapacity } from '../assignment/rules/ticketCapacity.js';
 import { evaluateSystemGrouping } from '../assignment/rules/systemGrouping.js';
 import { PRIORITY_TIERS, CRAWLER_MAX_AGE_MS } from '../assignment/constants.js';
+import { refreshAssignmentRuntimeRules } from '../assignment/services/runtimeRules.js';
 import {
   isShiftCodeActiveNow,
   isWorkingShiftCode,
@@ -56,6 +58,9 @@ describe('mapType', () => {
     const r = mapType('troubleticket');
     assert.equal(r.value, 'TroubleTicket');
     assert.equal(r.warning, null);
+  });
+  it('maps "TroubleTickets" -> TroubleTicket', () => {
+    assert.equal(mapType('TroubleTickets').value, 'TroubleTicket');
   });
   it('maps "TT" -> TroubleTicket', () => {
     assert.equal(mapType('TT').value, 'TroubleTicket');
@@ -221,6 +226,18 @@ describe('normalizeTicket', () => {
     assert.equal(nt.site, 'FR2');
     assert.equal(nt.manualHold, false);
     assert.equal(nt.autoAssignable, true);
+  });
+
+  it('normalizes queue_type TroubleTickets from queue items', () => {
+    const nt = normalizeTicket({
+      id: 77,
+      queue_type: 'TroubleTickets',
+      status: 'open',
+      severity: 'high',
+    });
+
+    assert.equal(nt.type, 'TroubleTicket');
+    assert.equal(nt.priority, 'high');
   });
 
   it('captures warnings for unknown fields', () => {
@@ -417,6 +434,12 @@ describe('Weekly Plan Shift Windows', () => {
   it('keeps night shift active across midnight window', () => {
     const activeAt = new Date('2026-03-08T02:30:00');
     assert.equal(isShiftCodeActiveNow('N', activeAt), true);
+  });
+
+  it('maps weekplan aliases for CC and Deutsche Boerse roles', () => {
+    assert.equal(resolveEffectiveWorkerRole('cross connect', null), 'cross_connect');
+    assert.equal(resolveEffectiveWorkerRole('dbs', null), 'deutsche_boerse');
+    assert.equal(resolveEffectiveWorkerRole('project', null), 'project');
   });
 });
 
@@ -639,6 +662,54 @@ describe('buildTicketExplanation', () => {
     assert.equal(exp.structured.assignedWorkerName, 'Marco D.');
     assert.equal(exp.structured.displayTicketNumber, 'TT-12345');
     assert.equal(exp.structured.queueOrigin, 'TroubleTicket');
+  });
+
+  it('groups excluded candidates and exposes enriched ticket context', () => {
+    const decision = {
+      ticket_id: '314',
+      external_id: 'CC-314',
+      result: 'no_candidate',
+      short_reason: 'CC-Mix nicht erlaubt',
+      ticket_type: 'TroubleTicket',
+      ticket_status: 'open',
+      ticket_priority: 'high',
+      ticket_site: 'FR2',
+      run_mode: 'shadow',
+      normalization_warnings: [],
+      initial_candidates: [{ id: 7, name: 'Chris C.', role: 'cross_connect' }],
+      excluded_candidates: [
+        { id: 7, name: 'Chris C.', role: 'cross_connect', rule: 'queuePurity', reason: 'Worker has CrossConnect tickets — cannot mix with "TroubleTicket"' },
+        { id: 7, name: 'Chris C.', role: 'cross_connect', rule: 'ticketCapacity', reason: 'Rollen-/Klassenlimit cross_connect + TroubleTicket = 1 erreicht (aktuell 1)' },
+      ],
+      remaining_candidates: [],
+      rule_path: ['relevance', 'eligibility', 'queuePurity', 'ticketCapacity', 'worker-selection'],
+      normalized_ticket: {
+        id: '314',
+        queue: 'TroubleTicket',
+        externalId: 'CC-314',
+        systemName: 'SYS-CC-01',
+        activity: 'Customer Trouble',
+        remainingHours: 5.5,
+      },
+      raw_ticket: {
+        id: 314,
+        external_id: 'CC-314',
+        owner: 'Current Owner',
+        commit_date: '2026-03-09T10:00:00Z',
+        revised_commit_date: '2026-03-09T12:00:00Z',
+        'Sched. Start': '2026-03-09T08:30:00Z',
+      },
+    };
+
+    const exp = buildTicketExplanation(decision);
+    assert.equal(exp.structured.mode, 'shadow');
+    assert.equal(exp.structured.ticketContext.systemName, 'SYS-CC-01');
+    assert.equal(exp.structured.ticketContext.activity, 'Customer Trouble');
+    assert.equal(exp.structured.ticketContext.currentOwner, 'Current Owner');
+    assert.equal(exp.structured.ticketContext.remainingTimeLabel, '5 h 30 min');
+    assert.equal(exp.structured.excludedCandidateGroups.length, 1);
+    assert.equal(exp.structured.excludedCandidateGroups[0].reasons.length, 2);
+    assert.ok(exp.structured.decisionTrace.length >= 4);
   });
 });
 
@@ -919,6 +990,104 @@ describe('Queue Purity', () => {
 
   it('allows TT → Scheduled', () => {
     assert.equal(checkQueuePurity({}, { type: 'Scheduled' }, [{ type: 'TroubleTicket' }], false, NOW).pure, true);
+  });
+
+  it('allows configured CC mix only for matching system and priority', async () => {
+    try {
+      await refreshAssignmentRuntimeRules({
+        client: {
+          query: async () => ({
+            rows: [
+              {
+                rule_key: 'cross_connect_only',
+                enabled: true,
+                config_json: {
+                  allow: ['CrossConnect'],
+                  allow_mixed_types: ['TroubleTicket'],
+                  allow_same_system_only: true,
+                  same_priority_only: true,
+                },
+              },
+            ],
+          }),
+        },
+      });
+
+      const existing = [{ type: 'CrossConnect', systemName: 'SYS-A', priority: 'high' }];
+      const allowed = checkQueuePurity({}, { type: 'TroubleTicket', systemName: 'SYS-A', priority: 'high' }, existing, false, NOW);
+      const blocked = checkQueuePurity({}, { type: 'TroubleTicket', systemName: 'SYS-B', priority: 'high' }, existing, false, NOW);
+
+      assert.equal(allowed.pure, true);
+      assert.equal(blocked.pure, false);
+    } finally {
+      await refreshAssignmentRuntimeRules({ client: { query: async () => ({ rows: [] }) } });
+    }
+  });
+});
+
+describe('Ticket Capacity', () => {
+  it('blocks per-role and per-type caps with explicit reasons', () => {
+    const result = evaluateTicketCapacity(
+      { role: 'cross_connect' },
+      { type: 'TroubleTicket' },
+      [{ type: 'TroubleTicket' }],
+      {
+        maxTicketsPerWorker: 0,
+        maxTicketsPerType: { TroubleTicket: 1 },
+        maxTicketsPerRole: { cross_connect: 2 },
+        maxTicketsPerRoleAndType: { cross_connect: { TroubleTicket: 1 } },
+      },
+    );
+
+    assert.equal(result.eligible, false);
+    assert.ok(result.reason.includes('Ticketklassenlimit TroubleTicket = 1'));
+    assert.ok(result.reason.includes('Rollen-/Klassenlimit cross_connect + TroubleTicket = 1'));
+  });
+
+  it('surfaces ticketCapacity as an eligibility exclusion', async () => {
+    try {
+      await refreshAssignmentRuntimeRules({
+        client: {
+          query: async () => ({
+            rows: [
+              {
+                rule_key: 'max_tickets_per_worker',
+                enabled: true,
+                config_json: {
+                  max: 0,
+                  per_role_type: {
+                    cross_connect: { TroubleTicket: 1 },
+                  },
+                },
+              },
+            ],
+          }),
+        },
+      });
+
+      const worker = {
+        id: 9,
+        name: 'Chris C.',
+        role: 'cross_connect',
+        autoAssignable: true,
+        blocked: false,
+        onBreak: false,
+        absent: false,
+        shiftActive: true,
+        userMapped: true,
+        site: 'FR2',
+        responsibility: 'c-ops',
+      };
+      const ticket = { id: '22', type: 'TroubleTicket', site: 'FR2', responsibility: 'c-ops' };
+      const currentTickets = [{ type: 'TroubleTicket' }];
+
+      const result = applyEligibilityRules(worker, ticket, { siteStrictness: 'true', responsibilityStrictness: 'true' }, currentTickets, false);
+
+      assert.equal(result.eligible, false);
+      assert.ok(result.exclusions.some((entry) => entry.rule === 'ticketCapacity'));
+    } finally {
+      await refreshAssignmentRuntimeRules({ client: { query: async () => ({ rows: [] }) } });
+    }
   });
 });
 

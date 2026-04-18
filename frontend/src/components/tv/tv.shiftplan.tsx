@@ -73,6 +73,19 @@ const SHIFT_COLORS = {
 };
 
 /* ------------------------------------------------ */
+/* VERIFICATION BADGE                               */
+/* ------------------------------------------------ */
+const VERIFICATION_BADGES: Record<string, { label: string; className: string }> = {
+  verified:    { label: "Verifiziert",     className: "text-green-400 bg-green-500/15 border-green-500/30" },
+  pending:     { label: "Pending",         className: "text-yellow-400 bg-yellow-500/15 border-yellow-500/30" },
+  sick:        { label: "Krank",           className: "text-red-400 bg-red-500/15 border-red-500/30" },
+  absent:      { label: "Abwesend",        className: "text-red-400 bg-red-500/15 border-red-500/30" },
+  wrong_shift: { label: "Andere Schicht",  className: "text-orange-400 bg-orange-500/15 border-orange-500/30" },
+  no_response: { label: "Keine Antwort",   className: "text-gray-400 bg-gray-500/15 border-gray-500/30" },
+  failed:      { label: "Fehler",          className: "text-gray-400 bg-gray-500/15 border-gray-500/30" },
+};
+
+/* ------------------------------------------------ */
 /* EMPLOYEE CARD                                    */
 /* ------------------------------------------------ */
 function EmployeeCard({
@@ -84,6 +97,7 @@ function EmployeeCard({
   tickets,
   shiftKind,
   crawlerStale,
+  verificationStatus,
 }: {
   shift: string;
   name: string;
@@ -93,11 +107,13 @@ function EmployeeCard({
   tickets?: any[];
   shiftKind: "early" | "late" | "night";
   crawlerStale?: boolean;
+  verificationStatus?: string | null;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
   const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
   const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
   const shiftRemaining = getShiftRemainingLabel(shift);
+  const vBadge = verificationStatus ? VERIFICATION_BADGES[verificationStatus] : null;
 
   return (
     <div className={`flex flex-col rounded-md bg-card border ${colors.header} overflow-hidden`}>
@@ -107,6 +123,11 @@ function EmployeeCard({
           {shift}
         </span>
         <span className="flex-1 font-bold text-base break-words whitespace-normal leading-tight">{name}</span>
+        {vBadge && (
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${vBadge.className}`}>
+            {vBadge.label}
+          </span>
+        )}
         {shiftRemaining && (
           <span className="text-[11px] font-semibold text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded shrink-0">
             {shiftRemaining}
@@ -223,6 +244,7 @@ function ShiftBlock({
                 tickets={ticketsByOwner?.get(e.name)}
                 shiftKind={shiftKind}
                 crawlerStale={crawlerStale}
+                verificationStatus={(e as any).verificationStatus}
               />
             </div>
           ))}

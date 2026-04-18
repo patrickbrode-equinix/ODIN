@@ -4,7 +4,7 @@
 /*  Lib       : Recharts ^2.12.7 – no new deps                                 */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
     CartesianGrid, PieChart, Pie, Cell,
@@ -14,9 +14,9 @@ import {
     TrendingUp, TrendingDown, Minus, Activity, RefreshCw,
     Zap, CheckCircle2, AlertCircle, Target
 } from "lucide-react";
-import { Button } from "../ui/button";
 import { api } from "../../api/api";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, EnterpriseKpiCard, ENT_CARD_BASE } from "../layout/EnterpriseLayout";
+import { useLanguage, getLanguageLocale } from "../../context/LanguageContext";
 
 
 
@@ -84,7 +84,7 @@ function delay(i: number, base = 60) { return { animationDelay: `${i * base}ms` 
 /*  HELPERS                                                                     */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-function getWeekBounds(offset: number): { from: string; to: string; label: string } {
+function getWeekBounds(offset: number, locale: string): { from: string; to: string; label: string } {
     const now = new Date();
     const dow = now.getDay() === 0 ? 6 : now.getDay() - 1;
     const monday = new Date(now);
@@ -93,8 +93,7 @@ function getWeekBounds(offset: number): { from: string; to: string; label: strin
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
-    const fmt = (d: Date) =>
-        `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const fmt = (d: Date) => d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
     return {
         from: monday.toISOString().split("T")[0],
         to: sunday.toISOString().split("T")[0],
@@ -102,9 +101,9 @@ function getWeekBounds(offset: number): { from: string; to: string; label: strin
     };
 }
 
-function fmtDay(v: string) {
+function fmtDay(v: string, locale: string) {
     const d = new Date(v);
-    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -112,6 +111,7 @@ function fmtDay(v: string) {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 function SemiGauge({ ok, expired }: { ok: number; expired: number }) {
+    const { t } = useLanguage();
     const total = ok + expired;
     const score = total === 0 ? 0 : Math.round((ok / total) * 100);
     const animated = useCountUp(score);
@@ -137,13 +137,13 @@ function SemiGauge({ ok, expired }: { ok: number; expired: number }) {
                 fontSize: "11px", fontWeight: 600, letterSpacing: "0.1em",
                 color: "#374151", textTransform: "uppercase", marginBottom: "12px"
             }}>
-                Commit Health
+                {t("stats.commitHealth")}
             </span>
             {total === 0 ? (
                 <div style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: "13px", color: "#4b5563"
-                }}>Keine Daten</div>
+                }}>{t("common.noData")}</div>
             ) : (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                     <svg viewBox="0 0 160 82" style={{ width: "100%", maxWidth: "180px", overflow: "visible" }}>
@@ -186,7 +186,7 @@ function SemiGauge({ ok, expired }: { ok: number; expired: number }) {
                         </text>
                         <text x={cx} y={cy + 4} textAnchor="middle"
                             fill="#4b5563" fontSize="10" letterSpacing="2" fontFamily="system-ui">
-                            ON-TIME
+                            {t("stats.onTime")}
                         </text>
                     </svg>
                     <div style={{ display: "flex", gap: "20px", marginTop: "8px" }}>
@@ -194,7 +194,7 @@ function SemiGauge({ ok, expired }: { ok: number; expired: number }) {
                             ✓ OK <span style={{ color: "#10b981", fontWeight: 700 }}>{ok}</span>
                         </span>
                         <span style={{ fontSize: "12px", color: "#4b5563" }}>
-                            ✗ Expired <span style={{ color: "#f43f5e", fontWeight: 700 }}>{expired}</span>
+                            ✗ {t("stats.expired")} <span style={{ color: "#f43f5e", fontWeight: 700 }}>{expired}</span>
                         </span>
                     </div>
                 </div>
@@ -216,6 +216,7 @@ function DonutChart({
     centerLabel?: string;
     height?: number;
 }) {
+    const { t } = useLanguage();
     const total = data.reduce((a, b) => a + b.value, 0);
     const [active, setActive] = useState<number | null>(null);
 
@@ -231,7 +232,7 @@ function DonutChart({
                 <div style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: "13px", color: "#4b5563"
-                }}>Keine Daten</div>
+                }}>{t("common.noData")}</div>
             ) : (
                 <>
                     <div style={{ position: "relative", height }}>
@@ -286,7 +287,7 @@ function DonutChart({
                                 fontSize: "10px", color: "#4b5563", letterSpacing: "0.12em",
                                 textTransform: "uppercase", marginTop: "2px"
                             }}>
-                                {active !== null ? data[active].name : centerLabel ?? "Gesamt"}
+                                {active !== null ? data[active].name : centerLabel ?? t("common.total")}
                             </span>
                         </div>
                     </div>
@@ -331,6 +332,8 @@ function DualAreaChart({
     labelA: string; labelB: string; colorA: string; colorB: string; height?: number;
 }) {
     const id = useId();
+    const { language, t } = useLanguage();
+    const locale = getLanguageLocale(language);
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
@@ -357,7 +360,7 @@ function DualAreaChart({
                 <div style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: "13px", color: "#4b5563"
-                }}>Keine Daten</div>
+                }}>{t("common.noData")}</div>
             ) : (
                 <div style={{ height }}>
                     <ResponsiveContainer width="100%" height="100%">
@@ -371,10 +374,10 @@ function DualAreaChart({
                                 ))}
                             </defs>
                             <CartesianGrid {...GRID} />
-                            <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={fmtDay}
+                            <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={(value) => fmtDay(value, locale)}
                                 axisLine={false} tickLine={false} />
                             <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={fmtDay}
+                            <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(value) => fmtDay(value, locale)}
                                 cursor={{ stroke: "rgba(99,102,241,0.25)", strokeWidth: 1 }} />
                             <Area type="monotone" dataKey={keyA} name={labelA}
                                 stroke={colorA} strokeWidth={2} fill={`url(#${id}-a)`}
@@ -400,6 +403,8 @@ function SingleAreaChart({
     title, data, color, label, height = 140,
 }: { title: string; data: { day: string; count: number }[]; color: string; label: string; height?: number }) {
     const id = useId();
+    const { language, t } = useLanguage();
+    const locale = getLanguageLocale(language);
     const max = Math.max(...data.map(d => d.count), 0);
     const isEmpty = data.length === 0 || max === 0;
 
@@ -416,7 +421,7 @@ function SingleAreaChart({
                         background: `${color}15`, borderRadius: "5px", padding: "2px 7px",
                         border: `1px solid ${color}30`
                     }}>
-                        Peak {max}
+                        {t("common.peak")} {max}
                     </span>
                 )}
             </div>
@@ -424,7 +429,7 @@ function SingleAreaChart({
                 <div style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: "13px", color: "#4b5563"
-                }}>Keine Daten</div>
+                }}>{t("common.noData")}</div>
             ) : (
                 <div style={{ height }}>
                     <ResponsiveContainer width="100%" height="100%">
@@ -436,10 +441,10 @@ function SingleAreaChart({
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...GRID} />
-                            <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={fmtDay}
+                            <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={(value) => fmtDay(value, locale)}
                                 axisLine={false} tickLine={false} />
                             <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={fmtDay}
+                            <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(value) => fmtDay(value, locale)}
                                 formatter={(v: number) => [v, label]}
                                 cursor={{ stroke: "rgba(99,102,241,0.2)", strokeWidth: 1 }} />
                             <Area type="monotone" dataKey="count" name={label}
@@ -459,19 +464,23 @@ function SingleAreaChart({
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export default function DashboardStatistik() {
+    const { language, t } = useLanguage();
+    const locale = getLanguageLocale(language);
     const [weekOffset, setWeekOffset] = useState(0);
-    const [weekBounds, setWeekBounds] = useState(() => getWeekBounds(0));
+    const [weekBounds, setWeekBounds] = useState(() => getWeekBounds(0, locale));
     const [pieData, setPieData] = useState<any>(null);
     const [dispatchData, setDispatchData] = useState<{ day: string; count: number }[]>([]);
     const [closedData, setClosedData] = useState<{ day: string; count: number }[]>([]);
     const [expiredData, setExpiredData] = useState<{ day: string; count: number }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [lastRefresh, setLastRefresh] = useState(new Date());
 
-    useEffect(() => { setWeekBounds(getWeekBounds(weekOffset)); }, [weekOffset]);
+    useEffect(() => { setWeekBounds(getWeekBounds(weekOffset, locale)); }, [weekOffset, locale]);
 
-    useEffect(() => {
+    const fetchData = useCallback(() => {
         setLoading(true);
+        setFetchError(null);
         const { from, to } = weekBounds;
         Promise.allSettled([
             api.get("/stats/weekly-pie"),
@@ -479,14 +488,25 @@ export default function DashboardStatistik() {
             api.get(`/stats/closed?from=${from}&to=${to}`),
             api.get(`/stats/expired?from=${from}&to=${to}`),
         ]).then(([pieRes, dispRes, clRes, expRes]) => {
+            const failures: string[] = [];
             if (pieRes.status === "fulfilled") setPieData(pieRes.value.data);
+            else failures.push(`weekly-pie: ${(pieRes.reason as any)?.response?.status ?? pieRes.reason?.message ?? "unknown"}`);
             if (dispRes.status === "fulfilled") setDispatchData(Array.isArray(dispRes.value.data) ? dispRes.value.data : []);
+            else failures.push(`dispatch: ${(dispRes.reason as any)?.response?.status ?? dispRes.reason?.message ?? "unknown"}`);
             if (clRes.status === "fulfilled") setClosedData(Array.isArray(clRes.value.data) ? clRes.value.data : []);
+            else failures.push(`closed: ${(clRes.reason as any)?.response?.status ?? clRes.reason?.message ?? "unknown"}`);
             if (expRes.status === "fulfilled") setExpiredData(Array.isArray(expRes.value.data) ? expRes.value.data : []);
+            else failures.push(`expired: ${(expRes.reason as any)?.response?.status ?? expRes.reason?.message ?? "unknown"}`);
+            if (failures.length > 0) {
+                console.warn("[DashboardStatistik] API failures:", failures);
+                if (failures.length === 4) setFetchError(failures[0]);
+            }
             setLoading(false);
             setLastRefresh(new Date());
         });
     }, [weekBounds]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     /* ── derived ── */
     const activeTotal = pieData?.debug?.activeTicketsFound || 0;
@@ -497,11 +517,11 @@ export default function DashboardStatistik() {
     const onTimeRate = closedTotal > 0 ? Math.round(((closedTotal - overdueTotal) / closedTotal) * 100) : 0;
 
     const typesData = pieData ? [
-        { name: "Smart Hand", value: pieData.types?.sh || 0, color: COLORS.sh },
-        { name: "Trouble Ticket", value: pieData.types?.tt || 0, color: COLORS.tt },
-        { name: "Cross Connect", value: pieData.types?.cc || 0, color: COLORS.cc },
+        { name: t("stats.smartHand"), value: pieData.types?.sh || 0, color: COLORS.sh },
+        { name: t("stats.troubleTicket"), value: pieData.types?.tt || 0, color: COLORS.tt },
+        { name: t("stats.crossConnect"), value: pieData.types?.cc || 0, color: COLORS.cc },
         {
-            name: "Other",
+            name: t("stats.other"),
             value: Math.max(0, activeTotal - (pieData.types?.sh || 0) - (pieData.types?.tt || 0) - (pieData.types?.cc || 0)),
             color: COLORS.other,
         },
@@ -532,20 +552,41 @@ export default function DashboardStatistik() {
     const ceData = Object.values(ceMap).sort((a, b) => a.day.localeCompare(b.day));
 
     const kpis = [
-        { label: "Aktive Tickets", value: activeTotal, color: "#6366f1", accent: "#6366f1", icon: Activity, trend: undefined },
-        { label: "Smart Hand", value: pieData?.types?.sh ?? 0, color: COLORS.sh, accent: COLORS.sh, icon: Zap, trend: undefined },
-        { label: "Trouble Ticket", value: pieData?.types?.tt ?? 0, color: COLORS.tt, accent: COLORS.tt, icon: AlertCircle, trend: undefined },
-        { label: "Cross Connect", value: pieData?.types?.cc ?? 0, color: COLORS.cc, accent: COLORS.cc, icon: Target, trend: undefined },
-        { label: "Closed (Woche)", value: closedTotal, color: COLORS.closed, accent: COLORS.closed, icon: CheckCircle2, trend: "up" as const },
-        { label: "Overdue", value: overdueTotal, color: overdueTotal > 0 ? COLORS.tt : "#4b5563", accent: overdueTotal > 0 ? COLORS.tt : "#4b5563", icon: RefreshCw, sub: closedTotal > 0 ? `${onTimeRate}% on-time` : undefined, trend: (overdueTotal === 0 ? "neutral" : "down") as "neutral" | "down" },
+        { label: t("stats.activeTickets"), value: activeTotal, color: "#6366f1", accent: "#6366f1", icon: Activity, trend: undefined },
+        { label: t("stats.smartHand"), value: pieData?.types?.sh ?? 0, color: COLORS.sh, accent: COLORS.sh, icon: Zap, trend: undefined },
+        { label: t("stats.troubleTicket"), value: pieData?.types?.tt ?? 0, color: COLORS.tt, accent: COLORS.tt, icon: AlertCircle, trend: undefined },
+        { label: t("stats.crossConnect"), value: pieData?.types?.cc ?? 0, color: COLORS.cc, accent: COLORS.cc, icon: Target, trend: undefined },
+        { label: t("stats.closedWeek"), value: closedTotal, color: COLORS.closed, accent: COLORS.closed, icon: CheckCircle2, trend: "up" as const },
+        { label: t("stats.overdue"), value: overdueTotal, color: overdueTotal > 0 ? COLORS.tt : "#4b5563", accent: overdueTotal > 0 ? COLORS.tt : "#4b5563", icon: RefreshCw, sub: closedTotal > 0 ? `${onTimeRate}% ${t("stats.onTimeRate")}` : undefined, trend: (overdueTotal === 0 ? "neutral" : "down") as "neutral" | "down" },
     ];
 
     return (
         <EnterprisePageShell>
+            {/* ── ERROR BANNER ── */}
+            {fetchError && !loading && (
+                <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "12px",
+                    padding: "12px 20px", borderRadius: "12px",
+                    background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)",
+                    color: "#f87171", fontSize: "13px", fontWeight: 500,
+                }}>
+                    <AlertCircle style={{ width: 16, height: 16, flexShrink: 0 }} />
+                    <span>{t("stats.fetchError")}</span>
+                    <button
+                        onClick={fetchData}
+                        style={{
+                            fontSize: "12px", fontWeight: 600, color: "#818cf8",
+                            background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+                            borderRadius: "6px", padding: "4px 10px", cursor: "pointer",
+                        }}
+                    >{t("stats.retryNow")}</button>
+                </div>
+            )}
+
             {/* ── HEADER ── */}
             <EnterpriseHeader
                 icon={<ChartIcon style={{ width: 18, height: 18, color: "#818cf8" }} />}
-                title={<>Team Statistiken</>}
+                title={<>{t("stats.title")}</>}
                 subtitle={
                     <>
                         <div style={{
@@ -554,7 +595,7 @@ export default function DashboardStatistik() {
                             animation: "dotPulse 1.8s ease-in-out infinite",
                         }} />
                         <span style={{ fontSize: "11px", color: "#4b5563" }}>
-                            {loading ? "Aktualisierung…" : `Zuletzt: ${lastRefresh.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
+                            {loading ? t("stats.refreshing") : `${t("stats.lastLabel")}: ${lastRefresh.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
                         </span>
                     </>
                 }
@@ -600,7 +641,7 @@ export default function DashboardStatistik() {
                                     borderRadius: "8px", padding: "5px 10px", cursor: "pointer",
                                 }}
                             >
-                                Heute
+                                {t("stats.today")}
                             </button>
                         )}
                     </>
@@ -618,15 +659,15 @@ export default function DashboardStatistik() {
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "14px" }}>
                 <EnterpriseCard delayMs={120}>
                     <DualAreaChart
-                        title="Dispatch vs. Closed"
+                        title={t("stats.dispatchVsClosed")}
                         data={mergedData} keyA="dispatch" keyB="closed"
-                        labelA="Dispatched" labelB="Closed"
+                        labelA={t("stats.dispatched")} labelB={t("stats.closed")}
                         colorA={COLORS.dispatch} colorB={COLORS.closed}
                         height={230}
                     />
                 </EnterpriseCard>
                 <EnterpriseCard delayMs={180}>
-                    <DonutChart title="Ticket-Typen" data={typesData} centerLabel="Aktiv" height={190} />
+                    <DonutChart title={t("stats.ticketTypes")} data={typesData} centerLabel={t("common.active")} height={190} />
                 </EnterpriseCard>
                 <EnterpriseCard delayMs={240}>
                     <SemiGauge ok={healthOk} expired={healthExpired} />
@@ -637,24 +678,24 @@ export default function DashboardStatistik() {
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "14px" }}>
                 <EnterpriseCard delayMs={200}>
                     <DualAreaChart
-                        title="Closed vs. Expired"
+                        title={t("stats.closedVsExpired")}
                         data={ceData} keyA="closed" keyB="expired"
-                        labelA="Closed" labelB="Expired"
+                        labelA={t("stats.closed")} labelB={t("stats.expired")}
                         colorA={COLORS.closed} colorB={COLORS.expired}
                         height={190}
                     />
                 </EnterpriseCard>
                 <EnterpriseCard delayMs={260}>
-                    <DonutChart title="Status-Verteilung" data={statusData} centerLabel="Status" height={170} />
+                    <DonutChart title={t("stats.statusDistribution")} data={statusData} centerLabel="Status" height={170} />
                 </EnterpriseCard>
             </div>
 
             {/* ── ROW 3: 3 mini area charts ── */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "14px" }}>
                 {[
-                    { title: "Dispatch / Tag", data: dispatchData, color: COLORS.dispatch, label: "Dispatched" },
-                    { title: "Closed / Tag", data: closedData, color: COLORS.closed, label: "Closed" },
-                    { title: "Expired / Tag", data: expiredData, color: COLORS.expired, label: "Expired" },
+                    { title: t("stats.dispatchPerDay"), data: dispatchData, color: COLORS.dispatch, label: t("stats.dispatched") },
+                    { title: t("stats.closedPerDay"), data: closedData, color: COLORS.closed, label: t("stats.closed") },
+                    { title: t("stats.expiredPerDay"), data: expiredData, color: COLORS.expired, label: t("stats.expired") },
                 ].map(({ title, data, color, label }, i) => (
                     <EnterpriseCard key={title} delayMs={300 + i * 70}>
                         <SingleAreaChart title={title} data={data} color={color} label={label} height={140} />

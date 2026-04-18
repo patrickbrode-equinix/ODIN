@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { fetchShiftHistory, ShiftChangeLog } from "../../api/history";
 import { Badge } from "../ui/badge";
+import { useLanguage, getLanguageLocale } from "../../context/LanguageContext";
 
 interface Props {
     open: boolean;
@@ -17,6 +18,7 @@ interface Props {
 export function HistoryDialog({ open, onOpenChange, year, month, employeeName }: Props) {
     const [logs, setLogs] = useState<ShiftChangeLog[]>([]);
     const [loading, setLoading] = useState(false);
+    const { t, language } = useLanguage();
 
     useEffect(() => {
         if (open) {
@@ -32,29 +34,29 @@ export function HistoryDialog({ open, onOpenChange, year, month, employeeName }:
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
                 <DialogHeader>
-                    <DialogTitle>Änderungshistorie {employeeName ? `- ${employeeName}` : ""}</DialogTitle>
+                    <DialogTitle>{t("history.title")} {employeeName ? `- ${employeeName}` : ""}</DialogTitle>
                 </DialogHeader>
 
                 <div className="flex-1 overflow-auto border rounded-md">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Datum</TableHead>
-                                {!employeeName && <TableHead>Mitarbeiter</TableHead>}
-                                <TableHead>Alt</TableHead>
-                                <TableHead>Neu</TableHead>
-                                <TableHead>Geändert von</TableHead>
-                                <TableHead>Zeitpunkt</TableHead>
+                                <TableHead>{t("history.date")}</TableHead>
+                                {!employeeName && <TableHead>{t("common.employee")}</TableHead>}
+                                <TableHead>{t("history.old")}</TableHead>
+                                <TableHead>{t("history.new")}</TableHead>
+                                <TableHead>{t("history.changedBy")}</TableHead>
+                                <TableHead>{t("history.timestamp")}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Lade...</TableCell>
+                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{t("history.loading")}</TableCell>
                                 </TableRow>
                             ) : logs.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Keine Änderungen gefunden.</TableCell>
+                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{t("history.noChanges")}</TableCell>
                                 </TableRow>
                             ) : (
                                 logs.map((log) => (
@@ -69,7 +71,7 @@ export function HistoryDialog({ open, onOpenChange, year, month, employeeName }:
                                         <TableCell>
                                             {log.new_value ? (
                                                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">{log.new_value}</Badge>
-                                            ) : <Badge variant="outline" className="text-muted-foreground">Gelöscht</Badge>}
+                                            ) : <Badge variant="outline" className="text-muted-foreground">{t("history.deleted")}</Badge>}
                                         </TableCell>
                                         <TableCell className="text-xs text-muted-foreground">{log.changed_by}</TableCell>
                                         <TableCell className="text-xs text-muted-foreground">

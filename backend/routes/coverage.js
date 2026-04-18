@@ -10,6 +10,24 @@ import { requirePageAccess } from "../middleware/requirePageAccess.js";
 
 const router = express.Router();
 
+function normalizeRatedSkills(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+    return Object.fromEntries(
+        Object.entries(value)
+            .map(([skill, rating]) => {
+                const normalizedSkill = String(skill || "").trim();
+                const normalizedRating = Number.parseInt(String(rating ?? ""), 10);
+
+                if (!normalizedSkill) return null;
+                if (!Number.isInteger(normalizedRating) || normalizedRating < 1 || normalizedRating > 5) return null;
+
+                return [normalizedSkill, normalizedRating];
+            })
+            .filter(Boolean)
+    );
+}
+
 /* ------------------------------------------------ */
 /* SKILLS                                           */
 /* ------------------------------------------------ */
@@ -27,22 +45,31 @@ router.get("/skills", requireAuth, async (req, res) => {
 
 // POST /api/coverage/skills
 // Updates a single employee's skills
-router.post("/skills", requireAuth, requirePageAccess("settings", "write"), async (req, res) => {
-    const { employee_name, can_sh, can_tt, can_cc } = req.body;
+router.post("/skills", requireAuth, requirePageAccess("shiftplan_control", "write"), async (req, res) => {
+    const { employee_name, can_sh, can_tt, can_cc, rated_skills } = req.body;
     if (!employee_name) return res.status(400).json({ error: "Missing employee_name" });
+
+    const normalizedRatedSkills = normalizeRatedSkills(rated_skills);
 
     try {
         await db.query(
             `
-            INSERT INTO employee_skills (employee_name, can_sh, can_tt, can_cc)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO employee_skills (employee_name, can_sh, can_tt, can_cc, rated_skills)
+            VALUES ($1, COALESCE($2, false), COALESCE($3, false), COALESCE($4, false), COALESCE($5::jsonb, '{}'::jsonb))
             ON CONFLICT (employee_name) DO UPDATE
-            SET can_sh = EXCLUDED.can_sh,
-                can_tt = EXCLUDED.can_tt,
-                can_cc = EXCLUDED.can_cc,
+            SET can_sh = COALESCE($2, employee_skills.can_sh),
+                can_tt = COALESCE($3, employee_skills.can_tt),
+                can_cc = COALESCE($4, employee_skills.can_cc),
+                rated_skills = COALESCE($5::jsonb, employee_skills.rated_skills),
                 updated_at = NOW()
             `,
-            [employee_name, !!can_sh, !!can_tt, !!can_cc]
+            [
+                employee_name,
+                typeof can_sh === "boolean" ? can_sh : null,
+                typeof can_tt === "boolean" ? can_tt : null,
+                typeof can_cc === "boolean" ? can_cc : null,
+                rated_skills === undefined ? null : JSON.stringify(normalizedRatedSkills),
+            ]
         );
         res.json({ success: true });
     } catch (err) {

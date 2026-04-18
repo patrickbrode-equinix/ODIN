@@ -18,6 +18,8 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { InfoTooltip } from "../ui/InfoTooltip";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface EmployeeExclusion {
   id: number;
@@ -42,15 +44,15 @@ const REASON_OPTIONS = [
   { value: 'temporary', label: 'Temporär ausgeschlossen' },
 ] as const;
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, locale: string): string {
   if (!iso) return '–';
   const d = new Date(iso);
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, locale: string): string {
   const d = new Date(iso);
-  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /* ------------------------------------------------ */
@@ -83,7 +85,7 @@ function DroppablePanel({ id, children, isOver }: { id: string; children: React.
   return (
     <div
       ref={setNodeRef}
-      className={`flex-1 min-h-[200px] max-h-[320px] overflow-y-auto rounded-lg border-2 border-dashed p-2 space-y-1 transition-colors
+      className={`flex-1 min-h-50 max-h-80 overflow-y-auto rounded-lg border-2 border-dashed p-2 space-y-1 transition-colors
         ${active ? 'border-blue-500/60 bg-blue-500/5' : 'border-border/30 bg-background/40'}`}
     >
       {children}
@@ -92,6 +94,66 @@ function DroppablePanel({ id, children, isOver }: { id: string; children: React.
 }
 
 export default function EmployeeExclusions() {
+  const { language, t } = useLanguage();
+  const isGerman = language === 'de';
+  const locale = isGerman ? 'de-DE' : 'en-US';
+  const reasonOptions = REASON_OPTIONS.map((option) => ({
+    ...option,
+    label:
+      option.value === 'project'
+        ? t("exclusions.reasonProject")
+        : option.value === 'admin_override'
+          ? t("exclusions.reasonAdminOverride")
+          : option.value === 'no_operative'
+            ? t("exclusions.reasonNoOperative")
+            : option.value === 'temporary'
+              ? t("exclusions.reasonTemporary")
+              : option.label,
+  }));
+  const copy = {
+    title: t("exclusions.title"),
+    subtitle: t("exclusions.subtitle"),
+    refresh: t("common.refresh"),
+    quickExclude: t("exclusions.quickExclude"),
+    quickExcludeInfo: t("exclusions.quickExcludeInfo"),
+    filterEmployees: t("exclusions.filterEmployees"),
+    available: t("exclusions.available"),
+    noMatches: t("exclusions.noMatches"),
+    allExcluded: t("exclusions.allExcluded"),
+    excludeName: (name: string) => isGerman ? `${name} ausschließen` : `Exclude ${name}`,
+    excluded: t("exclusions.excluded"),
+    noExclusions: t("exclusions.noExclusions"),
+    includeName: (name: string) => isGerman ? `${name} wieder einschließen` : `Include ${name} again`,
+    quickFooter: t("exclusions.quickFooter"),
+    addTitle: t("exclusions.addTitle"),
+    addInfo: t("exclusions.addInfo"),
+    searchEmployee: t("exclusions.searchEmployee"),
+    noEmployeeFound: t("exclusions.noEmployeeFound"),
+    reason: t("exclusions.reason"),
+    additionalReason: t("exclusions.additionalReason"),
+    additionalReasonPlaceholder: t("exclusions.additionalReasonPlaceholder"),
+    saving: t("common.saving"),
+    add: t("exclusions.add"),
+    limitPeriod: t("exclusions.limitPeriod"),
+    until: t("exclusions.until"),
+    activeExclusions: t("exclusions.activeExclusions"),
+    noActiveExclusions: t("exclusions.noActiveExclusions"),
+    employee: t("common.employee"),
+    justification: t("exclusions.justification"),
+    validFrom: t("exclusions.validFrom"),
+    validTo: t("exclusions.validTo"),
+    createdBy: t("exclusions.createdBy"),
+    createdAt: t("exclusions.createdAt"),
+    actions: t("exclusions.actions"),
+    deactivate: t("exclusions.deactivate"),
+    delete: t("exclusions.deletePermanently"),
+    showInactive: t("exclusions.showInactive"),
+    inactiveExclusions: t("exclusions.inactiveExclusions"),
+    deactivatedBy: t("exclusions.deactivatedBy"),
+    deactivatedAt: t("exclusions.deactivatedAt"),
+    confirmDeactivate: (name: string) => isGerman ? `Ausschluss für "${name}" deaktivieren?` : `Deactivate exclusion for "${name}"?`,
+    confirmDelete: (name: string) => isGerman ? `Ausschluss für "${name}" endgültig löschen?` : `Delete exclusion for "${name}" permanently?`,
+  };
   const [exclusions, setExclusions] = useState<EmployeeExclusion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -246,7 +308,7 @@ export default function EmployeeExclusions() {
   };
 
   const handleDeactivate = async (id: number, name: string) => {
-    if (!confirm(`Ausschluss für "${name}" deaktivieren?`)) return;
+    if (!confirm(copy.confirmDeactivate(name))) return;
     try {
       await api.patch(`/assignment/employee-exclusions/${id}/deactivate`);
       load();
@@ -256,7 +318,7 @@ export default function EmployeeExclusions() {
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Ausschluss für "${name}" endgültig löschen?`)) return;
+    if (!confirm(copy.confirmDelete(name))) return;
     try {
       await api.delete(`/assignment/employee-exclusions/${id}`);
       load();
@@ -275,9 +337,14 @@ export default function EmployeeExclusions() {
         <div className="flex items-center gap-3">
           <UserX className="w-5 h-5 text-rose-400" />
           <div>
-            <h3 className="text-sm font-bold text-foreground">Dauerhafte Assignment-Ausschlüsse</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-foreground">{copy.title}</h3>
+              <InfoTooltip title={copy.title} side="right" align="start" width="w-96">
+                <p>{t("exclusions.introText")}</p>
+              </InfoTooltip>
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Mitarbeiter dauerhaft oder zeitlich begrenzt von automatischer Ticketzuweisung ausschließen
+              {copy.subtitle}
             </p>
           </div>
         </div>
@@ -286,7 +353,7 @@ export default function EmployeeExclusions() {
           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border/40 bg-background/60 hover:bg-background/80 text-muted-foreground transition"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Aktualisieren
+          {copy.refresh}
         </button>
       </div>
 
@@ -303,7 +370,10 @@ export default function EmployeeExclusions() {
           <div className="rounded-xl border border-border/30 bg-background/30 p-4 space-y-3">
             <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
               <GripVertical className="w-3.5 h-3.5" />
-              Schnell-Ausschluss — Mitarbeiter per Drag & Drop oder Klick verschieben
+              {copy.quickExclude}
+              <InfoTooltip title={copy.quickExclude} side="right" align="start" width="w-96">
+                <p>{copy.quickExcludeInfo}</p>
+              </InfoTooltip>
             </div>
 
             {/* Search filter for DnD available list */}
@@ -311,7 +381,7 @@ export default function EmployeeExclusions() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <input
                 type="text"
-                placeholder="Mitarbeiter filtern…"
+                placeholder={copy.filterEmployees}
                 value={dndSearch}
                 onChange={(e) => setDndSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-md border border-border/40 bg-background/80 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500/50"
@@ -322,12 +392,12 @@ export default function EmployeeExclusions() {
               {/* LEFT: Available */}
               <div className="flex-1 min-w-0">
                 <div className="text-[10px] uppercase tracking-wider font-bold text-green-400 mb-1.5">
-                  Verfügbar ({dndAvailable.length})
+                  {copy.available} ({dndAvailable.length})
                 </div>
                 <DroppablePanel id="available_panel">
                   {dndAvailable.length === 0 && (
                     <div className="text-xs text-muted-foreground text-center py-6">
-                      {dndSearch ? 'Keine Treffer' : 'Alle Mitarbeiter sind ausgeschlossen'}
+                      {dndSearch ? copy.noMatches : copy.allExcluded}
                     </div>
                   )}
                   {dndAvailable.map(name => (
@@ -338,7 +408,7 @@ export default function EmployeeExclusions() {
                       <button
                         onClick={() => handleQuickExclude(name)}
                         className="shrink-0 p-1 rounded hover:bg-rose-500/20 text-muted-foreground hover:text-rose-400 transition"
-                        title={`${name} ausschließen`}
+                        title={copy.excludeName(name)}
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
@@ -357,12 +427,12 @@ export default function EmployeeExclusions() {
               {/* RIGHT: Excluded */}
               <div className="flex-1 min-w-0">
                 <div className="text-[10px] uppercase tracking-wider font-bold text-rose-400 mb-1.5">
-                  Ausgeschlossen ({activeExclusions.length})
+                  {copy.excluded} ({activeExclusions.length})
                 </div>
                 <DroppablePanel id="excluded_panel">
                   {activeExclusions.length === 0 && (
                     <div className="text-xs text-muted-foreground text-center py-6">
-                      Keine Ausschlüsse — Mitarbeiter hierher ziehen
+                      {copy.noExclusions}
                     </div>
                   )}
                   {activeExclusions.map(exc => (
@@ -370,7 +440,7 @@ export default function EmployeeExclusions() {
                       <button
                         onClick={() => handleQuickRemove(exc.employee_name)}
                         className="shrink-0 p-1 rounded hover:bg-green-500/20 text-muted-foreground hover:text-green-400 transition"
-                        title={`${exc.employee_name} wieder einschließen`}
+                        title={copy.includeName(exc.employee_name)}
                       >
                         <ArrowLeft className="w-3.5 h-3.5" />
                       </button>
@@ -383,7 +453,7 @@ export default function EmployeeExclusions() {
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground/60">
-              Schnell-Ausschlüsse verwenden Grund „Admin-Vorgabe". Für spezifische Gründe / Zeiträume das Formular unten nutzen.
+              {copy.quickFooter}
             </p>
           </div>
 
@@ -403,7 +473,10 @@ export default function EmployeeExclusions() {
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
         <div className="text-xs font-semibold text-blue-400 flex items-center gap-1.5 mb-2">
           <Plus className="w-3.5 h-3.5" />
-          Neuen Ausschluss hinzufügen (mit Grund / Zeitraum)
+          {copy.addTitle}
+          <InfoTooltip title={copy.addTitle} side="right" align="start" width="w-96">
+            <p>{copy.addInfo}</p>
+          </InfoTooltip>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Searchable employee dropdown */}
@@ -412,7 +485,7 @@ export default function EmployeeExclusions() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <input
                 type="text"
-                placeholder="Mitarbeiter suchen…"
+                placeholder={copy.searchEmployee}
                 value={employeeName}
                 onChange={(e) => { setEmployeeName(e.target.value); setEmpSearch(e.target.value); setShowDropdown(true); }}
                 onFocus={() => setShowDropdown(true)}
@@ -436,47 +509,60 @@ export default function EmployeeExclusions() {
             )}
             {showDropdown && filteredSuggestions.length === 0 && empSearch.trim() && (
               <div className="absolute z-50 mt-1 w-full rounded-lg border border-border/40 bg-zinc-900 shadow-xl px-3 py-2 text-xs text-muted-foreground">
-                Kein Mitarbeiter gefunden — manueller Name wird übernommen
+                {copy.noEmployeeFound}
               </div>
             )}
           </div>
-          <select
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-border/40 bg-background/80 text-foreground focus:outline-none focus:border-blue-500/50"
-          >
-            {REASON_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <input
-            type="text"
-            placeholder="Zusätzliche Begründung (optional)"
-            value={reasonText}
-            onChange={(e) => setReasonText(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-border/40 bg-background/80 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500/50"
-          />
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{copy.reason}</span>
+              <InfoTooltip title={copy.reason} side="right"><p>{t("exclusions.tooltipReason")}</p></InfoTooltip>
+            </div>
+            <select
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-md border border-border/40 bg-background/80 text-foreground focus:outline-none focus:border-blue-500/50"
+            >
+              {reasonOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{copy.additionalReason}</span>
+              <InfoTooltip title={copy.additionalReason} side="right"><p>{t("exclusions.tooltipAdditionalReason")}</p></InfoTooltip>
+            </div>
+            <input
+              type="text"
+              placeholder={copy.additionalReasonPlaceholder}
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-md border border-border/40 bg-background/80 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500/50"
+            />
+          </div>
           <button
             onClick={handleAdd}
             disabled={adding || !employeeName.trim()}
             className="flex items-center justify-center gap-1.5 text-sm px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
-            {adding ? 'Wird gespeichert...' : 'Hinzufügen'}
+            {adding ? copy.saving : copy.add}
           </button>
         </div>
 
         {/* Optional time range */}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <Calendar className="w-3.5 h-3.5" />
-          <span>Zeitlich begrenzen (optional):</span>
+          <span>{copy.limitPeriod}</span>
+          <InfoTooltip title={copy.limitPeriod} side="right" align="start"><p>{t("exclusions.tooltipLimitPeriod")}</p></InfoTooltip>
           <input
             type="date"
             value={validFrom}
             onChange={(e) => setValidFrom(e.target.value)}
             className="px-2 py-1 text-xs rounded border border-border/40 bg-background/80 text-foreground"
           />
-          <span>bis</span>
+          <span>{copy.until}</span>
           <input
             type="date"
             value={validTo}
@@ -490,8 +576,9 @@ export default function EmployeeExclusions() {
       <div>
         <div className="flex items-center gap-2 mb-3">
           <h4 className="text-xs font-bold text-foreground">
-            Aktive Ausschlüsse ({activeExclusions.length})
+            {copy.activeExclusions} ({activeExclusions.length})
           </h4>
+          <InfoTooltip title={copy.activeExclusions} side="right"><p>{t("exclusions.tooltipActiveExclusions")}</p></InfoTooltip>
         </div>
 
         {loading ? (
@@ -500,21 +587,21 @@ export default function EmployeeExclusions() {
           </div>
         ) : activeExclusions.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center py-6 bg-background/40 rounded-lg border border-border/20">
-            Keine aktiven Ausschlüsse vorhanden
+            {copy.noActiveExclusions}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border/20">
-                  <th className="pb-2 pr-4 font-medium">Mitarbeiter</th>
-                  <th className="pb-2 pr-4 font-medium">Grund</th>
-                  <th className="pb-2 pr-4 font-medium">Begründung</th>
-                  <th className="pb-2 pr-4 font-medium">Gültig von</th>
-                  <th className="pb-2 pr-4 font-medium">Gültig bis</th>
-                  <th className="pb-2 pr-4 font-medium">Erstellt von</th>
-                  <th className="pb-2 pr-4 font-medium">Erstellt am</th>
-                  <th className="pb-2 font-medium">Aktionen</th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.employee} <InfoTooltip title={copy.employee} side="right"><p>{t("exclusions.tooltipEmployee")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.reason} <InfoTooltip title={copy.reason} side="right"><p>{t("exclusions.tooltipReasonCol")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.justification} <InfoTooltip title={copy.justification} side="right"><p>{t("exclusions.tooltipJustification")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.validFrom} <InfoTooltip title={copy.validFrom} side="right"><p>{t("exclusions.tooltipValidFrom")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.validTo} <InfoTooltip title={copy.validTo} side="right"><p>{t("exclusions.tooltipValidTo")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.createdBy} <InfoTooltip title={copy.createdBy} side="right"><p>{t("exclusions.tooltipCreatedBy")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 pr-4 font-medium"><span className="inline-flex items-center gap-1">{copy.createdAt} <InfoTooltip title={copy.createdAt} side="right"><p>{t("exclusions.tooltipCreatedAt")}</p></InfoTooltip></span></th>
+                  <th className="pb-2 font-medium"><span className="inline-flex items-center gap-1">{copy.actions} <InfoTooltip title={copy.actions} side="right"><p>{t("exclusions.tooltipActions")}</p></InfoTooltip></span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/10">
@@ -523,27 +610,27 @@ export default function EmployeeExclusions() {
                     <td className="py-2.5 pr-4 font-medium text-foreground">{exc.employee_name}</td>
                     <td className="py-2.5 pr-4">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/10 border-rose-500/20 text-rose-400">
-                        {REASON_OPTIONS.find(r => r.value === exc.reason)?.label || exc.reason}
+                        {reasonOptions.find(r => r.value === exc.reason)?.label || exc.reason}
                       </span>
                     </td>
                     <td className="py-2.5 pr-4 text-muted-foreground">{exc.reason_text || '–'}</td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDate(exc.valid_from)}</td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDate(exc.valid_to)}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDate(exc.valid_from, locale)}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDate(exc.valid_to, locale)}</td>
                     <td className="py-2.5 pr-4 text-muted-foreground">{exc.created_by}</td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDateTime(exc.created_at)}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{formatDateTime(exc.created_at, locale)}</td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleDeactivate(exc.id, exc.employee_name)}
                           className="p-1.5 rounded hover:bg-amber-500/20 text-amber-400 transition"
-                          title="Deaktivieren"
+                          title={copy.deactivate}
                         >
                           <ShieldOff className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDelete(exc.id, exc.employee_name)}
                           className="p-1.5 rounded hover:bg-red-500/20 text-red-400 transition"
-                          title="Endgültig löschen"
+                          title={copy.delete}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -566,24 +653,28 @@ export default function EmployeeExclusions() {
             onChange={(e) => setShowInactive(e.target.checked)}
             className="rounded border-border/40"
           />
-          Auch deaktivierte Ausschlüsse anzeigen
+          {copy.showInactive}
+          <InfoTooltip title={copy.showInactive} side="right"><p>{t("exclusions.tooltipShowInactive")}</p></InfoTooltip>
         </label>
       </div>
 
       {/* Inactive Exclusions */}
       {showInactive && inactiveExclusions.length > 0 && (
         <div>
-          <h4 className="text-xs font-bold text-muted-foreground mb-3">
-            Deaktivierte Ausschlüsse ({inactiveExclusions.length})
-          </h4>
+          <div className="mb-3 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold text-muted-foreground">
+            {copy.inactiveExclusions} ({inactiveExclusions.length})
+            </h4>
+            <InfoTooltip title={copy.inactiveExclusions} side="right"><p>{t("exclusions.tooltipInactive")}</p></InfoTooltip>
+          </div>
           <div className="overflow-x-auto opacity-60">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border/20">
-                  <th className="pb-2 pr-4 font-medium">Mitarbeiter</th>
-                  <th className="pb-2 pr-4 font-medium">Grund</th>
-                  <th className="pb-2 pr-4 font-medium">Deaktiviert von</th>
-                  <th className="pb-2 pr-4 font-medium">Deaktiviert am</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.employee}</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.reason}</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.deactivatedBy}</th>
+                  <th className="pb-2 pr-4 font-medium">{copy.deactivatedAt}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/10">
@@ -591,10 +682,10 @@ export default function EmployeeExclusions() {
                   <tr key={exc.id}>
                     <td className="py-2 pr-4 text-foreground/60">{exc.employee_name}</td>
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {REASON_OPTIONS.find(r => r.value === exc.reason)?.label || exc.reason}
+                      {reasonOptions.find(r => r.value === exc.reason)?.label || exc.reason}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">{exc.deactivated_by || '–'}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">{exc.deactivated_at ? formatDateTime(exc.deactivated_at) : '–'}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">{exc.deactivated_at ? formatDateTime(exc.deactivated_at, locale) : '–'}</td>
                   </tr>
                 ))}
               </tbody>

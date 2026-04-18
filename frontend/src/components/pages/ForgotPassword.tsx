@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* COMPONENT                                        */
 /* ------------------------------------------------ */
 
 export default function ForgotPassword() {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -41,22 +43,22 @@ export default function ForgotPassword() {
             />
 
             <CardTitle className="text-2xl font-bold">
-              Passwort zurücksetzen
+              {t("forgotPassword.title")}
             </CardTitle>
 
             <p className="text-sm text-muted-foreground">
-              Du erhältst einen Reset-Link per E-Mail
+              {t("forgotPassword.subtitle")}
             </p>
           </CardHeader>
 
           <CardContent className="space-y-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">E-Mail</Label>
+                <Label htmlFor="email">{t("forgotPassword.email")}</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="z. B. user@firma.de"
+                  placeholder={t("forgotPassword.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -64,7 +66,7 @@ export default function ForgotPassword() {
               </div>
 
               <Button type="submit" className="w-full h-11">
-                Reset-Link senden
+                {t("forgotPassword.submitButton")}
               </Button>
             </form>
 
@@ -73,7 +75,7 @@ export default function ForgotPassword() {
                 to="/login"
                 className="text-primary hover:underline"
               >
-                Zurück zum Login
+                {t("forgotPassword.backToLogin")}
               </Link>
             </div>
           </CardContent>

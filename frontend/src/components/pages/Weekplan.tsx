@@ -22,6 +22,7 @@ import { getGermanHolidaysNationwide } from "../../utils/deHolidays";
 import { shiftTypes } from "../../store/shiftStore";
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees"; // [NEW] import
 import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
+import { useLanguage, getLanguageLocale } from "../../context/LanguageContext";
 
 type Schedule = Record<string, Record<number, string>>;
 
@@ -48,14 +49,16 @@ function startOfIsoWeek(date: Date) {
   return d;
 }
 
-function weekdayAbbrev(date: Date) {
-  const raw = new Intl.DateTimeFormat("de-DE", { weekday: "short" }).format(date);
-  return raw.replace(".", "");
-}
-
 export default function Weekplan() {
   const { canWrite } = useAuth();
   const canEdit = canWrite("shiftplan");
+  const { language, t } = useLanguage();
+  const locale = getLanguageLocale(language) as "de-DE" | "en-US";
+
+  const weekdayAbbrev = (date: Date) => {
+    const raw = new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+    return raw.replace(".", "");
+  };
 
   /* NAVIGATION STATE */
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -94,8 +97,6 @@ export default function Weekplan() {
       return d;
     });
   }, [weekStart]);
-
-  const locale: "de-DE" | "en-US" = "de-DE";
 
   const monthLabels = useMemo(() => {
     const labels = new Set<string>();
@@ -268,7 +269,7 @@ export default function Weekplan() {
       setDirtyMonths(new Set());
     } catch (e) {
       console.error("WEEKPLAN save error", e);
-      alert("Speichern fehlgeschlagen");
+      alert(t("weekplan.saveFailed"));
     } finally {
       setLoading(false);
     }
@@ -352,7 +353,7 @@ export default function Weekplan() {
       <div className="p-5 bg-[#0f111a]/80 backdrop-blur-md rounded-2xl border border-white/10 space-y-4 shadow-lg flex-none">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-slate-100 tracking-wide">Wochenplanung – KW {weekNo}</h2>
+            <h2 className="text-xl font-bold text-slate-100 tracking-wide">{t("weekplan.title")} {weekNo}</h2>
             <div className="text-[13px] font-medium text-muted-foreground mt-1">
               {weekdayAbbrev(weekDays[0])} {weekDays[0].getDate()}.{pad2(weekDays[0].getMonth() + 1)}.{weekDays[0].getFullYear()} – {weekdayAbbrev(weekDays[6])} {weekDays[6].getDate()}.{pad2(weekDays[6].getMonth() + 1)}.{weekDays[6].getFullYear()}
             </div>
@@ -367,7 +368,7 @@ export default function Weekplan() {
               &larr;
             </Button>
             <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={jumpToToday}>
-              Heute
+              {t("weekplan.today")}
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => traverseWeek(1)}>
               &rarr;
@@ -390,7 +391,7 @@ export default function Weekplan() {
             }}
           >
             <div className={`w-3 h-3 rounded-full border ${showActiveOnly ? "bg-primary border-primary" : "border-muted-foreground"}`} />
-            Nur aktive anzeigen
+            {t("weekplan.showActiveOnly")}
           </div>
 
           {canEdit ? (
@@ -401,13 +402,17 @@ export default function Weekplan() {
                 onClick={() => setIsEditMode((v) => !v)}
                 disabled={loading}
               >
-                {isEditMode ? "Bearbeiten: an" : "Bearbeiten"}
+                {isEditMode ? t("weekplan.editOn") : t("weekplan.edit")}
               </Button>
               <Button className="bg-green-600/90 hover:bg-green-600 text-white" onClick={saveChanges} disabled={loading || dirtyMonths.size === 0}>
-                Speichern
+                {t("common.save")}
               </Button>
             </div>
           ) : null}
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
+          {t("weekplan.roleHint")}
         </div>
       </div>
 
@@ -415,7 +420,7 @@ export default function Weekplan() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Schicht ändern</DialogTitle>
+            <DialogTitle>{t("weekplan.changeShift")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-2">
@@ -429,10 +434,10 @@ export default function Weekplan() {
 
             <Select value={editValue} onValueChange={setEditValue}>
               <SelectTrigger>
-                <SelectValue placeholder="Schicht wählen" />
+                <SelectValue placeholder={t("weekplan.selectShift")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={EMPTY}>(leer)</SelectItem>
+                <SelectItem value={EMPTY}>{t("weekplan.empty")}</SelectItem>
                 <SelectItem value="E1">E1</SelectItem>
                 <SelectItem value="E2">E2</SelectItem>
                 <SelectItem value="L1">L1</SelectItem>
@@ -447,9 +452,9 @@ export default function Weekplan() {
 
           <DialogFooter>
             <Button variant="secondary" onClick={() => setEditOpen(false)}>
-              Abbrechen
+              {t("common.cancel")}
             </Button>
-            <Button onClick={applyEdit}>Übernehmen</Button>
+            <Button onClick={applyEdit}>{t("weekplan.apply")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -459,7 +464,7 @@ export default function Weekplan() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-[#0f111a]/95 backdrop-blur-md z-40 border-b border-white/10 shadow-sm">
             <tr>
-              <th className="sticky left-0 bg-[#0f111a] border-r border-white/5 p-3 text-left min-w-[220px] z-50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Mitarbeiter</th>
+              <th className="sticky left-0 bg-[#0f111a] border-r border-white/5 p-3 text-left min-w-[220px] z-50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t("common.employee")}</th>
               {weekDays.map((d, idx) => {
                 const key = dateKey(d);
                 const holiday = holidays?.[key];
@@ -470,7 +475,7 @@ export default function Weekplan() {
                   <th
                     key={idx}
                     className={`border-r border-white/5 p-2 text-center min-w-[90px] leading-tight select-none transition-colors ${holiday ? "bg-red-500/10" : ""} ${isWeekend && !holiday ? "bg-white/[0.015]" : ""}`}
-                    title={holiday ? `Feiertag: ${holiday}` : undefined}
+                    title={holiday ? `${t("weekplan.holiday")}: ${holiday}` : undefined}
                   >
                     <div className={`text-[10px] font-bold tracking-widest uppercase ${isWeekend ? 'text-indigo-300/80' : 'text-muted-foreground'}`}>{weekdayAbbrev(d)}</div>
                     <div className="text-[11px] font-medium text-foreground flex items-center justify-center gap-0.5 mt-0.5">
@@ -493,35 +498,10 @@ export default function Weekplan() {
                   <button
                     className={`text-left w-full transition-colors text-[13px] tracking-wide ${name === highlightedEmployee ? "text-indigo-400 font-bold" : "text-white font-semibold group-hover:text-indigo-300"}`}
                     onClick={() => setHighlightedEmployee(prev => prev === name ? null : name)}
-                    title="Klicken um Zeile hervorzuheben (ESC zum Aufheben)"
+                    title={t("weekplan.highlightHint")}
                   >
                     {name}
                   </button>
-                  {/* Role badges for each day of the week */}
-                  {(() => {
-                    const dayRoles = weekDays
-                      .map((d, i) => ({ dayIdx: i, role: getRole(name, dateKey(d)) }))
-                      .filter((r) => r.role);
-                    if (dayRoles.length === 0) return null;
-                    // Deduplicate — if same role all week, just show one badge
-                    const uniqueRoles = [...new Set(dayRoles.map((r) => r.role!))];
-                    return (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {uniqueRoles.map((rk) => {
-                          const def = getRoleDef(rk);
-                          if (!def) return null;
-                          return (
-                            <span
-                              key={rk}
-                              className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${def.color}`}
-                            >
-                              {def.label}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
                 </td>
 
                 {weekDays.map((d, dayIdx) => {
@@ -597,9 +577,14 @@ export default function Weekplan() {
                           isEditMode ? <div className="text-[10px] text-muted-foreground/30">—</div> : null
                         )}
                         {cellRoleDef && (
-                          <span className={`text-[8px] font-bold px-1 py-px rounded border leading-tight ${cellRoleDef.color}`}>
-                            {cellRoleDef.label}
-                          </span>
+                          <div className="mt-0.5 flex max-w-[84px] flex-col items-center gap-0.5">
+                            <span className={`inline-flex min-w-[28px] items-center justify-center rounded-md border px-1.5 py-px text-[9px] font-black tracking-wide ${cellRoleDef.color}`}>
+                              {cellRoleDef.symbol}
+                            </span>
+                            <span className="text-center text-[8px] leading-tight text-slate-400">
+                              {cellRoleDef.shortText}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -620,8 +605,8 @@ export default function Weekplan() {
                         <ContextMenuContent className="w-56">
                           <ContextMenuLabel className="text-xs text-muted-foreground">
                             {targetDayIndices.length > 1
-                              ? `Rolle für ${name} (${targetDayIndices.length} Tage)`
-                              : `Rolle für ${name} – ${weekdayAbbrev(d)} ${d.getDate()}.${pad2(d.getMonth() + 1)}`}
+                              ? `${t("weekplan.roleFor")} ${name} (${targetDayIndices.length} ${t("weekplan.roleForDays")})`
+                              : `${t("weekplan.roleFor")} ${name} – ${weekdayAbbrev(d)} ${d.getDate()}.${pad2(d.getMonth() + 1)}`}
                           </ContextMenuLabel>
                           <ContextMenuSeparator />
                           {WEEKPLAN_ROLES.map((r) => (
@@ -630,8 +615,13 @@ export default function Weekplan() {
                               onClick={() => applyRoleToSelection(name, targetDayIndices, r.key)}
                               className="flex items-center gap-2"
                             >
-                              <span className={`inline-block w-2.5 h-2.5 rounded-full border ${r.color}`} />
-                              <span className="font-medium">{r.label}</span>
+                              <span className={`inline-flex min-w-[28px] items-center justify-center rounded border px-1 py-px text-[9px] font-black ${r.color}`}>
+                                {r.symbol}
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{r.label}</span>
+                                <span className="text-[11px] text-muted-foreground">{r.shortText}</span>
+                              </div>
                               {targetDayIndices.length === 1 && cellRole === r.key && (
                                 <span className="ml-auto text-xs text-primary">✓</span>
                               )}
@@ -644,7 +634,7 @@ export default function Weekplan() {
                                 onClick={() => removeRoleFromCell(name, dayIdx)}
                                 className="text-red-400"
                               >
-                                Rolle entfernen
+                                {t("weekplan.removeRole")}
                               </ContextMenuItem>
                             </>
                           )}
@@ -655,7 +645,7 @@ export default function Weekplan() {
                                 onClick={() => removeRolesFromSelection(name, targetDayIndices)}
                                 className="text-red-400"
                               >
-                                Rollen entfernen ({targetDayIndices.length} Tage)
+                                {t("weekplan.removeRoles")} ({targetDayIndices.length} {t("weekplan.roleForDays")})
                               </ContextMenuItem>
                             </>
                           )}
@@ -672,7 +662,7 @@ export default function Weekplan() {
         </table>
 
         {loading ? (
-          <div className="p-4 text-center text-muted-foreground">Lade Wochenplan …</div>
+          <div className="p-4 text-center text-muted-foreground">{t("weekplan.loading")}</div>
         ) : null}
       </div>
     </div >

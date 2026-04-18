@@ -19,7 +19,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 
 const HANDOVER_TYPES: HandoverType[] = ["Workload", "Terminiert", "Other Teams"];
 
-const PAGE_COPY: Record<LanguageCode, {
+const PAGE_COPY: Partial<Record<LanguageCode, {
   queues: string;
   noGroups: string;
   lastUpdated: string;
@@ -36,18 +36,18 @@ const PAGE_COPY: Record<LanguageCode, {
   noData: string;
   createHandover: string;
   failedToLoadTickets: string;
-}> = {
+}>> = {
   de: {
-    queues: "Queues",
+    queues: "Warteschlangen",
     noGroups: "Keine Gruppen",
     lastUpdated: "Zuletzt aktualisiert",
     refresh: "Aktualisieren",
     errorPrefix: "Fehler",
-    activity: "Activity",
-    owner: "Owner",
+    activity: "Aktivität",
+    owner: "Verantwortlich",
     systemName: "Systemname",
-    subtype: "Subtype",
-    revisedCommitDate: "Revised Commit Date",
+    subtype: "Subtyp",
+    revisedCommitDate: "Geänderter Commit",
     remainingTime: "Restzeit",
     scheduledStart: "Geplanter Start",
     loadingTickets: "Tickets werden geladen...",
@@ -73,146 +73,30 @@ const PAGE_COPY: Record<LanguageCode, {
     createHandover: "Create handover",
     failedToLoadTickets: "Failed to load tickets",
   },
-  sq: {
-    queues: "Radhët",
-    noGroups: "Pa grupe",
-    lastUpdated: "Përditësuar së fundi",
-    refresh: "Rifresko",
-    errorPrefix: "Gabim",
-    activity: "Aktiviteti",
-    owner: "Pronari",
-    systemName: "Emri i sistemit",
-    subtype: "Nënlloji",
-    revisedCommitDate: "Data e commit-it të rishikuar",
-    remainingTime: "Koha e mbetur",
-    scheduledStart: "Fillimi i planifikuar",
-    loadingTickets: "Po ngarkohen tiketat...",
-    noData: "Nuk ka të dhëna",
-    createHandover: "Krijo handover",
-    failedToLoadTickets: "Tiketat nuk u ngarkuan",
-  },
-  bs: {
-    queues: "Redovi",
-    noGroups: "Nema grupa",
-    lastUpdated: "Zadnje ažuriranje",
-    refresh: "Osvježi",
-    errorPrefix: "Greška",
-    activity: "Aktivnost",
-    owner: "Vlasnik",
-    systemName: "Naziv sistema",
-    subtype: "Podtip",
-    revisedCommitDate: "Revidirani commit datum",
-    remainingTime: "Preostalo vrijeme",
-    scheduledStart: "Planirani početak",
-    loadingTickets: "Učitavanje tiketa...",
-    noData: "Nema podataka",
-    createHandover: "Kreiraj handover",
-    failedToLoadTickets: "Tiketi se nisu mogli učitati",
-  },
-  fr: {
-    queues: "Files",
-    noGroups: "Aucun groupe",
-    lastUpdated: "Dernière mise à jour",
-    refresh: "Actualiser",
-    errorPrefix: "Erreur",
-    activity: "Activité",
-    owner: "Propriétaire",
-    systemName: "Nom du système",
-    subtype: "Sous-type",
-    revisedCommitDate: "Date de commit révisée",
-    remainingTime: "Temps restant",
-    scheduledStart: "Début planifié",
-    loadingTickets: "Chargement des tickets...",
-    noData: "Aucune donnée",
-    createHandover: "Créer un handover",
-    failedToLoadTickets: "Impossible de charger les tickets",
-  },
-  es: {
-    queues: "Colas",
-    noGroups: "Sin grupos",
-    lastUpdated: "Última actualización",
-    refresh: "Actualizar",
-    errorPrefix: "Error",
-    activity: "Actividad",
-    owner: "Propietario",
-    systemName: "Nombre del sistema",
-    subtype: "Subtipo",
-    revisedCommitDate: "Fecha de commit revisada",
-    remainingTime: "Tiempo restante",
-    scheduledStart: "Inicio programado",
-    loadingTickets: "Cargando tickets...",
-    noData: "Sin datos",
-    createHandover: "Crear handover",
-    failedToLoadTickets: "No se pudieron cargar los tickets",
-  },
-  "pt-BR": {
-    queues: "Filas",
-    noGroups: "Sem grupos",
-    lastUpdated: "Última atualização",
-    refresh: "Atualizar",
-    errorPrefix: "Erro",
-    activity: "Atividade",
-    owner: "Responsável",
-    systemName: "Nome do sistema",
-    subtype: "Subtipo",
-    revisedCommitDate: "Data revisada de commit",
-    remainingTime: "Tempo restante",
-    scheduledStart: "Início agendado",
-    loadingTickets: "Carregando tickets...",
-    noData: "Sem dados",
-    createHandover: "Criar handover",
-    failedToLoadTickets: "Não foi possível carregar os tickets",
-  },
-  "fa-AF": {
-    queues: "صف‌ها",
-    noGroups: "هیچ گروهی نیست",
-    lastUpdated: "آخرین به‌روزرسانی",
-    refresh: "تازه‌سازی",
-    errorPrefix: "خطا",
-    activity: "فعالیت",
-    owner: "مسئول",
-    systemName: "نام سیستم",
-    subtype: "زیرنوع",
-    revisedCommitDate: "تاریخ commit بازبینی‌شده",
-    remainingTime: "زمان باقی‌مانده",
-    scheduledStart: "شروع برنامه‌ریزی‌شده",
-    loadingTickets: "در حال بارگیری تیکت‌ها...",
-    noData: "داده‌ای نیست",
-    createHandover: "ایجاد handover",
-    failedToLoadTickets: "بارگیری تیکت‌ها انجام نشد",
-  },
 };
 
-const HANDOVER_LABELS: Record<HandoverType, Record<LanguageCode, string>> = {
+type TicketPageCopy = NonNullable<(typeof PAGE_COPY)["en"]>;
+
+const HANDOVER_LABELS: Record<HandoverType, Partial<Record<LanguageCode, string>>> = {
   Workload: {
-    de: "Workload",
+    de: "Arbeitslast",
     en: "Workload",
-    sq: "Ngarkesë pune",
-    bs: "Opterećenje",
-    fr: "Charge de travail",
-    es: "Carga de trabajo",
-    "pt-BR": "Carga de trabalho",
-    "fa-AF": "بار کاری",
   },
   Terminiert: {
     de: "Terminiert",
     en: "Scheduled",
-    sq: "I planifikuar",
-    bs: "Zakazano",
-    fr: "Planifié",
-    es: "Programado",
-    "pt-BR": "Agendado",
-    "fa-AF": "زمان‌بندی‌شده",
   },
   "Other Teams": {
-    de: "Other Teams",
+    de: "Andere Teams",
     en: "Other teams",
-    sq: "Ekipe të tjera",
-    bs: "Drugi timovi",
-    fr: "Autres équipes",
-    es: "Otros equipos",
-    "pt-BR": "Outras equipes",
-    "fa-AF": "تیم‌های دیگر",
+  },
+  Task: {
+    de: "Task",
+    en: "Task",
+  },
+  Manual: {
+    de: "Manuell",
+    en: "Manual",
   },
 };
 
@@ -231,8 +115,9 @@ function TicketTile({
   onHandover: (t: Ticket, type: HandoverType) => void;
   language: LanguageCode;
   locale: string;
-  copy: (typeof PAGE_COPY)[LanguageCode];
+  copy: TicketPageCopy;
 }) {
+  const dash = '–';
   const ms = getRemainingMs(ticket);
   const tier = getColorTier(ms);
   const tierCss = tierClasses[tier];
@@ -252,18 +137,18 @@ function TicketTile({
             </div>
 
             {/* Owner */}
-            <div className="text-sm truncate" title={ticket.owner || "—"}>
-              {ticket.owner || "—"}
+            <div className="text-sm truncate" title={ticket.owner || dash}>
+              {ticket.owner || dash}
             </div>
 
             {/* System Name */}
-            <div className="text-sm truncate" title={ticket.system_name || "—"}>
-              {ticket.system_name || "—"}
+            <div className="text-sm truncate" title={ticket.system_name || dash}>
+              {ticket.system_name || dash}
             </div>
 
             {/* Subtype */}
-            <div className="text-sm truncate" title={ticket.customer_trouble_type || "—"}>
-              {ticket.customer_trouble_type || "—"}
+            <div className="text-sm truncate" title={ticket.customer_trouble_type || dash}>
+              {ticket.customer_trouble_type || dash}
             </div>
 
             {/* Revised Commit Date */}
@@ -284,7 +169,7 @@ function TicketTile({
                     hour: "2-digit",
                     minute: "2-digit",
                   })
-                  : "—"}
+                  : dash}
             </div>
 
             {/* Remaining Time */}
@@ -305,7 +190,7 @@ function TicketTile({
                   hour: "2-digit",
                   minute: "2-digit",
                 })
-                : "—"}
+                : dash}
             </div>
           </div>
         </div>
@@ -324,7 +209,7 @@ function TicketTile({
               className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-white/10 focus:text-white"
               onSelect={() => onHandover(ticket, type)}
             >
-              {HANDOVER_LABELS[type][language]}
+              {HANDOVER_LABELS[type][language] || HANDOVER_LABELS[type].en || type}
             </ContextMenu.Item>
           ))}
         </ContextMenu.Content>
@@ -340,7 +225,7 @@ function TicketTile({
 const Tickets: React.FC = () => {
   const { language } = useLanguage();
   const locale = getLanguageLocale(language);
-  const copy = PAGE_COPY[language];
+  const copy = PAGE_COPY[language] || PAGE_COPY.en!;
   const [activeQueue, setActiveQueue] = useState<string>("SmartHands");
   const [groups, setGroups] = useState<Record<string, QueueGroup[]>>({});
   const [tickets, setTickets] = useState<Ticket[]>([]);

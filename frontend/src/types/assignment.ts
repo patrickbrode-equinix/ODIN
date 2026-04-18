@@ -6,7 +6,7 @@
 
 export type AssignmentMode = 'shadow' | 'live' | 'dry-run';
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-export type DecisionResult = 'assigned' | 'manual_review' | 'no_candidate' | 'not_relevant' | 'blocked' | 'error';
+export type DecisionResult = 'assigned' | 'manual_review' | 'no_candidate' | 'not_relevant' | 'blocked' | 'error' | 'crawler_stale';
 export type TicketType = 'TroubleTicket' | 'SmartHands' | 'CrossConnect' | 'Other' | 'Unknown';
 export type TicketStatus = 'open' | 'active' | 'pending' | 'closed' | 'cancelled' | 'unknown';
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical' | 'unknown';
@@ -89,6 +89,34 @@ export interface ExcludedCandidate {
   plannedEmployeeName?: string | null;
 }
 
+export interface ExcludedCandidateGroup extends CandidateRef {
+  rules: string[];
+  reasons: string[];
+}
+
+export interface DecisionTraceStep {
+  key: string;
+  label: string;
+  status: 'done' | 'pending' | 'skipped';
+  reason: string;
+}
+
+export interface AssignmentTicketContext {
+  queueOrigin: string | null;
+  systemName: string | null;
+  activity: string | null;
+  currentOwner: string | null;
+  recommendedOwner: string | null;
+  remainingHours: number | null;
+  remainingTimeLabel: string | null;
+  dueAt: string | null;
+  revisedCommitDate: string | null;
+  scheduledStart: string | null;
+  customerTroubleType: string | null;
+  customerName: string | null;
+  mode: AssignmentMode | null | string;
+}
+
 export interface AssignmentDecision {
   id: number;
   run_id: number;
@@ -112,6 +140,7 @@ export interface AssignmentDecision {
   raw_ticket: Record<string, unknown> | null;
   error_message: string | null;
   decided_at: string;
+  run_mode?: AssignmentMode | null;
 }
 
 /* ---- Explanation ---- */
@@ -121,15 +150,19 @@ export interface TicketExplanationStructured {
   ticketId: string;
   externalId: string | null;
   queueOrigin: string | null;
+  mode?: AssignmentMode | null | string;
   result: DecisionResult;
   shortReason: string | null;
   ticketType: string | null;
   ticketStatus: string | null;
   ticketPriority: string | null;
   ticketSite: string | null;
+  ticketContext: AssignmentTicketContext;
+  decisionTrace: DecisionTraceStep[];
   normalizationWarnings: string[];
   initialCandidates: CandidateRef[];
   excludedCandidates: ExcludedCandidate[];
+  excludedCandidateGroups: ExcludedCandidateGroup[];
   remainingCandidates: CandidateRef[];
   assignedWorkerName: string | null;
   assignedWorkerId: number | null;

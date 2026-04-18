@@ -21,6 +21,157 @@ function snapshotCandidate(candidate) {
   return snapshot;
 }
 
+function readObjectValue(source, key) {
+  if (!source || typeof source !== 'object' || !(key in source)) return null;
+  const value = source[key];
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed || null;
+}
+
+function getFirstString(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const trimmed = String(value).trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function formatRemainingHours(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed < 1) {
+    const minutes = Math.max(1, Math.round(parsed * 60));
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(parsed);
+  const minutes = Math.round((parsed - hours) * 60);
+  if (minutes <= 0) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
+function groupExcludedCandidates(excludedCandidates = []) {
+  const grouped = new Map();
+
+  for (const candidate of excludedCandidates || []) {
+    const key = `${candidate.id}:${candidate.name || ''}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        ...snapshotCandidate(candidate),
+        rules: [],
+        reasons: [],
+      });
+    }
+
+    const target = grouped.get(key);
+    if (candidate.rule && !target.rules.includes(candidate.rule)) {
+      target.rules.push(candidate.rule);
+    }
+    if (candidate.reason && !target.reasons.includes(candidate.reason)) {
+      target.reasons.push(candidate.reason);
+    }
+  }
+
+  return Array.from(grouped.values());
+}
+
+function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
+  const initialCandidates = decision.initialCandidates || decision.initial_candidates || [];
+  const remainingCandidates = decision.remainingCandidates || decision.remaining_candidates || [];
+  const rulePath = decision.rulePath || decision.rule_path || [];
+  const hasRoleChecks = rulePath.some((rule) => String(rule).toLowerCase().includes('role'));
+  const hasCapacityChecks = rulePath.some((rule) => ['queuepurity', 'ticketcapacity', 'worker-selection'].includes(String(rule).toLowerCase()));
+
+  return [
+    {
+      key: 'ticket-analyzed',
+      label: 'Ticket analysiert',
+      status: 'done',
+      reason: decision.shortReason || 'Ticketdaten wurden validiert und normalisiert',
+    },
+    {
+      key: 'candidates-loaded',
+      label: 'Kandidaten ermittelt',
+      status: initialCandidates.length > 0 ? 'done' : 'skipped',
+      reason: initialCandidates.length > 0
+        ? `${initialCandidates.length} Kandidaten aus Wochenplanung und ODIN-Stammdaten geladen`
+        : 'Kein Kandidatenpool verfügbar',
+    },
+    {
+      key: 'role-rules-applied',
+      label: 'Rollen- und Ausschlussregeln geprüft',
+      status: hasRoleChecks || groupedExcludedCandidates.length > 0 ? 'done' : 'pending',
+      reason: groupedExcludedCandidates.length > 0
+        ? `${groupedExcludedCandidates.length} Kandidaten durch Rollen-, Berechtigungs- oder Ausschlussregeln eingeschränkt`
+        : 'Keine regelbasierten Ausschlüsse protokolliert',
+    },
+    {
+      key: 'capacity-checked',
+      label: 'Kapazität und Mischlogik geprüft',
+      status: hasCapacityChecks ? 'done' : 'pending',
+      reason: hasCapacityChecks
+        ? 'Queue-Mix, Ticketlimits und Lastverteilung wurden bewertet'
+        : 'Keine Kapazitätsprüfung im Regelpfad sichtbar',
+    },
+    {
+      key: 'winner-selected',
+      label: decision.result === 'assigned' ? 'Gewinner ausgewählt' : 'Finale Entscheidung getroffen',
+      status: decision.result === 'error' ? 'skipped' : 'done',
+      reason: decision.selectionReason || decision.selection_reason || decision.shortReason || decision.short_reason || 'Finale Entscheidung protokolliert',
+    },
+    {
+      key: 'final-reason',
+      label: 'Finale Begründung',
+      status: 'done',
+      reason: decision.shortReason || decision.short_reason || decision.selectionReason || decision.selection_reason || decision.errorMessage || decision.error_message || decision.result,
+    },
+  ];
+}
+
+function buildTicketContext(source) {
+  const normalized = source.normalizedTicket || source.normalized_ticket || {};
+  const raw = source.rawTicket || source.raw_ticket || {};
+  const remainingHours = Number.isFinite(Number(normalized.remainingHours))
+    ? Number(normalized.remainingHours)
+    : (Number.isFinite(Number(raw.remaining_hours)) ? Number(raw.remaining_hours) : null);
+
+  return {
+    queueOrigin: getQueueOrigin(source),
+    systemName: getFirstString(
+      normalized.systemName,
+      raw.system_name,
+      raw.systemName,
+    ),
+    activity: getFirstString(
+      normalized.activity,
+      normalized.customerTroubleType,
+      raw.activity,
+      raw['Activity'],
+      raw['Activity Type'],
+      raw['Activity Sub Type'],
+      raw.activity_type,
+      raw.customer_trouble_type,
+      raw.subtype,
+    ),
+    currentOwner: getFirstString(
+      raw.owner,
+      raw.Owner,
+      raw.current_owner,
+      normalized.owner,
+    ),
+    recommendedOwner: getFirstString(source.assignedWorkerName, source.assigned_worker_name),
+    remainingHours,
+    remainingTimeLabel: formatRemainingHours(remainingHours),
+    dueAt: getFirstString(normalized.dueAt, raw.due_at, raw.commit_date, raw['Commit Date']),
+    revisedCommitDate: getFirstString(raw.revised_commit_date, raw.revisedCommitDate, raw['Revised Commit Date']),
+    scheduledStart: getFirstString(normalized.scheduledStart, raw.sched_start, raw['Sched. Start']),
+    customerTroubleType: getFirstString(normalized.customerTroubleType, raw.customer_trouble_type, raw.subtype),
+    customerName: getFirstString(normalized.customer, raw.customer_name, raw.account_name, raw.customer),
+    mode: getFirstString(source.run_mode, source.mode),
+  };
+}
+
 function getDisplayTicketNumber(source) {
   const normalized = source.normalizedTicket || source.normalized_ticket || {};
   const raw = source.rawTicket || source.raw_ticket || {};
@@ -142,6 +293,9 @@ export function buildTicketExplanation(decision) {
   const queueOrigin = getQueueOrigin(decision);
   const normalizedTicket = decision.normalizedTicket || decision.normalized_ticket || null;
   const rawTicket = decision.rawTicket || decision.raw_ticket || null;
+  const groupedExcludedCandidates = groupExcludedCandidates(decision.excludedCandidates || decision.excluded_candidates || []);
+  const ticketContext = buildTicketContext(decision);
+  const decisionTrace = buildDecisionTraceSteps(decision, groupedExcludedCandidates);
 
   lines.push(`## Ticket ${displayTicketNumber}`);
   if (internalTicketId && String(internalTicketId) !== String(displayTicketNumber)) {
@@ -167,6 +321,15 @@ export function buildTicketExplanation(decision) {
   lines.push(`- Priorität: ${decision.ticketPriority || decision.ticket_priority || 'N/A'}`);
   lines.push(`- Site: ${decision.ticketSite || decision.ticket_site || 'N/A'}`);
   if (queueOrigin) lines.push(`- Queue: ${queueOrigin}`);
+  if (ticketContext.mode) lines.push(`- Modus: ${ticketContext.mode}`);
+  if (ticketContext.systemName) lines.push(`- System: ${ticketContext.systemName}`);
+  if (ticketContext.activity) lines.push(`- Activity: ${ticketContext.activity}`);
+  if (ticketContext.currentOwner) lines.push(`- Aktueller Owner: ${ticketContext.currentOwner}`);
+  if (ticketContext.recommendedOwner) lines.push(`- Vorgeschlagener Owner: ${ticketContext.recommendedOwner}`);
+  if (ticketContext.remainingTimeLabel) lines.push(`- Restzeit: ${ticketContext.remainingTimeLabel}`);
+  if (ticketContext.dueAt) lines.push(`- Commit / Due: ${ticketContext.dueAt}`);
+  if (ticketContext.revisedCommitDate) lines.push(`- Revised Commit: ${ticketContext.revisedCommitDate}`);
+  if (ticketContext.scheduledStart) lines.push(`- Sched. Start: ${ticketContext.scheduledStart}`);
   lines.push('');
 
   // Normalization warnings
@@ -194,9 +357,9 @@ export function buildTicketExplanation(decision) {
   const excluded = decision.excludedCandidates || decision.excluded_candidates || [];
   if (excluded.length > 0) {
     lines.push(`### Ausgeschlossene Kandidaten (${excluded.length})`);
-    for (const e of excluded) {
+    for (const e of groupedExcludedCandidates) {
       const details = [e.shiftCode, e.weekplanRole || e.role].filter(Boolean).join(' | ');
-      lines.push(`- ❌ ${e.name || 'ID:' + e.id}${details ? ` [${details}]` : ''}: ${e.reason}`);
+      lines.push(`- ❌ ${e.name || 'ID:' + e.id}${details ? ` [${details}]` : ''}: ${e.reasons.join('; ')}`);
     }
     lines.push('');
   }
@@ -261,15 +424,19 @@ export function buildTicketExplanation(decision) {
       ticketId: decision.ticketId || decision.ticket_id,
       externalId: decision.externalId || decision.external_id,
       queueOrigin,
+      mode: ticketContext.mode,
       result: decision.result,
       shortReason: decision.shortReason || decision.short_reason,
       ticketType: decision.ticketType || decision.ticket_type,
       ticketStatus: decision.ticketStatus || decision.ticket_status,
       ticketPriority: decision.ticketPriority || decision.ticket_priority,
       ticketSite: decision.ticketSite || decision.ticket_site,
+      ticketContext,
+      decisionTrace,
       normalizationWarnings: warnings,
       initialCandidates: initial,
       excludedCandidates: excluded,
+      excludedCandidateGroups: groupedExcludedCandidates,
       remainingCandidates: remaining,
       assignedWorkerName: decision.assignedWorkerName || decision.assigned_worker_name,
       assignedWorkerId: decision.assignedWorkerId || decision.assigned_worker_id,

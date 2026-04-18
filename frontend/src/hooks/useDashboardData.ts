@@ -50,7 +50,7 @@ export function useDashboardData(): DashboardDataState {
         api.get("/commit/meta").catch(() => ({ data: null })),
       ]);
 
-      useCommitStore.getState().setTickets(rows);
+      useCommitStore.getState().setTickets(rows as any);
       setCrawlerStatus({
         lastUpdate: metaRes.data?.lastUpdate || "",
         count: metaRes.data?.count ?? rows.length,

@@ -20,20 +20,32 @@ import {
   Scale,
   Settings2,
   Sliders,
+  Star,
   Trash2,
   UserX,
   Users,
 } from 'lucide-react';
+import { EmployeeSkills, fetchSkills, updateSkills } from '../../api/coverage';
+import { useLanguage } from '../../context/LanguageContext';
 
-const WEEKDAY_OPTIONS = [
-  { value: 1, label: 'Mo' },
-  { value: 2, label: 'Di' },
-  { value: 3, label: 'Mi' },
-  { value: 4, label: 'Do' },
-  { value: 5, label: 'Fr' },
-  { value: 6, label: 'Sa' },
-  { value: 0, label: 'So' },
-] as const;
+function getWeekdayOptions(isGerman: boolean) {
+  return [
+    { value: 1, label: isGerman ? 'Mo' : 'Mon' },
+    { value: 2, label: isGerman ? 'Di' : 'Tue' },
+    { value: 3, label: isGerman ? 'Mi' : 'Wed' },
+    { value: 4, label: isGerman ? 'Do' : 'Thu' },
+    { value: 5, label: isGerman ? 'Fr' : 'Fri' },
+    { value: 6, label: isGerman ? 'Sa' : 'Sat' },
+    { value: 0, label: isGerman ? 'So' : 'Sun' },
+  ] as const;
+}
+
+function getShiftDayOffsetOptions(isGerman: boolean) {
+  return [
+    { value: 0, label: isGerman ? 'Plan-Tag' : 'Planned day' },
+    { value: 1, label: isGerman ? 'Folgetag' : 'Next day' },
+  ] as const;
+}
 
 interface ShiftDefinition {
   id: number;
@@ -43,6 +55,8 @@ interface ShiftDefinition {
   shift_type: string;
   start_time: string | null;
   end_time: string | null;
+  start_day_offset: number;
+  end_day_offset: number;
   duration_hours: number;
   min_staff: number;
   max_staff: number;
@@ -117,6 +131,25 @@ interface AdvancedPlanningSettings {
   weekendMinDispatchers: number;
 }
 
+interface SkillMatrixProfile extends EmployeeSkills {
+  rated_skills: Record<string, number>;
+}
+
+const DEFAULT_SKILL_CATALOG = [
+  'Cross Connect',
+  'Metro Connect',
+  'Panel Installation',
+  'Deinstalls',
+  'Power',
+  'Migration',
+  'Provide Access',
+  'LOS',
+  'Colo Planung',
+  'Colo Ausfuhrung',
+  'Antenne',
+  'Begleitung',
+] as const;
+
 const DEFAULT_ADVANCED_SETTINGS: AdvancedPlanningSettings = {
   issuePanelEnabled: true,
   issueAutoRefresh: true,
@@ -184,10 +217,68 @@ function normalizeApplicableDays(value: unknown): number[] {
   return fallback;
 }
 
-function formatApplicableDays(days: number[]) {
+function formatApplicableDays(days: number[], weekdayOptions: ReadonlyArray<{ value: number; label: string }>, isGerman: boolean) {
   const normalized = normalizeApplicableDays(days);
-  if (normalized.length === WEEKDAY_OPTIONS.length) return 'Mo bis So';
-  return WEEKDAY_OPTIONS.filter((option) => normalized.includes(option.value)).map((option) => option.label).join(', ');
+  if (normalized.length === weekdayOptions.length) return isGerman ? 'Mo bis So' : 'Mon to Sun';
+  return weekdayOptions.filter((option) => normalized.includes(option.value)).map((option) => option.label).join(', ');
+}
+
+function normalizeShiftDayOffset(value: unknown, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function normalizeSkillCatalog(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      return normalizeSkillCatalog(JSON.parse(value));
+    } catch {
+      return [...new Set(value.split(',').map((entry) => entry.trim()).filter(Boolean))];
+    }
+  }
+
+  return [...DEFAULT_SKILL_CATALOG];
+}
+
+function normalizeRatedSkills(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([skill, rating]) => {
+        const normalizedSkill = String(skill || '').trim();
+        const normalizedRating = Number.parseInt(String(rating ?? ''), 10);
+
+        if (!normalizedSkill) return null;
+        if (!Number.isInteger(normalizedRating) || normalizedRating < 1 || normalizedRating > 5) return null;
+
+        return [normalizedSkill, normalizedRating];
+      })
+      .filter(Boolean) as Array<[string, number]>
+  );
+}
+
+function buildSkillProfile(employeeName: string, existing?: EmployeeSkills): SkillMatrixProfile {
+  return {
+    employee_name: employeeName,
+    can_sh: existing?.can_sh ?? false,
+    can_tt: existing?.can_tt ?? false,
+    can_cc: existing?.can_cc ?? false,
+    updated_at: existing?.updated_at ?? '',
+    rated_skills: normalizeRatedSkills(existing?.rated_skills),
+  };
+}
+
+function formatShiftSpanPreview(definition: ShiftDefinition, shiftDayOffsetOptions: ReadonlyArray<{ value: number; label: string }>, isGerman: boolean) {
+  const fallbackLabel = isGerman ? 'Plan-Tag' : 'Planned day';
+  const startLabel = shiftDayOffsetOptions.find((option) => option.value === normalizeShiftDayOffset(definition.start_day_offset))?.label || fallbackLabel;
+  const endLabel = shiftDayOffsetOptions.find((option) => option.value === normalizeShiftDayOffset(definition.end_day_offset))?.label || fallbackLabel;
+  return `${startLabel} ${definition.start_time || '—'} ${isGerman ? 'bis' : 'to'} ${endLabel} ${definition.end_time || '—'}`;
 }
 
 function HelpTooltip({ text }: { text: string }) {
@@ -248,6 +339,10 @@ function Section({
 }
 
 export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: boolean }) {
+  const { language, t } = useLanguage();
+  const isGerman = language === 'de';
+  const weekdayOptions = getWeekdayOptions(isGerman);
+  const shiftDayOffsetOptions = getShiftDayOffsetOptions(isGerman);
   const [definitions, setDefinitions] = useState<ShiftDefinition[]>([]);
   const [rotation, setRotation] = useState<RotationRules | null>(null);
   const [fairness, setFairness] = useState<FairnessRules | null>(null);
@@ -256,11 +351,15 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const [employees, setEmployees] = useState<string[]>([]);
   const [dbsPool, setDbsPool] = useState<SpecialPoolEntry[]>([]);
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedPlanningSettings>(DEFAULT_ADVANCED_SETTINGS);
+  const [skillsEnabled, setSkillsEnabled] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<string[]>([...DEFAULT_SKILL_CATALOG]);
+  const [skillProfiles, setSkillProfiles] = useState<SkillMatrixProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
   const [newExclusionName, setNewExclusionName] = useState('');
   const [newDbsEmployee, setNewDbsEmployee] = useState('');
+  const [newSkillName, setNewSkillName] = useState('');
 
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type });
@@ -270,7 +369,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, poolRes, appSettingsRes] = await Promise.all([
+      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, poolRes, appSettingsRes, skillsRes] = await Promise.all([
         api.get('/shift-config/definitions'),
         api.get('/shift-config/rotation-rules'),
         api.get('/shift-config/fairness-rules'),
@@ -279,19 +378,34 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         api.get('/shiftplan-control/planning-basis?month=' + new Date().toISOString().slice(0, 7)).catch(() => ({ data: { basis: { employees: [] } } })),
         api.get('/shift-config/special-pools/DBS').catch(() => ({ data: { assignments: [] } })),
         api.get('/app-settings').catch(() => ({ data: {} })),
+        fetchSkills().catch(() => []),
       ]);
+
+      const loadedEmployees = basisRes.data.basis?.employees || [];
+      const configuredSkillCatalog = normalizeSkillCatalog(appSettingsRes.data?.['shiftplan.skill_catalog']);
+      const allSkillProfiles = Array.isArray(skillsRes) ? skillsRes : [];
+      const knownEmployees = [...new Set([
+        ...loadedEmployees,
+        ...allSkillProfiles.map((entry) => String(entry.employee_name || '').trim()).filter(Boolean),
+      ])].sort((left, right) => left.localeCompare(right, 'de'));
+      const skillsByEmployee = new Map(allSkillProfiles.map((entry) => [entry.employee_name, entry]));
 
       setDefinitions((defRes.data.definitions || []).map((definition: ShiftDefinition) => ({
         ...definition,
         applicable_days: normalizeApplicableDays(definition.applicable_days),
+        start_day_offset: normalizeShiftDayOffset(definition.start_day_offset, 0),
+        end_day_offset: normalizeShiftDayOffset(definition.end_day_offset, definition.shift_type === 'night' ? 1 : 0),
       })));
       setRotation(rotRes.data.rules || null);
       setFairness(fairRes.data.rules || null);
       setPlanConfig(planRes.data.config || null);
       setExclusions((exclRes.data.exclusions || []).filter((entry: ShiftplanExclusion) => entry.is_active));
-      setEmployees(basisRes.data.basis?.employees || []);
+      setEmployees(loadedEmployees);
       setDbsPool(poolRes.data.assignments || []);
       setAdvancedSettings(extractAdvancedPlanningSettings(appSettingsRes.data || {}));
+      setSkillsEnabled(parseBooleanSetting(appSettingsRes.data?.['shiftplan.skills_enabled'], false));
+      setSkillCatalog(configuredSkillCatalog);
+      setSkillProfiles(knownEmployees.map((employee) => buildSkillProfile(employee, skillsByEmployee.get(employee))));
     } catch (error: any) {
       showToast(error?.response?.data?.error || error.message, 'err');
     } finally {
@@ -458,6 +572,64 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     setDbsPool((current) => current.filter((entry) => entry.employee_name !== employeeName));
   };
 
+  const addSkillToCatalog = () => {
+    const skillName = newSkillName.trim();
+    if (!skillName) return;
+
+    if (skillCatalog.some((entry) => entry.toLowerCase() === skillName.toLowerCase())) {
+      showToast('Skill existiert bereits', 'err');
+      return;
+    }
+
+    setSkillCatalog((current) => [...current, skillName]);
+    setNewSkillName('');
+  };
+
+  const removeSkillFromCatalog = (skillName: string) => {
+    setSkillCatalog((current) => current.filter((entry) => entry !== skillName));
+    setSkillProfiles((current) => current.map((profile) => {
+      const nextRatedSkills = { ...profile.rated_skills };
+      delete nextRatedSkills[skillName];
+      return { ...profile, rated_skills: nextRatedSkills };
+    }));
+  };
+
+  const setSkillRating = (employeeName: string, skillName: string, rating: number) => {
+    setSkillProfiles((current) => current.map((profile) => {
+      if (profile.employee_name !== employeeName) return profile;
+
+      const nextRatedSkills = { ...profile.rated_skills };
+      if (rating <= 0) delete nextRatedSkills[skillName];
+      else nextRatedSkills[skillName] = rating;
+
+      return { ...profile, rated_skills: nextRatedSkills };
+    }));
+  };
+
+  const saveSkillProfiles = async () => {
+    setSaving('skills');
+    try {
+      await api.put('/app-settings', {
+        'shiftplan.skills_enabled': skillsEnabled,
+        'shiftplan.skill_catalog': JSON.stringify(skillCatalog),
+      });
+
+      await Promise.all(skillProfiles.map((profile) => updateSkills({
+        employee_name: profile.employee_name,
+        can_sh: profile.can_sh,
+        can_tt: profile.can_tt,
+        can_cc: profile.can_cc,
+        rated_skills: profile.rated_skills,
+      })));
+
+      showToast('Skill-Matrix gespeichert');
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || 'Fehler', 'err');
+    } finally {
+      setSaving('');
+    }
+  };
+
   if (loading) {
     const loader = (
       <div className="flex h-64 items-center justify-center">
@@ -501,7 +673,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/10 px-4 py-3 text-sm text-slate-200">
           <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
           <div>
-            Die Wochentage steuern jetzt direkt, an welchen Tagen eine Schicht von der Engine gebaut wird. Damit lassen sich Samstags- und Wochenendpositionen separat pflegen.
+            Die Wochentage steuern jetzt direkt, an welchen Tagen eine Schicht von der Engine gebaut wird. Fur Nachtschichten kann zusatzlich exakt festgelegt werden, ob Beginn und Ende am Plan-Tag oder erst am Folgetag liegen.
           </div>
         </div>
 
@@ -561,6 +733,31 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                   </div>
                 </div>
 
+                {definition.shift_type === 'night' ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Starttag</label>
+                      <select value={normalizeShiftDayOffset(definition.start_day_offset)} onChange={(event) => updateDef(definition.id, 'start_day_offset', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50">
+                        {shiftDayOffsetOptions.map((option) => (
+                          <option key={`start-${option.value}`} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Endtag</label>
+                      <select value={normalizeShiftDayOffset(definition.end_day_offset, 1)} onChange={(event) => updateDef(definition.id, 'end_day_offset', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50">
+                        {shiftDayOffsetOptions.map((option) => (
+                          <option key={`end-${option.value}`} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-200">
+                      <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-slate-400">Zeitfenster</div>
+                      <div>{formatShiftSpanPreview(definition, shiftDayOffsetOptions, isGerman)}</div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
                   <div>
                     <div className="mb-2 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
@@ -568,7 +765,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                       <HelpTooltip text="Nur an aktivierten Tagen wird die Schicht in die Tages-Slots aufgenommen. Damit lassen sich reine Samstag- oder Sa/So-Positionen direkt über die Definition steuern." />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {WEEKDAY_OPTIONS.map((option) => {
+                      {weekdayOptions.map((option) => {
                         const active = applicableDays.includes(option.value);
                         return (
                           <button
@@ -582,7 +779,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                         );
                       })}
                     </div>
-                    <div className="mt-2 text-xs text-slate-400">Aktiv an: {formatApplicableDays(applicableDays)}</div>
+                    <div className="mt-2 text-xs text-slate-400">{t("shiftAdmin.activeOn")}: {formatApplicableDays(applicableDays, weekdayOptions, isGerman)}</div>
                   </div>
 
                   <button onClick={() => void saveDefinition(definition)} disabled={saving === `def-${definition.id}`} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
@@ -637,6 +834,116 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
           <button onClick={saveDbsPool} disabled={saving === 'dbs-pool'} className="inline-flex items-center gap-2 rounded-2xl bg-fuchsia-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-fuchsia-300 disabled:opacity-50">
             <Save className="h-4 w-4" />
             {saving === 'dbs-pool' ? 'Speichert...' : 'DBS-Pool speichern'}
+          </button>
+        </div>
+      </Section>
+
+      <Section title="Skills und Kompetenzmatrix" icon={Star} defaultOpen={false}>
+        <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-slate-200">
+          Hier kann eine detailierte Skill-Matrix pro Mitarbeiter gepflegt werden. Die neue Matrix ist optional aktivierbar und startet bewusst getrennt von den bestehenden SH-, TT- und CC-Coverage-Merkmalen.
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={skillsEnabled} onChange={(event) => setSkillsEnabled(event.target.checked)} className="mt-0.5 rounded border-white/20 bg-slate-950" />
+            <span>
+              Skill-Matrix aktivieren
+              <HelpTooltip text="Wenn diese Option aktiv ist, wird die Skill-Matrix nicht nur angezeigt, sondern auch in der Schichtplanung als fachliches Bewertungskriterium verwendet. Im deaktivierten Zustand bleibt sie reine Stammdatenpflege ohne Einfluss auf die automatische Planung." />
+            </span>
+          </label>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
+            Mitarbeiter: <span className="font-semibold text-slate-100">{skillProfiles.length}</span><br />
+            Skills im Katalog: <span className="font-semibold text-slate-100">{skillCatalog.length}</span>
+          </div>
+        </div>
+
+        <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${skillsEnabled ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100' : 'border-slate-500/20 bg-slate-900/45 text-slate-300'}`}>
+          {skillsEnabled
+            ? 'Die Skill-Matrix ist aktiv. Bewertete und passende Skills fließen jetzt in die automatische Schichtplanung ein.'
+            : 'Die Skill-Matrix ist derzeit nur gepflegt, aber nicht aktiv. Solange der Schalter aus ist, beeinflussen diese Skills die automatische Schichtplanung nicht.'}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/45 p-4">
+          <div className="mb-3 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+            Skill-Katalog
+            <HelpTooltip text="Lege hier die Skill-Namen fest, die im Team bewertet werden sollen. Sterne bedeuten 1 bis 5 Kompetenzstufen. Ein erneuter Klick auf denselben Stern entfernt die Bewertung wieder." />
+          </div>
+          <div className="mb-3 flex flex-col gap-3 xl:flex-row">
+            <input value={newSkillName} onChange={(event) => setNewSkillName(event.target.value)} placeholder="Neuen Skill hinzufugen..." className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            <button onClick={addSkillToCatalog} disabled={!newSkillName.trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-400/15 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:opacity-50">
+              <Plus className="h-4 w-4" />
+              Skill hinzufugen
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {skillCatalog.map((skill) => (
+              <span key={skill} className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-100">
+                {skill}
+                <button type="button" onClick={() => removeSkillFromCatalog(skill)} className="text-amber-200/80 transition hover:text-white" aria-label={`${skill} entfernen`}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {skillProfiles.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">Keine Mitarbeiter fur die Skill-Matrix gefunden.</div>
+          ) : skillProfiles.map((profile) => (
+            <div key={profile.employee_name} className="rounded-2xl border border-white/10 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(2,6,23,0.2)]">
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">{profile.employee_name}</div>
+                  <div className="text-xs text-slate-400">Bewerte die vorhandenen Skills mit 1 bis 5 Sternen. 0 bedeutet noch nicht bewertet.</div>
+                </div>
+                <div className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-xs text-slate-300">
+                  Bewertete Skills: {Object.keys(profile.rated_skills || {}).length}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                {skillCatalog.map((skill) => {
+                  const rating = profile.rated_skills?.[skill] ?? 0;
+
+                  return (
+                    <div key={`${profile.employee_name}-${skill}`} className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-slate-100">{skill}</div>
+                        <div className="text-xs text-slate-400">{rating}/5</div>
+                      </div>
+                      <div className="mt-3 flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const active = rating >= star;
+                          const nextRating = rating === star ? 0 : star;
+
+                          return (
+                            <button
+                              key={`${profile.employee_name}-${skill}-${star}`}
+                              type="button"
+                              onClick={() => setSkillRating(profile.employee_name, skill, nextRating)}
+                              className={`rounded-full p-1 transition ${active ? 'text-amber-300 hover:text-amber-200' : 'text-slate-600 hover:text-amber-200'}`}
+                              aria-label={`${skill} mit ${star} Sternen bewerten`}
+                            >
+                              <Star className={`h-4 w-4 ${active ? 'fill-current' : ''}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button onClick={saveSkillProfiles} disabled={saving === 'skills'} className="inline-flex items-center gap-2 rounded-2xl bg-amber-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-300 disabled:opacity-50">
+            <Save className="h-4 w-4" />
+            {saving === 'skills' ? 'Speichert...' : 'Skill-Matrix speichern'}
           </button>
         </div>
       </Section>
@@ -920,8 +1227,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     <EnterprisePageShell style={{ maxWidth: 'none' }}>
       <EnterpriseHeader
         icon={<Settings2 className="h-6 w-6 text-blue-400" />}
-        title="Schichtplaneinstellungen"
-        subtitle="Konfiguration aller Regeln, Wochenend-Varianten und DBS-Parameter"
+        title={t("shiftAdmin.title")}
+        subtitle={t("shiftAdmin.subtitle")}
       />
       {content}
     </EnterprisePageShell>

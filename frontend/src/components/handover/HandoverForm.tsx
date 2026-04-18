@@ -10,6 +10,7 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Save, Upload } from "lucide-react";
 import { cn } from "../ui/utils";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -50,6 +51,7 @@ export function HandoverForm({
   isSubmitting,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   /* ------------------------------------------------ */
   /* LOCAL UI STATE                                  */
@@ -117,19 +119,19 @@ export function HandoverForm({
   return (
     <Card className="rounded-2xl">
       <CardHeader>
-        <CardTitle>Neues Handover</CardTitle>
+        <CardTitle>{t("handover.formTitle")}</CardTitle>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={onSubmit} noValidate className="space-y-5">
           {Object.keys(errors).length > 0 && (
             <div className="text-sm text-blue-400">
-              Bitte alle Pflichtfelder ausfüllen.
+              {t("handover.requiredFields")}
             </div>
           )}
 
           <div>
-            <Label>Ticketnummer</Label>
+            <Label>{t("handover.ticketNumber")}</Label>
             <Input
               className={cn(fieldBase, errors.ticketNumber && errorClass)}
               value={formData.ticketNumber}
@@ -140,7 +142,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Kundenname</Label>
+            <Label>{t("handover.customerName")}</Label>
             <Input
               className={cn(fieldBase, errors.customerName && errorClass)}
               value={formData.customerName}
@@ -151,7 +153,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Bereich</Label>
+            <Label>{t("handover.area")}</Label>
             <div className="mt-1.5 flex flex-wrap gap-2">
               {areaOptions.map((opt) => {
                 const selected = formData.area === opt;
@@ -178,7 +180,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Typ</Label>
+            <Label>{t("handover.type")}</Label>
             <div className="mt-1.5 flex flex-wrap gap-2">
               {["Workload", "Terminiert", "Other Teams", "Manual"].map((t) => {
                 const selected = formData.type === t;
@@ -205,7 +207,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Priorität</Label>
+            <Label>{t("handover.priority")}</Label>
             <div className="mt-1.5 flex flex-wrap gap-2">
               {priorityOptions.map((opt) => {
                 const selected = formData.priority === opt.value;
@@ -234,7 +236,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Commit-Zeitpunkt</Label>
+            <Label>{t("handover.commitTime")}</Label>
             <Input
               type="datetime-local"
               className={cn(fieldBase, errors.commitAt && errorClass)}
@@ -273,7 +275,7 @@ export function HandoverForm({
           </div>
 
           <div>
-            <Label>Beschreibung</Label>
+            <Label>{t("handover.description")}</Label>
             <Textarea
               rows={4}
               className={cn(fieldBase, errors.description && errorClass)}
@@ -298,21 +300,21 @@ export function HandoverForm({
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="w-4 h-4 mr-2" />
-            Dateien auswählen
+            {t("handover.selectFiles")}
           </Button>
 
           {uploadQueue && uploadQueue.length > 0 && (
             <div className="mt-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
               <div className="flex justify-between">
                 <span>
-                  {uploadQueue.length} Datei(en) ausgewählt
+                  {uploadQueue.length} {t("handover.filesSelected")}
                 </span>
                 <button
                   type="button"
                   onClick={clearSelectedFiles}
                   className="text-xs text-white/60"
                 >
-                  Auswahl löschen
+                  {t("handover.clearSelection")}
                 </button>
               </div>
             </div>
@@ -320,7 +322,7 @@ export function HandoverForm({
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             <Save className="w-4 h-4 mr-2" />
-            {isSubmitting ? "Speichern…" : "Speichern"}
+            {isSubmitting ? t("common.saving") : t("common.save")}
           </Button>
         </form>
       </CardContent>

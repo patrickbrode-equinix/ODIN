@@ -57,14 +57,13 @@ interface EnterprisePageShellProps extends React.HTMLAttributes<HTMLDivElement> 
     children: React.ReactNode;
 }
 
-export function EnterprisePageShell({ children, style, ...props }: EnterprisePageShellProps) {
+export function EnterprisePageShell({ children, style, className, ...props }: EnterprisePageShellProps) {
     return (
         <>
             <style>{ENT_GLOBAL_STYLES}</style>
             <div
+                className={`flex min-h-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-3 py-3 sm:gap-[18px] sm:px-4 sm:py-4 lg:px-5 lg:py-5 ${className || ""}`}
                 style={{
-                    display: "flex", flexDirection: "column", gap: "18px",
-                    padding: "22px", minHeight: 0, overflowY: "auto",
                     background: "transparent",
                     ...style
                 }}
@@ -114,9 +113,9 @@ export function EnterpriseHeader({ icon, title, subtitle, rightContent, style, .
             </div>
 
             {/* RIGHT CONTENT */}
-            <div className="flex items-center gap-6 justify-end">
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-3 sm:gap-6">
                 {rightContent && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex max-w-full flex-wrap items-center gap-2">
                         {rightContent}
                     </div>
                 )}

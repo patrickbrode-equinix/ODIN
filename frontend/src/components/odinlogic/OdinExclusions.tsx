@@ -10,8 +10,13 @@ import {
   type AssignmentExclusionEntry,
   type AssignmentSubtypeExclusionEntry,
 } from "../../api/assignment";
+import { InfoTooltip } from "../ui/InfoTooltip";
+import { getLanguageLocale, useLanguage } from "../../context/LanguageContext";
 
 export default function OdinExclusions() {
+  const { language } = useLanguage();
+  const isGerman = language === "de";
+  const locale = getLanguageLocale(language);
   const [exclusions, setExclusions] = useState<AssignmentExclusionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [availableSystemNames, setAvailableSystemNames] = useState<string[]>([]);
@@ -76,7 +81,7 @@ export default function OdinExclusions() {
   };
 
   const handleDelete = async (id: number, systemName: string) => {
-    if (!confirm(`System Name "${systemName}" von der Ausnahmeliste entfernen?`)) return;
+    if (!confirm(isGerman ? `Systemname "${systemName}" von der Ausnahmeliste entfernen?` : `Remove system name "${systemName}" from the exclusion list?`)) return;
     try {
       await AssignmentApi.deleteExclusion(id);
       load();
@@ -117,7 +122,7 @@ export default function OdinExclusions() {
   };
 
   const handleDeleteSubtype = async (id: number, subtype: string) => {
-    if (!confirm(`Subtype "${subtype}" von der Ausnahmeliste entfernen?`)) return;
+    if (!confirm(isGerman ? `Subtype "${subtype}" von der Ausnahmeliste entfernen?` : `Remove subtype "${subtype}" from the exclusion list?`)) return;
     try {
       await AssignmentApi.deleteSubtypeExclusion(id);
       loadSubtypes();
@@ -131,32 +136,43 @@ export default function OdinExclusions() {
       <div className="flex items-center gap-3 mb-2">
         <ShieldBan className="w-5 h-5 text-amber-400" />
         <div>
-          <h3 className="font-semibold text-sm">Manuelle Ausnahmeliste</h3>
-          <p className="text-xs text-muted-foreground">Tickets mit diesen System Names werden nicht automatisch zugewiesen, sondern gehen an den Dispatcher zur manuellen Prüfung.</p>
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-semibold text-sm">{isGerman ? 'Manuelle Ausnahmeliste' : 'Manual exclusion list'}</h3>
+            <InfoTooltip title={isGerman ? 'Manuelle Ausnahmeliste' : 'Manual exclusion list'} side="right" align="start" width="w-96">
+              <p>{isGerman ? 'Systeme in dieser Liste werden aus der Auto-Zuweisung entfernt und landen im manuellen Review.' : 'Systems in this list are removed from auto-assignment and routed to manual review.'}</p>
+            </InfoTooltip>
+          </div>
+          <p className="text-xs text-muted-foreground">{isGerman ? 'Tickets mit diesen Systemnamen werden nicht automatisch zugewiesen, sondern gehen an den Dispatcher zur manuellen Prüfung.' : 'Tickets with these system names are not assigned automatically and go to the dispatcher for manual review.'}</p>
         </div>
       </div>
 
       {/* ADD FORM */}
       <div className="flex gap-3 items-end">
         <div className="flex-1">
-          <label className="text-xs text-muted-foreground mb-1 block">System Name</label>
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{isGerman ? 'Systemname' : 'System name'}</span>
+            <InfoTooltip title={isGerman ? 'Systemname' : 'System name'} side="right"><p>{isGerman ? 'Exakter oder aus der Datenbank übernommener Systemname, der von der automatischen Zuweisung ausgeschlossen werden soll.' : 'Exact system name or a database value that should be excluded from automatic assignment.'}</p></InfoTooltip>
+          </div>
           <input
             type="text"
             value={newSystemName}
             onChange={(e) => setNewSystemName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            placeholder="z.B. ABC-SYSTEM-01"
+            placeholder={isGerman ? 'z. B. ABC-SYSTEM-01' : 'e.g. ABC-SYSTEM-01'}
             className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
           />
         </div>
         <div className="flex-1">
-          <label className="text-xs text-muted-foreground mb-1 block">Grund (optional)</label>
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{isGerman ? 'Grund (optional)' : 'Reason (optional)'}</span>
+            <InfoTooltip title={isGerman ? 'Grund' : 'Reason'} side="right"><p>{isGerman ? 'Fachliche Begründung, warum dieses System manuell bearbeitet werden muss, z. B. Sonderprozess oder unvollständige Datenlage.' : 'Operational reason why this system must be handled manually, for example a special process or incomplete data.'}</p></InfoTooltip>
+          </div>
           <input
             type="text"
             value={newReason}
             onChange={(e) => setNewReason(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            placeholder="z.B. Sonderprozess erforderlich"
+            placeholder={isGerman ? 'z. B. Sonderprozess erforderlich' : 'e.g. special process required'}
             className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
           />
         </div>
@@ -166,7 +182,7 @@ export default function OdinExclusions() {
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-50 transition"
         >
           <Plus className="w-4 h-4" />
-          Hinzufügen
+          {isGerman ? 'Hinzufügen' : 'Add'}
         </button>
       </div>
 
@@ -177,11 +193,12 @@ export default function OdinExclusions() {
       )}
 
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Aktuelle Systemnamen aus der Datenbank ({filteredSystemNames.length})
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <span>{isGerman ? `Aktuelle Systemnamen aus der Datenbank (${filteredSystemNames.length})` : `Current system names from the database (${filteredSystemNames.length})`}</span>
+            <InfoTooltip title={isGerman ? 'Aktuelle Systemnamen' : 'Current system names'} side="right" align="start"><p>{isGerman ? 'Diese Vorschlagsliste basiert auf real vorkommenden Systemnamen und verhindert Tippfehler beim Ausschluss.' : 'This suggestion list is based on real system names from the database and helps avoid typos.'}</p></InfoTooltip>
         </div>
         {filteredSystemNames.length === 0 ? (
-          <div className="text-xs text-muted-foreground">Keine weiteren Systemnamen zur Auswahl.</div>
+          <div className="text-xs text-muted-foreground">{isGerman ? 'Keine weiteren Systemnamen zur Auswahl.' : 'No additional system names available.'}</div>
         ) : (
           <div className="flex max-h-40 flex-wrap gap-2 overflow-auto pr-2">
             {filteredSystemNames.map((systemName) => (
@@ -206,19 +223,19 @@ export default function OdinExclusions() {
         <table className="w-full text-sm">
           <thead className="bg-white/5 text-muted-foreground text-xs uppercase tracking-wider">
             <tr>
-              <th className="text-left px-4 py-2">System Name</th>
-              <th className="text-left px-4 py-2">Grund</th>
-              <th className="text-left px-4 py-2">Erstellt von</th>
-              <th className="text-left px-4 py-2">Erstellt am</th>
+              <th className="text-left px-4 py-2"><span className="inline-flex items-center gap-1">{isGerman ? 'Systemname' : 'System name'} <InfoTooltip title={isGerman ? 'Systemname' : 'System name'} side="right"><p>{isGerman ? 'Der konkret ausgeschlossene Systemname.' : 'The exact excluded system name.'}</p></InfoTooltip></span></th>
+              <th className="text-left px-4 py-2"><span className="inline-flex items-center gap-1">{isGerman ? 'Grund' : 'Reason'} <InfoTooltip title={isGerman ? 'Grund' : 'Reason'} side="right"><p>{isGerman ? 'Dokumentiert, warum der Ausschluss existiert.' : 'Documents why the exclusion exists.'}</p></InfoTooltip></span></th>
+              <th className="text-left px-4 py-2"><span className="inline-flex items-center gap-1">{isGerman ? 'Erstellt von' : 'Created by'} <InfoTooltip title={isGerman ? 'Erstellt von' : 'Created by'} side="right"><p>{isGerman ? 'Nutzer oder System, das den Ausschluss angelegt hat.' : 'User or system that created the exclusion.'}</p></InfoTooltip></span></th>
+              <th className="text-left px-4 py-2"><span className="inline-flex items-center gap-1">{isGerman ? 'Erstellt am' : 'Created at'} <InfoTooltip title={isGerman ? 'Erstellt am' : 'Created at'} side="right"><p>{isGerman ? 'Zeitpunkt, an dem der Ausschluss angelegt wurde.' : 'Timestamp when the exclusion was created.'}</p></InfoTooltip></span></th>
               <th className="w-16 px-4 py-2" />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {loading && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Laden...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">{isGerman ? 'Laden...' : 'Loading...'}</td></tr>
             )}
             {!loading && exclusions.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Keine Einträge auf der Ausnahmeliste</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">{isGerman ? 'Keine Einträge auf der Ausnahmeliste' : 'No entries in the exclusion list'}</td></tr>
             )}
             {exclusions.map((ex) => (
               <tr key={ex.id} className="hover:bg-white/5 transition">
@@ -226,13 +243,13 @@ export default function OdinExclusions() {
                 <td className="px-4 py-2 text-muted-foreground">{ex.reason || "—"}</td>
                 <td className="px-4 py-2 text-xs text-muted-foreground">{ex.created_by}</td>
                 <td className="px-4 py-2 text-xs text-muted-foreground">
-                  {new Date(ex.created_at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(ex.created_at).toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </td>
                 <td className="px-4 py-2 text-right">
                   <button
                     onClick={() => handleDelete(ex.id, ex.system_name)}
                     className="p-1.5 hover:bg-red-500/10 rounded-lg text-muted-foreground hover:text-red-400 transition"
-                    title="Entfernen"
+                    title={isGerman ? 'Entfernen' : 'Remove'}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -248,22 +265,28 @@ export default function OdinExclusions() {
         <div className="flex items-center gap-3 mb-2">
           <Tag className="w-5 h-5 text-orange-400" />
           <div>
-            <h3 className="font-semibold text-sm">Subtype-Ausnahmen</h3>
-            <p className="text-xs text-muted-foreground">Tickets mit diesen Subtypes (customer_trouble_type) werden nicht automatisch zugewiesen.</p>
+            <div className="flex items-center gap-1.5">
+              <h3 className="font-semibold text-sm">{isGerman ? 'Subtype-Ausnahmen' : 'Subtype exclusions'}</h3>
+              <InfoTooltip title={isGerman ? 'Subtype-Ausnahmen' : 'Subtype exclusions'} side="right" align="start"><p>{isGerman ? 'Bestimmte customer_trouble_type-Werte werden hier gezielt von ODIN ausgeschlossen.' : 'Specific customer_trouble_type values can be excluded from ODIN here.'}</p></InfoTooltip>
+            </div>
+            <p className="text-xs text-muted-foreground">{isGerman ? 'Tickets mit diesen Subtypes (customer_trouble_type) werden nicht automatisch zugewiesen.' : 'Tickets with these subtypes (customer_trouble_type) are not assigned automatically.'}</p>
           </div>
         </div>
 
         {/* ADD SUBTYPE FORM */}
         <div className="flex gap-3 items-end">
           <div className="flex-1">
-            <label className="text-xs text-muted-foreground mb-1 block">Subtype</label>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Subtype</span>
+              <InfoTooltip title="Subtype" side="right"><p>{isGerman ? 'Der Ticket-Subtype, der in den manuellen Review umgeleitet werden soll.' : 'The ticket subtype that should be routed to manual review.'}</p></InfoTooltip>
+            </div>
             <div className="flex gap-2">
               <select
                 value={selectedSubtype}
                 onChange={(e) => setSelectedSubtype(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
               >
-                <option value="">— Subtype wählen —</option>
+                <option value="">{isGerman ? '— Subtype wählen —' : '— Select subtype —'}</option>
                 {availableSubtypes
                   .filter((s) => !subtypeExclusions.some((e) => e.subtype === s))
                   .map((s) => (
@@ -274,19 +297,22 @@ export default function OdinExclusions() {
                 type="text"
                 value={selectedSubtype}
                 onChange={(e) => setSelectedSubtype(e.target.value)}
-                placeholder="oder manuell eingeben"
+                placeholder={isGerman ? 'oder manuell eingeben' : 'or enter manually'}
                 className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
               />
             </div>
           </div>
           <div className="flex-1">
-            <label className="text-xs text-muted-foreground mb-1 block">Grund (optional)</label>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{isGerman ? 'Grund (optional)' : 'Reason (optional)'}</span>
+              <InfoTooltip title={isGerman ? 'Grund' : 'Reason'} side="right"><p>{isGerman ? 'Optionaler Hinweis, warum dieser Subtype nicht automatisch verteilt werden soll.' : 'Optional note describing why this subtype should not be assigned automatically.'}</p></InfoTooltip>
+            </div>
             <input
               type="text"
               value={subtypeReason}
               onChange={(e) => setSubtypeReason(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddSubtype()}
-              placeholder="z.B. Sonderprozess"
+              placeholder={isGerman ? 'z. B. Sonderprozess' : 'e.g. special process'}
               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:border-indigo-500/50 focus:outline-none"
             />
           </div>
@@ -296,7 +322,7 @@ export default function OdinExclusions() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-500 disabled:opacity-50 transition"
           >
             <Plus className="w-4 h-4" />
-            Hinzufügen
+            {isGerman ? 'Hinzufügen' : 'Add'}
           </button>
         </div>
 
@@ -307,11 +333,12 @@ export default function OdinExclusions() {
         )}
 
         <div className="rounded-xl border border-white/10 bg-white/5 p-4 mt-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Aktuelle Ticket-Subtypes aus der Datenbank ({filteredSubtypes.length})
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <span>{isGerman ? `Aktuelle Ticket-Subtypes aus der Datenbank (${filteredSubtypes.length})` : `Current ticket subtypes from the database (${filteredSubtypes.length})`}</span>
+            <InfoTooltip title={isGerman ? 'Aktuelle Ticket-Subtypes' : 'Current ticket subtypes'} side="right" align="start"><p>{isGerman ? 'Vorschlagsliste aus der Datenbank, damit Ausschlüsse konsistent und ohne Tippfehler gepflegt werden.' : 'Suggestion list from the database so exclusions can be maintained consistently and without typos.'}</p></InfoTooltip>
           </div>
           {filteredSubtypes.length === 0 ? (
-            <div className="text-xs text-muted-foreground">Keine weiteren Subtypes zur Auswahl.</div>
+            <div className="text-xs text-muted-foreground">{isGerman ? 'Keine weiteren Subtypes zur Auswahl.' : 'No additional subtypes available.'}</div>
           ) : (
             <div className="flex max-h-40 flex-wrap gap-2 overflow-auto pr-2">
               {filteredSubtypes.map((subtype) => (
@@ -337,18 +364,18 @@ export default function OdinExclusions() {
             <thead className="bg-white/5 text-muted-foreground text-xs uppercase tracking-wider">
               <tr>
                 <th className="text-left px-4 py-2">Subtype</th>
-                <th className="text-left px-4 py-2">Grund</th>
-                <th className="text-left px-4 py-2">Erstellt von</th>
-                <th className="text-left px-4 py-2">Erstellt am</th>
+                <th className="text-left px-4 py-2">{isGerman ? 'Grund' : 'Reason'}</th>
+                <th className="text-left px-4 py-2">{isGerman ? 'Erstellt von' : 'Created by'}</th>
+                <th className="text-left px-4 py-2">{isGerman ? 'Erstellt am' : 'Created at'}</th>
                 <th className="w-16 px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {subtypeLoading && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Laden...</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">{isGerman ? 'Laden...' : 'Loading...'}</td></tr>
               )}
               {!subtypeLoading && subtypeExclusions.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Keine Subtype-Ausnahmen definiert</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">{isGerman ? 'Keine Subtype-Ausnahmen definiert' : 'No subtype exclusions defined'}</td></tr>
               )}
               {subtypeExclusions.map((ex) => (
                 <tr key={ex.id} className="hover:bg-white/5 transition">
@@ -356,13 +383,13 @@ export default function OdinExclusions() {
                   <td className="px-4 py-2 text-muted-foreground">{ex.reason || "—"}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{ex.created_by}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">
-                    {new Date(ex.created_at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    {new Date(ex.created_at).toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button
                       onClick={() => handleDeleteSubtype(ex.id, ex.subtype)}
                       className="p-1.5 hover:bg-red-500/10 rounded-lg text-muted-foreground hover:text-red-400 transition"
-                      title="Entfernen"
+                      title={isGerman ? 'Entfernen' : 'Remove'}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

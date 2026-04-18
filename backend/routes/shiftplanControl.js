@@ -44,6 +44,163 @@ function dayOfWeek(year, month, day) {
   return new Date(year, month - 1, day).getDay(); // 0=Sun, 6=Sat
 }
 
+function easterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month, day);
+}
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function toIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildHessenHolidayMap(year) {
+  const easter = easterSunday(year);
+  const map = {
+    [toIsoDate(new Date(year, 0, 1))]: 'Neujahr',
+    [toIsoDate(addDays(easter, -2))]: 'Karfreitag',
+    [toIsoDate(addDays(easter, 1))]: 'Ostermontag',
+    [toIsoDate(new Date(year, 4, 1))]: 'Tag der Arbeit',
+    [toIsoDate(addDays(easter, 39))]: 'Christi Himmelfahrt',
+    [toIsoDate(addDays(easter, 50))]: 'Pfingstmontag',
+    [toIsoDate(addDays(easter, 60))]: 'Fronleichnam',
+    [toIsoDate(new Date(year, 9, 3))]: 'Tag der Deutschen Einheit',
+    [toIsoDate(new Date(year, 11, 25))]: '1. Weihnachtstag',
+    [toIsoDate(new Date(year, 11, 26))]: '2. Weihnachtstag',
+  };
+
+  return map;
+}
+
+function parseBooleanAppSetting(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+  }
+  return fallback;
+}
+
+function normalizeSkillText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+const SKILL_MATCH_ALIASES = {
+  'Cross Connect': ['cross connect', 'crossconnect', ' cc '],
+  'Metro Connect': ['metro connect', 'metroconnect', ' mc '],
+  'Panel Installation': ['panel installation', 'panel'],
+  'Deinstalls': ['deinstall', 'deinstalls', 'de install'],
+  Power: ['power'],
+  Migration: ['migration'],
+  'Provide Access': ['provide access', 'access'],
+  LOS: [' los '],
+  'Colo Planung': ['colo planung', 'colo plan'],
+  'Colo Ausfuhrung': ['colo ausfuhrung', 'colo ausfuhrung', 'colo ausf'],
+  Antenne: ['antenne'],
+  Begleitung: ['begleitung'],
+};
+
+function getShiftSkillSignals(shiftDef) {
+  const label = ` ${normalizeSkillText(`${shiftDef.code || ''} ${shiftDef.name || ''} ${shiftDef.short_name || ''}`)} `;
+  const ratedSkills = Object.entries(SKILL_MATCH_ALIASES)
+    .filter(([, aliases]) => aliases.some((alias) => label.includes(` ${normalizeSkillText(alias)} `)))
+    .map(([skill]) => skill);
+
+  const legacySkills = [];
+  if (label.includes(' cc ') || label.includes(' cross connect ')) legacySkills.push('can_cc');
+  if (label.includes(' tt ') || label.includes(' trouble ticket ') || label.includes(' troubleticket ')) legacySkills.push('can_tt');
+  if (label.includes(' sh ') || label.includes(' smart hand ') || label.includes(' smarthand ')) legacySkills.push('can_sh');
+
+  return {
+    ratedSkills,
+    legacySkills,
+  };
+}
+
+function getBestRatedSkillMatch(skillProfile, shiftSkillSignals) {
+  if (!skillProfile || !skillProfile.rated_skills || typeof skillProfile.rated_skills !== 'object') return null;
+
+  let bestMatch = null;
+  for (const skillName of shiftSkillSignals.ratedSkills) {
+    const rating = Number.parseInt(String(skillProfile.rated_skills?.[skillName] ?? ''), 10);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) continue;
+
+    if (!bestMatch || rating > bestMatch.rating) {
+      bestMatch = { skill: skillName, rating };
+    }
+  }
+
+  return bestMatch;
+}
+
+function hasLegacySkillMatch(skillProfile, shiftSkillSignals) {
+  if (!skillProfile) return false;
+  return shiftSkillSignals.legacySkills.some((skillKey) => skillProfile[skillKey] === true);
+}
+
+async function getRamadanRangeForYear(year) {
+  const { rows } = await pool.query(
+    `SELECT
+        to_char(ramadan_start, 'YYYY-MM-DD') AS ramadan_start,
+        to_char(ramadan_end, 'YYYY-MM-DD') AS ramadan_end
+     FROM islamic_calendar_cache
+     WHERE year = $1
+       AND ramadan_start IS NOT NULL
+       AND ramadan_end IS NOT NULL
+     ORDER BY id DESC
+     LIMIT 1`,
+    [year]
+  );
+
+  if (!rows.length) return null;
+
+  return {
+    start: rows[0].ramadan_start,
+    end: rows[0].ramadan_end,
+  };
+}
+
+async function loadShiftplanFeatureFlags() {
+  const { rows } = await pool.query(
+    `SELECT key, value
+     FROM app_settings
+     WHERE key = ANY($1::text[])`,
+    [['shiftplan.skills_enabled']]
+  );
+
+  const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+
+  return {
+    skillsEnabled: parseBooleanAppSetting(settings['shiftplan.skills_enabled'], false),
+  };
+}
+
 /**
  * Normalize employee name: trim, collapse whitespace.
  * Filters out entries that look like email addresses.
@@ -321,6 +478,9 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
   planReport.activeEmployees = activeEmployees.length;
   const targetHours = Math.max(Number.parseFloat(String(planConfig.monthly_target_hours ?? 174)) || 174, 1);
   const baselineShiftSlots = buildShiftSlots(shiftDefs, staffingRules);
+  const holidayMap = buildHessenHolidayMap(year);
+  const ramadanRange = await getRamadanRangeForYear(year);
+  const featureFlags = await loadShiftplanFeatureFlags();
 
   for (const emp of activeEmployees) {
     empStats[emp] = { nights: 0, weekends: 0, earlyCount: 0, lateCount: 0, total: 0, actualHours: 0, targetHours, specialShiftCounts: {} };
@@ -337,6 +497,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
     const dateStr = `${month}-${String(day).padStart(2, '0')}`;
     const weekend = isWeekend(year, mon, day);
     const dow = dayOfWeek(year, mon, day);
+    const holidayName = holidayMap[dateStr] || null;
 
     // Determine available employees for this day
     const availableForDay = activeEmployees.filter(emp => {
@@ -378,10 +539,17 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
     // Process each shift definition
     for (const shiftDef of shiftSlots) {
       const neededStaff = shiftDef.planned_slots || shiftDef.min_staff || 1;
+      const shiftSkillSignals = featureFlags.skillsEnabled ? getShiftSkillSignals(shiftDef) : { ratedSkills: [], legacySkills: [] };
 
       for (let slot = 0; slot < neededStaff; slot++) {
         // Build candidate list (not yet assigned today)
         const candidates = availableForDay.filter(emp => !assignedToday.has(emp));
+        const matchingSkillCandidates = featureFlags.skillsEnabled && (shiftSkillSignals.ratedSkills.length > 0 || shiftSkillSignals.legacySkills.length > 0)
+          ? candidates.filter((emp) => {
+              const skillProfile = skillsMap.get(emp);
+              return hasLegacySkillMatch(skillProfile, shiftSkillSignals) || !!getBestRatedSkillMatch(skillProfile, shiftSkillSignals);
+            })
+          : [];
 
         if (candidates.length === 0) {
           conflicts.push({
@@ -463,6 +631,27 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             return { emp, score: Number.NEGATIVE_INFINITY, reasons, hardBlocked: true };
           }
 
+          if (featureFlags.skillsEnabled && (shiftSkillSignals.ratedSkills.length > 0 || shiftSkillSignals.legacySkills.length > 0)) {
+            const skillProfile = skillsMap.get(emp);
+            const ratedSkillMatch = getBestRatedSkillMatch(skillProfile, shiftSkillSignals);
+            const legacySkillMatch = hasLegacySkillMatch(skillProfile, shiftSkillSignals);
+
+            if (ratedSkillMatch) {
+              score += 60 + ratedSkillMatch.rating * 18;
+              reasons.push(`Skill-Match: ${ratedSkillMatch.skill} (${ratedSkillMatch.rating}/5)`);
+            }
+
+            if (legacySkillMatch) {
+              score += 40;
+              reasons.push('Qualifikationsprofil passt zur Schicht');
+            }
+
+            if (!ratedSkillMatch && !legacySkillMatch && matchingSkillCandidates.length > 0) {
+              score -= 110;
+              reasons.push('Skill-Matrix aktiv: andere Kandidaten passen fachlich besser');
+            }
+          }
+
           // === FAIRNESS (soft scoring) ===
 
           // Total shift balance: prefer employees with fewer total shifts
@@ -507,6 +696,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           if (planConfig.respect_employee_wishes && prefs) {
             const preferredShifts = prefs.preferred_shifts || [];
             const unwantedShifts = prefs.unwanted_shifts || [];
+            const preferredHolidays = prefs.preferred_holidays || [];
             const blockedDays = prefs.blocked_days || [];
             const preferredDays = prefs.preferred_days || [];
             const maxNights = prefs.max_nights_per_month;
@@ -526,6 +716,27 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             if (preferredDays.includes(dow)) {
               score += planConfig.soft_wishes_priority * 3;
               reasons.push(`Mitarbeiterwunsch: Tag ${dow} bevorzugt`);
+            }
+            if (holidayName && preferredHolidays.includes(holidayName)) {
+              score -= planConfig.soft_wishes_priority * 18;
+              reasons.push(`Mitarbeiterwunsch: ${holidayName} freihalten`);
+            }
+            if (preferredHolidays.includes('Ramadan') && ramadanRange && dateStr >= ramadanRange.start && dateStr <= ramadanRange.end) {
+              score -= planConfig.soft_wishes_priority * 6;
+              reasons.push('Mitarbeiterwunsch: Ramadan-Entlastung');
+
+              if (shiftDef.shift_type === 'early') {
+                score += planConfig.soft_wishes_priority * 2;
+                reasons.push('Ramadan: Frühschicht bevorzugt');
+              }
+              if (shiftDef.shift_type === 'late') {
+                score -= planConfig.soft_wishes_priority * 10;
+                reasons.push('Ramadan: Spätschicht möglichst vermeiden');
+              }
+              if (shiftDef.shift_type === 'night') {
+                score -= planConfig.soft_wishes_priority * 16;
+                reasons.push('Ramadan: Nachtschicht möglichst vermeiden');
+              }
             }
             if (maxNights !== null && maxNights !== undefined && shiftDef.shift_type === 'night' && stats.nights >= maxNights) {
               score -= 1500;
@@ -631,6 +842,7 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
         if (prefs) {
           if ((prefs.preferred_shifts || []).includes(shiftDef.code)) planReport.wishesRespected++;
           if ((prefs.unwanted_shifts || []).includes(shiftDef.code)) planReport.wishesDenied++;
+          if (holidayName && (prefs.preferred_holidays || []).includes(holidayName)) planReport.wishesDenied++;
         }
       }
     }
@@ -716,7 +928,16 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       activeEmployees: activeEmployees.length,
       excluded: shiftExcludedSet.size,
       daysInMonth: numDays,
-      shiftDefinitions: shiftDefs.map(d => ({ code: d.code, name: d.name, type: d.shift_type, minStaff: d.min_staff, maxStaff: d.max_staff, durationHours: getShiftDurationHours(d) })),
+      shiftDefinitions: shiftDefs.map(d => ({
+        code: d.code,
+        name: d.name,
+        type: d.shift_type,
+        minStaff: d.min_staff,
+        maxStaff: d.max_staff,
+        durationHours: getShiftDurationHours(d),
+        startDayOffset: Number.parseInt(String(d.start_day_offset ?? 0), 10) || 0,
+        endDayOffset: Number.parseInt(String(d.end_day_offset ?? (d.shift_type === 'night' ? 1 : 0)), 10) || 0,
+      })),
       rotationRules: rotation,
       fairnessRules,
       planningConfig: planConfig,

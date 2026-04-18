@@ -181,7 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadCommitBootstrap() {
     try {
       const rows = await queueApi.getTickets();
-      useCommitStore.getState().setTickets(rows);
+      useCommitStore.getState().setTickets(rows as any);
     } catch (err) {
       console.error("Live ticket bootstrap load failed:", err);
       useCommitStore.getState().setTickets([]);

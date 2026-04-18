@@ -8,10 +8,11 @@
 import type { App } from "@microsoft/teams.apps";
 import type { ConversationReference } from "@microsoft/teams.api";
 import type { IConversationRefRepository, IUserMappingRepository } from "../repositories/index";
-import type { TicketNotifyPayload, ShiftOpenNotifyPayload, SupervisorApprovalPayload, StoredConversationRef } from "../models/index";
+import type { TicketNotifyPayload, ShiftOpenNotifyPayload, SupervisorApprovalPayload, VerificationNotifyPayload, StoredConversationRef } from "../models/index";
 import { buildTicketAssignmentCard } from "../cards/ticket-assignment.card";
 import { buildShiftOpenCard } from "../cards/shift-open.card";
 import { buildSupervisorApprovalCard } from "../cards/supervisor-approval.card";
+import { buildVerificationCard } from "../cards/verification.card";
 import { GraphService, GraphError } from "./graph.service";
 import type { GraphMessageAttachment } from "./graph.service";
 import { logger } from "../utils/logger";
@@ -281,6 +282,95 @@ export class NotificationService {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`Supervisor approval send failed: entityId=${payload.entityId}`, { error: msg });
       return { success: false, error: `Send failed: ${msg}` };
+    }
+  }
+
+  /**
+   * Send a shift verification card to an employee (personal chat).
+   * Uses the same resolution logic as ticket notifications:
+   * 1. employeeName → UserMapping → ConvRef (cached)
+   * 2. email → Graph fallback
+   */
+  async sendVerificationNotification(payload: VerificationNotifyPayload): Promise<NotifyResult> {
+    // Try cached path: employeeId → mapping → convRef
+    const lookupId = payload.employeeId || payload.employeeName;
+    const mapping = await this.userMappingRepo.getByEmployeeId(lookupId);
+
+    if (mapping && mapping.enabled) {
+      const convRef = await this.resolvePersonalConvRef(mapping.aadObjectId);
+      if (convRef) {
+        const card = buildVerificationCard({
+          employeeName: payload.employeeName,
+          shiftCode: payload.shiftCode,
+          date: payload.date,
+        });
+        try {
+          await this.app.send(convRef.reference.conversation.id, {
+            type: "message",
+            attachments: [
+              { contentType: "application/vnd.microsoft.card.adaptive", content: card },
+            ],
+          });
+          logger.info(`Verification sent: ${payload.employeeName} (${payload.shiftCode}) via cache`);
+          return { success: true, conversationId: convRef.reference.conversation.id, resolvedVia: "cache" };
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error(`Verification send failed: ${payload.employeeName}`, { error: msg });
+          return { success: false, error: `Send failed: ${msg}` };
+        }
+      }
+      // Fall through to Graph if email available
+      if (mapping.email && this.graphService) {
+        return this.sendVerificationViaGraph(payload, mapping.email);
+      }
+      return { success: false, error: `No conversation reference for ${lookupId} and no Graph fallback` };
+    }
+
+    // Try email path via Graph
+    if (payload.email && this.graphService) {
+      return this.sendVerificationViaGraph(payload, payload.email);
+    }
+
+    logger.warn(`Verification notify: cannot resolve user ${payload.employeeName}`);
+    return { success: false, error: `Cannot resolve user: ${payload.employeeName}` };
+  }
+
+  /** Send verification card via Graph (email-based fallback) */
+  private async sendVerificationViaGraph(payload: VerificationNotifyPayload, email: string): Promise<NotifyResult> {
+    if (!this.graphService) {
+      return { success: false, error: "Graph not available" };
+    }
+    try {
+      const graphUser = await this.graphService.getUserByEmail(email);
+      await this.graphService.ensureAppInstalled(graphUser.id);
+      const chat = await this.graphService.createOrGetChat(graphUser.id);
+
+      const convRef = this.buildConversationRef(graphUser.id, graphUser.displayName, chat.id, graphUser.userPrincipalName);
+      await this.convRefRepo.upsert(convRef);
+
+      const card = buildVerificationCard({
+        employeeName: payload.employeeName,
+        shiftCode: payload.shiftCode,
+        date: payload.date,
+      });
+      const cardJson = JSON.stringify(card);
+      const attachmentId = `verify-${Date.now()}`;
+      const attachments: GraphMessageAttachment[] = [
+        { id: attachmentId, contentType: "application/vnd.microsoft.card.adaptive", content: cardJson },
+      ];
+      await this.graphService.sendMessage(
+        chat.id,
+        `<attachment id="${attachmentId}"></attachment>`,
+        attachments
+      );
+      logger.info(`Verification sent via Graph: ${payload.employeeName} (${payload.shiftCode})`);
+      return { success: true, conversationId: chat.id, resolvedVia: "graph" };
+    } catch (err: unknown) {
+      if (err instanceof GraphError) {
+        return { success: false, error: `Graph: ${err.code} — ${err.message}` };
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Graph flow failed: ${msg}` };
     }
   }
 

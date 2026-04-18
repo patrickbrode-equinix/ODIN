@@ -6,8 +6,9 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage, type TranslationKey } from "../context/LanguageContext";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, BookOpen } from "lucide-react";
 import { useHandoverStore } from "../store/handoverStore";
+import { AppTutorialDialog } from "./AppTutorialDialog";
 
 /* Icon glow class – consistent subtle glow on all nav icons */
 const ICON_GLOW = "drop-shadow-[0_0_4px_rgba(59,130,246,0.3)]";
@@ -53,6 +54,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
   const [shiftplanOpen, setShiftplanOpen] = useState(true);
   const [dashOpen, setDashOpen] = useState(false);
   const [protokollOpen, setProtokollOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   if (!user) return null;
 
@@ -103,6 +105,8 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
     <aside
       className={`bg-sidebar border-r border-sidebar-border flex flex-col backdrop-blur-xl transition-all duration-300 ${isCollapsed ? "w-20" : "w-64"}`}
     >
+      <AppTutorialDialog open={tutorialOpen} onOpenChange={setTutorialOpen} />
+
       {/* HEADER */}
       <div
         className={`w-full border-b border-sidebar-border flex items-center ${isCollapsed ? "justify-center" : "px-3"} transition-all ${isCollapsed ? "h-20" : "h-32"
@@ -163,7 +167,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         e.stopPropagation();
                         setDashOpen((v) => !v);
                       }}
-                      aria-label={dashOpen ? "Dashboard einklappen" : "Dashboard ausklappen"}
+                      aria-label={dashOpen ? t("sidebar.collapseDashboard") : t("sidebar.expandDashboard")}
                     >
                       {dashOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                     </button>
@@ -227,7 +231,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         e.stopPropagation();
                         setShiftplanOpen((v) => !v);
                       }}
-                      aria-label={shiftplanOpen ? "Shiftplan einklappen" : "Shiftplan ausklappen"}
+                      aria-label={shiftplanOpen ? t("sidebar.collapseShiftplan") : t("sidebar.expandShiftplan")}
                     >
                       {shiftplanOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                     </button>
@@ -292,7 +296,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
                         e.stopPropagation();
                         setProtokollOpen((v) => !v);
                       }}
-                      aria-label={protokollOpen ? "Protokoll einklappen" : "Protokoll ausklappen"}
+                      aria-label={protokollOpen ? t("sidebar.collapseLog") : t("sidebar.expandLog")}
                     >
                       {protokollOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                     </button>
@@ -420,6 +424,15 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
           <span>{isCollapsed ? "v1" : "v1.0.0 2026"}</span>
           <span className="text-[9px] font-black px-1.5 py-0.5 rounded-sm bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse tracking-widest uppercase">BETA</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setTutorialOpen(true)}
+          className={`inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:border-sky-300/30 hover:bg-sky-500/10 hover:text-sky-100 ${isCollapsed ? "px-2" : ""}`}
+          title={t("sidebar.openTutorial")}
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          {!isCollapsed ? <span>{t("sidebar.tutorial")}</span> : null}
+        </button>
       </div>
     </aside>
   );

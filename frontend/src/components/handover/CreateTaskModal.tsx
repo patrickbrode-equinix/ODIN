@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { HandoverItem } from "./handover.types";
 import { api } from "../../api/api";
 import { useShiftStore } from "../../store/shiftStore";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface CreateTaskModalProps {
     isOpen: boolean;
@@ -16,6 +17,7 @@ interface CreateTaskModalProps {
 
 export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: CreateTaskModalProps) {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const schedulesByMonth = useShiftStore(s => s.schedulesByMonth);
     const [employees, setEmployees] = useState<string[]>(propEmployees || []);
     const [assignee, setAssignee] = useState("");
@@ -112,7 +114,7 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
                     <div className="flex justify-between items-center mb-6">
                         <Dialog.Title className="text-lg font-bold flex items-center gap-2">
                             <Calendar className="w-5 h-5 text-primary" />
-                            Neue Aufgabe erstellen
+                            {t("handover.createTask")}
                         </Dialog.Title>
                         <Dialog.Close asChild>
                             <button className="text-muted-foreground hover:text-foreground">
@@ -126,7 +128,7 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium flex items-center gap-2">
-                                    <User className="w-4 h-4" /> Mitarbeiter <span className="text-red-500">*</span>
+                                    <User className="w-4 h-4" /> {t("handover.assignee")} <span className="text-red-500">*</span>
                                 </label>
                                 <select
                                     className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -134,7 +136,7 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
                                     onChange={(e) => setAssignee(e.target.value)}
                                 >
                                     <option value="" disabled>
-                                        {employees.length === 0 ? "Laden..." : "Bitte wählen"}
+                                        {employees.length === 0 ? t("handover.loadingEllipsis") : t("handover.pleaseSelect")}
                                     </option>
                                     {/* Special Azubi option */}
                                     <option value="AZUBI">— Azubi —</option>
@@ -145,7 +147,7 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium flex items-center gap-2">
-                                    <Clock className="w-4 h-4" /> Fällig bis <span className="text-red-500">*</span>
+                                    <Clock className="w-4 h-4" /> {t("handover.dueBy")} <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                     type="datetime-local"
@@ -158,25 +160,25 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium flex items-center gap-2">
-                                <Repeat className="w-4 h-4" /> Wiederholung
+                                <Repeat className="w-4 h-4" /> {t("handover.recurrence")}
                             </label>
                             <select
                                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                                 value={recurrence}
                                 onChange={(e) => setRecurrence(e.target.value)}
                             >
-                                <option value="none">Keine</option>
-                                <option value="daily">Täglich</option>
-                                <option value="weekly">Wöchentlich</option>
-                                <option value="monthly">Monatlich</option>
+                                <option value="none">{t("handover.recurrenceNone")}</option>
+                                <option value="daily">{t("handover.recurrenceDaily")}</option>
+                                <option value="weekly">{t("handover.recurrenceWeekly")}</option>
+                                <option value="monthly">{t("handover.recurrenceMonthly")}</option>
                             </select>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Beschreibung <span className="text-red-500">*</span></label>
+                            <label className="text-sm font-medium">{t("handover.description")} <span className="text-red-500">*</span></label>
                             <textarea
                                 className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
-                                placeholder="Was ist zu tun?"
+                                placeholder={t("handover.whatToDo")}
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                             />
@@ -184,10 +186,10 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
 
                         <div className="flex justify-end gap-3 pt-4">
                             <Button type="button" variant="ghost" onClick={onClose}>
-                                Abbrechen
+                                {t("common.cancel")}
                             </Button>
                             <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting ? "Speichern..." : "Erstellen"}
+                                {isSubmitting ? t("common.saving") : t("handover.create")}
                             </Button>
                         </div>
 

@@ -10,6 +10,7 @@ export type EmployeeSkills = {
     can_sh: boolean;
     can_tt: boolean;
     can_cc: boolean;
+    rated_skills?: Record<string, number>;
     updated_at: string;
 };
 

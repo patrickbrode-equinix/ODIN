@@ -9,8 +9,10 @@
 export const TYPE_ALIASES = {
   // TroubleTicket
   'troubleticket': 'TroubleTicket',
+  'troubletickets': 'TroubleTicket',
   'trouble_ticket': 'TroubleTicket',
   'trouble ticket': 'TroubleTicket',
+  'trouble tickets': 'TroubleTicket',
   'tt': 'TroubleTicket',
   'incident': 'TroubleTicket',
   // SmartHands

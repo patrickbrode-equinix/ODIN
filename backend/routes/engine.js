@@ -6,15 +6,20 @@
 import express from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { runAssignmentEngine, loadConfig, checkCrawlerStaleness } from "../engine/assignEngine.js";
+import { upsertLegacyEngineConfig } from "../services/assignmentConfigStore.js";
 
 const router = express.Router();
+
+router.use(requireAuth);
+router.use(requirePageAccess("odin_logic", "view"));
 
 /* ================================================ */
 /* 1. TRIGGER SHADOW RUN                            */
 /* ================================================ */
 
-router.post("/run", requireAuth, async (req, res) => {
+router.post("/run", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const config = await loadConfig();
 
@@ -38,7 +43,7 @@ router.post("/run", requireAuth, async (req, res) => {
 /* 2. GET RUNS (HISTORY)                            */
 /* ================================================ */
 
-router.get("/runs", requireAuth, async (req, res) => {
+router.get("/runs", async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
     const result = await db.query(
@@ -55,7 +60,7 @@ router.get("/runs", requireAuth, async (req, res) => {
 /* 3. GET DECISIONS FOR A RUN                       */
 /* ================================================ */
 
-router.get("/runs/:runId/decisions", requireAuth, async (req, res) => {
+router.get("/runs/:runId/decisions", async (req, res) => {
   try {
     const { runId } = req.params;
     const result = await db.query(
@@ -72,7 +77,7 @@ router.get("/runs/:runId/decisions", requireAuth, async (req, res) => {
 /* 4. EXPLAIN – SINGLE TICKET DECISION              */
 /* ================================================ */
 
-router.get("/explain/:ticketExternalId", requireAuth, async (req, res) => {
+router.get("/explain/:ticketExternalId", async (req, res) => {
   try {
     const { ticketExternalId } = req.params;
     const result = await db.query(
@@ -94,7 +99,7 @@ router.get("/explain/:ticketExternalId", requireAuth, async (req, res) => {
 /* 5. ENGINE CONFIG                                 */
 /* ================================================ */
 
-router.get("/config", requireAuth, async (req, res) => {
+router.get("/config", async (req, res) => {
   try {
     const config = await loadConfig();
     res.json(config);
@@ -103,7 +108,7 @@ router.get("/config", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/config", requireAuth, async (req, res) => {
+router.put("/config", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const updates = req.body;
     if (!updates || typeof updates !== "object") {
@@ -117,17 +122,11 @@ router.put("/config", requireAuth, async (req, res) => {
     ];
     const actor = req.user?.email || "unknown";
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (!allowedKeys.includes(key)) continue;
-      await db.query(
-        `INSERT INTO assignment_config (key, value, updated_by, updated_at)
-         VALUES ($1, $2::jsonb, $3, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $2::jsonb, updated_by = $3, updated_at = NOW()`,
-        [key, JSON.stringify(value), actor]
-      );
-    }
+    const filteredUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([key]) => allowedKeys.includes(key))
+    );
 
-    const config = await loadConfig();
+    const config = await upsertLegacyEngineConfig(filteredUpdates, actor);
     res.json({ ok: true, config });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -138,10 +137,13 @@ router.put("/config", requireAuth, async (req, res) => {
 /* 6. MANUAL EXCLUSIONS                             */
 /* ================================================ */
 
-router.get("/exclusions", requireAuth, async (req, res) => {
+router.get("/exclusions", async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT * FROM manual_exclusions ORDER BY created_at DESC`
+      `SELECT id, system_name, reason, created_by, created_at
+       FROM assignment_exclusion_list
+       WHERE active = true
+       ORDER BY system_name ASC, created_at DESC`
     );
     res.json(result.rows);
   } catch (err) {
@@ -149,7 +151,7 @@ router.get("/exclusions", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/exclusions", requireAuth, async (req, res) => {
+router.post("/exclusions", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { system_name, reason } = req.body;
     if (!system_name || !system_name.trim()) {
@@ -158,16 +160,15 @@ router.post("/exclusions", requireAuth, async (req, res) => {
 
     const actor = req.user?.email || req.user?.username || "unknown";
     const result = await db.query(
-      `INSERT INTO manual_exclusions (system_name, reason, created_by)
+      `INSERT INTO assignment_exclusion_list (system_name, reason, created_by, active)
        VALUES ($1, $2, $3)
-       ON CONFLICT (system_name) DO NOTHING
+       ON CONFLICT (system_name) DO UPDATE
+       SET reason = EXCLUDED.reason,
+           created_by = EXCLUDED.created_by,
+           active = true
        RETURNING *`,
       [system_name.trim(), reason || null, actor]
     );
-
-    if (result.rowCount === 0) {
-      return res.status(409).json({ error: "System Name bereits auf der Ausnahmeliste" });
-    }
 
     res.status(201).json({ ok: true, exclusion: result.rows[0] });
   } catch (err) {
@@ -175,10 +176,10 @@ router.post("/exclusions", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/exclusions/:id", requireAuth, async (req, res) => {
+router.delete("/exclusions/:id", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query(`DELETE FROM manual_exclusions WHERE id = $1`, [parseInt(id, 10)]);
+    await db.query(`DELETE FROM assignment_exclusion_list WHERE id = $1`, [parseInt(id, 10)]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -189,7 +190,7 @@ router.delete("/exclusions/:id", requireAuth, async (req, res) => {
 /* 6b. SUBTYPE EXCLUSIONS                           */
 /* ================================================ */
 
-router.get("/exclusions/subtypes", requireAuth, async (req, res) => {
+router.get("/exclusions/subtypes", async (req, res) => {
   try {
     const result = await db.query(
       `SELECT * FROM subtype_exclusions ORDER BY created_at DESC`
@@ -200,7 +201,7 @@ router.get("/exclusions/subtypes", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/exclusions/subtypes/available", requireAuth, async (req, res) => {
+router.get("/exclusions/subtypes/available", async (req, res) => {
   try {
     const result = await db.query(
       `SELECT DISTINCT customer_trouble_type FROM queue_items
@@ -213,7 +214,7 @@ router.get("/exclusions/subtypes/available", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/exclusions/subtypes", requireAuth, async (req, res) => {
+router.post("/exclusions/subtypes", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { subtype, reason } = req.body;
     if (!subtype || !subtype.trim()) {
@@ -239,7 +240,7 @@ router.post("/exclusions/subtypes", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/exclusions/subtypes/:id", requireAuth, async (req, res) => {
+router.delete("/exclusions/subtypes/:id", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { id } = req.params;
     await db.query(`DELETE FROM subtype_exclusions WHERE id = $1`, [parseInt(id, 10)]);
@@ -253,7 +254,7 @@ router.delete("/exclusions/subtypes/:id", requireAuth, async (req, res) => {
 /* 7. CRAWLER STATUS                                */
 /* ================================================ */
 
-router.get("/crawler-status", requireAuth, async (req, res) => {
+router.get("/crawler-status", async (req, res) => {
   try {
     const config = await loadConfig();
     const staleness = await checkCrawlerStaleness(config.stale_threshold_minutes);
@@ -278,7 +279,7 @@ router.get("/crawler-status", requireAuth, async (req, res) => {
 /* 8. EMPLOYEE SHIFT ROLES                          */
 /* ================================================ */
 
-router.get("/roles", requireAuth, async (req, res) => {
+router.get("/roles", async (req, res) => {
   try {
     const { date } = req.query;
     if (!date) return res.status(400).json({ error: "date query param erforderlich (YYYY-MM-DD)" });
@@ -293,7 +294,7 @@ router.get("/roles", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/roles", requireAuth, async (req, res) => {
+router.post("/roles", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { employee_name, date, shift_code, role_code, comment } = req.body;
 
@@ -317,7 +318,7 @@ router.post("/roles", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/roles/:id", requireAuth, async (req, res) => {
+router.delete("/roles/:id", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { id } = req.params;
     await db.query(`DELETE FROM employee_shift_roles WHERE id = $1`, [parseInt(id, 10)]);
@@ -328,7 +329,7 @@ router.delete("/roles/:id", requireAuth, async (req, res) => {
 });
 
 /** Bulk set roles for a date range (used by weekplan context menu) */
-router.post("/roles/bulk", requireAuth, async (req, res) => {
+router.post("/roles/bulk", requirePageAccess("settings", "write"), async (req, res) => {
   try {
     const { employee_name, dates, shift_code, role_code, comment } = req.body;
 

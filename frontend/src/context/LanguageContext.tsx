@@ -9,9 +9,51 @@ import {
 import { api } from "../api/api";
 import { useAuth } from "./AuthContext";
 
-export type LanguageCode = "de" | "en" | "sq" | "bs" | "fr" | "es" | "pt-BR" | "fa-AF";
+/* ─────────────────────────────────────────────────────────────────────── */
+/*  TYPES                                                                  */
+/* ─────────────────────────────────────────────────────────────────────── */
+
+export type LanguageCode = "de" | "en";
+
+type LanguageOption = {
+  code: LanguageCode;
+  label: string;
+  nativeLabel: string;
+  shortLabel: string;
+  flag: string;
+};
+
+type LanguageContextValue = {
+  language: LanguageCode;
+  languages: LanguageOption[];
+  setLanguage: (nextLanguage: LanguageCode, options?: { persist?: boolean }) => Promise<void>;
+  t: (key: TranslationKey) => string;
+  direction: "ltr";
+};
+
+/* ─────────────────────────────────────────────────────────────────────── */
+/*  CONFIGURATION                                                          */
+/* ─────────────────────────────────────────────────────────────────────── */
+
+const DEFAULT_LANGUAGE: LanguageCode = "de";
+const STORAGE_KEY = "odin.language";
+
+export const LANGUAGE_TO_LOCALE: Record<LanguageCode, string> = {
+  de: "de-DE",
+  en: "en-US",
+};
+
+export const LANGUAGE_OPTIONS: LanguageOption[] = [
+  { code: "de", label: "Deutsch", nativeLabel: "Deutsch", shortLabel: "DE", flag: "🇩🇪" },
+  { code: "en", label: "English", nativeLabel: "English", shortLabel: "EN", flag: "🇺🇸" },
+];
+
+/* ─────────────────────────────────────────────────────────────────────── */
+/*  TRANSLATION KEYS                                                       */
+/* ─────────────────────────────────────────────────────────────────────── */
 
 export type TranslationKey =
+  /* ── Header ── */
   | "header.crawlerUpdate"
   | "header.noCurrentCrawlerData"
   | "header.activeTickets"
@@ -23,11 +65,57 @@ export type TranslationKey =
   | "header.odinLogicActive"
   | "header.odinLogicInactive"
   | "header.systemMetrics"
+  | "header.imageLoadError"
+  | "header.uploadFailed"
+  | "header.confirmDeleteImage"
+  | "header.deleteFailed"
+  | "header.visibilityChangeFailed"
+  | "header.uploading"
+  | "header.uploadButton"
+  | "header.fileFormats"
+  | "header.noImagesAvailable"
+  | "header.imageVisibleHint"
+  | "header.imageHiddenHint"
+  | "header.deleteTooltip"
+  | "header.instructions"
+  | "header.projects"
+  | "header.quickLinks"
+  | "header.links"
+  | "header.infoAndInstructions"
+  | "header.teamsActiveTooltip"
+  | "header.teamsInactiveTooltip"
+  | "header.odinLogicActiveTooltip"
+  | "header.odinLogicInactiveTooltip"
+  | "header.notAvailable"
+  | "header.loggedIn"
+  | "header.ofApprovedUsers"
+  | "header.utilization"
+  | "header.systemLoad"
+  | "header.dbStorage"
+  | "header.activeConnections"
+  | "header.ticketLoad"
+  | "header.ticketsPerUser"
+  /* ── Common ── */
   | "common.settings"
   | "common.logout"
   | "common.language"
   | "common.themeDark"
   | "common.themeLight"
+  | "common.noData"
+  | "common.loading"
+  | "common.save"
+  | "common.saving"
+  | "common.cancel"
+  | "common.apply"
+  | "common.date"
+  | "common.employee"
+  | "common.close"
+  | "common.delete"
+  | "common.refresh"
+  | "common.total"
+  | "common.active"
+  | "common.peak"
+  /* ── Navigation ── */
   | "nav.dashboard"
   | "nav.shiftplan"
   | "nav.handover"
@@ -46,6 +134,7 @@ export type TranslationKey =
   | "nav.teamsNotifications"
   | "nav.automatedAssignment"
   | "nav.operationsNode"
+  /* ── Settings ── */
   | "settings.title"
   | "settings.personalAppSettings"
   | "settings.changePassword"
@@ -69,646 +158,1746 @@ export type TranslationKey =
   | "settings.shiftPreferences"
   | "settings.shiftPreferencesBody"
   | "settings.systemThresholds"
-  | "settings.loading";
+  | "settings.loading"
+  /* ── Sidebar ── */
+  | "sidebar.collapseDashboard"
+  | "sidebar.expandDashboard"
+  | "sidebar.collapseShiftplan"
+  | "sidebar.expandShiftplan"
+  | "sidebar.collapseLog"
+  | "sidebar.expandLog"
+  | "sidebar.openTutorial"
+  | "sidebar.tutorial"
+  /* ── Dashboard / Statistics ── */
+  | "stats.title"
+  | "stats.refreshing"
+  | "stats.lastLabel"
+  | "stats.today"
+  | "stats.commitHealth"
+  | "stats.onTime"
+  | "stats.expired"
+  | "stats.overdue"
+  | "stats.activeTickets"
+  | "stats.smartHand"
+  | "stats.troubleTicket"
+  | "stats.crossConnect"
+  | "stats.other"
+  | "stats.closedWeek"
+  | "stats.onTimeRate"
+  | "stats.dispatchVsClosed"
+  | "stats.dispatched"
+  | "stats.closed"
+  | "stats.ticketTypes"
+  | "stats.closedVsExpired"
+  | "stats.statusDistribution"
+  | "stats.dispatchPerDay"
+  | "stats.closedPerDay"
+  | "stats.expiredPerDay"
+  | "stats.fetchError"
+  | "stats.retryNow"
+  /* ── ODIN Logic ── */
+  | "odin.title"
+  | "odin.subtitle"
+  | "odin.liveConfirmTitle"
+  | "odin.liveConfirmMessage"
+  | "odin.liveConfirmButton"
+  | "odin.shadowConfirmTitle"
+  | "odin.shadowConfirmMessage"
+  | "odin.shadowConfirmButton"
+  | "odin.stopConfirmTitle"
+  | "odin.stopConfirmMessage"
+  | "odin.stopConfirmButton"
+  | "odin.runsTab"
+  | "odin.decisionsTab"
+  | "odin.reportTab"
+  | "odin.logicTreeTab"
+  | "odin.flowTab"
+  | "odin.settingsTab"
+  | "odin.crawlerOverride"
+  | "odin.staleData"
+  | "odin.dryRun"
+  | "odin.shadowRun"
+  | "odin.runInProgress"
+  | "odin.automaticAssignment"
+  | "odin.disabled"
+  | "odin.liveActive"
+  | "odin.shadowActive"
+  | "odin.lastStarted"
+  | "odin.stopped"
+  | "odin.by"
+  | "odin.mode"
+  | "odin.startShadowAutomation"
+  | "odin.startLiveAutomation"
+  | "odin.stopAutomation"
+  | "odin.engineSettings"
+  | "odin.selectRunForReport"
+  | "odin.loadReport"
+  | "odin.validationConsistent"
+  | "odin.validationInconsistent"
+  | "odin.processed"
+  | "odin.assigned"
+  | "odin.unassigned"
+  | "odin.notRelevant"
+  | "odin.crawlerOverrideActive"
+  | "odin.crawlerOverrideHint"
+  | "odin.assignedTickets"
+  | "odin.unassignedTickets"
+  | "odin.ticket"
+  | "odin.system"
+  | "odin.category"
+  | "odin.queue"
+  | "odin.assignedTo"
+  | "odin.reason"
+  | "odin.status"
+  | "odin.modeDryRun"
+  /* ── Teams Center ── */
+  | "teams.channelDelivery"
+  | "teams.personalMessages"
+  | "teams.scope"
+  | "teams.diagnosticsScope"
+  | "teams.diagnosticsValue"
+  | "teams.checksDocumentation"
+  | "teams.commonCauses"
+  | "teams.blockingCauses"
+  | "teams.debugTip"
+  | "teams.howToUse"
+  | "teams.usageInstructions"
+  | "teams.traceableAnalysis"
+  | "teams.eventsDescription"
+  | "teams.eventActiveInactive"
+  | "teams.eventToggleHint"
+  | "teams.important"
+  | "teams.disablingNote"
+  /* ── User Management ── */
+  | "userAccess.loadFailed"
+  | "userAccess.saveFailed"
+  | "userAccess.resetFailed"
+  | "userAccess.title"
+  | "userAccess.department"
+  | "userAccess.role"
+  | "userAccess.overrideHint"
+  | "userAccess.loading"
+  | "userAccess.standard"
+  | "userAccess.departmentDefault"
+  | "userAccess.noAccess"
+  | "userAccess.read"
+  | "userAccess.write"
+  | "userAccess.clearOverrides"
+  /* ── Group Access ── */
+  | "groupAccess.loadFailed"
+  | "groupAccess.saveFailed"
+  | "groupAccess.keyLabelRequired"
+  | "groupAccess.createFailed"
+  | "groupAccess.selectDepartment"
+  | "groupAccess.newDepartment"
+  | "groupAccess.keyPlaceholder"
+  | "groupAccess.labelPlaceholder"
+  | "groupAccess.create"
+  | "groupAccess.hint"
+  | "groupAccess.page"
+  | "groupAccess.departmentStandard"
+  | "groupAccess.selectAccess"
+  | "groupAccess.title"
+  | "groupAccess.noAccess"
+  | "groupAccess.read"
+  | "groupAccess.write"
+  /* ── Add User ── */
+  | "addUser.createFailed"
+  | "addUser.title"
+  | "addUser.subtitle"
+  | "addUser.note"
+  | "addUser.firstName"
+  | "addUser.lastName"
+  | "addUser.email"
+  | "addUser.initialPassword"
+  | "addUser.passwordPlaceholder"
+  | "addUser.location"
+  | "addUser.locationPlaceholder"
+  | "addUser.department"
+  | "addUser.departmentPlaceholder"
+  | "addUser.role"
+  | "addUser.submit"
+  /* ── Holidays ── */
+  | "holidays.newYearsDay"
+  | "holidays.labourDay"
+  | "holidays.germanUnityDay"
+  | "holidays.christmasDay1"
+  | "holidays.christmasDay2"
+  | "holidays.goodFriday"
+  | "holidays.easterMonday"
+  | "holidays.ascensionDay"
+  | "holidays.whitMonday"
+  | "holidays.corpusChristi"
+  | "holidays.generic"
+  /* ── Login ── */
+  | "login.loginFailed"
+  | "login.emailHint"
+  | "login.email"
+  | "login.emailPlaceholder"
+  | "login.password"
+  | "login.hidePassword"
+  | "login.showPassword"
+  | "login.loggingIn"
+  | "login.loginButton"
+  | "login.forgotPassword"
+  | "login.noAccount"
+  | "login.register"
+  /* ── ForgotPassword ── */
+  | "forgotPassword.title"
+  | "forgotPassword.subtitle"
+  | "forgotPassword.email"
+  | "forgotPassword.emailPlaceholder"
+  | "forgotPassword.submitButton"
+  | "forgotPassword.backToLogin"
+  /* ── AccessDenied ── */
+  | "accessDenied.title"
+  | "accessDenied.message"
+  | "accessDenied.backButton"
+  /* ── CommitCompliance ── */
+  | "commitCompliance.pdfOnlyError"
+  | "commitCompliance.uploadFailedError"
+  | "commitCompliance.subtitle"
+  | "commitCompliance.uploadSection"
+  | "commitCompliance.uploadingButton"
+  | "commitCompliance.uploadButton"
+  | "commitCompliance.uploadedFiles"
+  /* ── DBS ── */
+  | "dbs.coloDashboardTitle"
+  | "dbs.coloDashboardDesc"
+  | "dbs.completeListTitle"
+  | "dbs.completeListDesc"
+  | "dbs.networkViewTitle"
+  | "dbs.networkViewDesc"
+  | "dbs.pageSubtitle"
+  /* ── EmployeeContacts ── */
+  | "employeeContacts.title"
+  | "employeeContacts.subtitle"
+  /* ── DashboardInfoBar ── */
+  | "dashboardInfo.deleteEntryConfirm"
+  | "dashboardInfo.displayActive"
+  | "dashboardInfo.hidden"
+  | "dashboardInfo.hideButton"
+  | "dashboardInfo.showButton"
+  | "dashboardInfo.noEntries"
+  | "dashboardInfo.typeInstruction"
+  | "dashboardInfo.typeInformation"
+  | "dashboardInfo.deletionBadge"
+  | "dashboardInfo.addPlaceholder"
+  | "dashboardInfo.settingsMenu"
+  | "dashboardInfo.markAsInfo"
+  | "dashboardInfo.markAsInstruction"
+  | "dashboardInfo.autoDeletion"
+  | "dashboardInfo.removeAutoDeletion"
+  /* ── ProjectsPanel ── */
+  | "projects.createNewProject"
+  | "projects.projectNameLabel"
+  | "projects.projectNamePlaceholder"
+  | "projects.responsibleLabel"
+  | "projects.responsiblePlaceholder"
+  | "projects.endDateLabel"
+  | "projects.progressLabel"
+  | "projects.descriptionLabel"
+  | "projects.descriptionPlaceholder"
+  | "projects.createProjectButton"
+  | "projects.completedBadge"
+  | "projects.overdue"
+  | "projects.today"
+  | "projects.markCompletedConfirm"
+  | "projects.loadingLabel"
+  | "projects.newProjectButton"
+  | "projects.activeSection"
+  | "projects.completedSection"
+  | "projects.noProjects"
+  | "projects.createFirstButton"
+  /* ── Register ── */
+  | "register.registerFailed"
+  | "register.title"
+  | "register.subtitle"
+  | "register.infoLineOne"
+  | "register.infoLineTwo"
+  | "register.firstName"
+  | "register.lastName"
+  | "register.email"
+  | "register.emailPlaceholder"
+  | "register.location"
+  | "register.locationPlaceholder"
+  | "register.department"
+  | "register.departmentPlaceholder"
+  | "register.password"
+  | "register.hidePassword"
+  | "register.showPassword"
+  | "register.passwordHint"
+  | "register.successTitle"
+  | "register.successBody"
+  | "register.submitting"
+  | "register.submitButton"
+  | "register.backToLogin"
+  /* ── TicketAudit ── */
+  | "ticketAudit.today"
+  | "ticketAudit.week"
+  | "ticketAudit.month"
+  | "ticketAudit.year"
+  | "ticketAudit.customRange"
+  | "ticketAudit.subtitle"
+  | "ticketAudit.rangeLabel"
+  | "ticketAudit.manualTakeoversTitle"
+  | "ticketAudit.noManualTakeovers"
+  | "ticketAudit.employee"
+  | "ticketAudit.withoutAssignment"
+  | "ticketAudit.total"
+  | "ticketAudit.share"
+  | "ticketAudit.lastTakeover"
+  | "ticketAudit.ticketTypes"
+  | "ticketAudit.processingStatsTitle"
+  | "ticketAudit.noActivity"
+  | "ticketAudit.closed"
+  | "ticketAudit.closeRate"
+  | "ticketAudit.definitionsTitle"
+  | "ticketAudit.manualTakeoverDefLabel"
+  | "ticketAudit.manualTakeoverDefDesc"
+  | "ticketAudit.processedTicketDefLabel"
+  | "ticketAudit.processedTicketDefDesc"
+  | "ticketAudit.closeRateDefLabel"
+  | "ticketAudit.closeRateDefDesc"
+  | "logicTree.title"
+  | "logicTree.description"
+  | "logicTree.badgeRule"
+  | "logicTree.badgeAction"
+  | "logicTree.openPoints"
+  | "shiftAdmin.title"
+  | "shiftAdmin.subtitle"
+  | "shiftAdmin.activeOn"
+  | "shiftplan.title"
+  | "shiftplan.shiftEarly"
+  | "shiftplan.shiftLate"
+  | "shiftplan.shiftNight"
+  | "shiftplan.minStaffingViolated"
+  | "shiftplan.minStaffingSolution"
+  | "shiftplan.skillGapDetected"
+  | "shiftplan.skillGapMeta"
+  | "shiftplan.skillGapSolution"
+  | "shiftplan.restTimeViolated"
+  | "shiftplan.hardTransitionDetected"
+  | "shiftplan.restTimeSolution"
+  | "shiftplan.hardTransitionSolution"
+  | "shiftplan.changesSaved"
+  | "shiftplan.saveFailed"
+  | "shiftplan.filenameMustContainYear"
+  | "shiftplan.excelImportFailed"
+  | "shiftplan.exportFailed"
+  | "shiftplan.holidayTooltip"
+  | "shiftplan.holidaysOn"
+  | "shiftplan.holidays"
+  | "shiftplan.noHolidays"
+  | "shiftplan.changeShift"
+  | "shiftplan.selectShift"
+  | "shiftplan.emptyShift"
+  | "shiftplan.early1"
+  | "shiftplan.early2"
+  | "shiftplan.late1"
+  | "shiftplan.late2"
+  | "shiftplan.offWeekend"
+  | "shiftplan.absent"
+  | "exclusions.reasonProject"
+  | "exclusions.reasonAdminOverride"
+  | "exclusions.reasonNoOperative"
+  | "exclusions.reasonTemporary"
+  | "exclusions.title"
+  | "exclusions.subtitle"
+  | "exclusions.quickExclude"
+  | "exclusions.quickExcludeInfo"
+  | "exclusions.filterEmployees"
+  | "exclusions.available"
+  | "exclusions.noMatches"
+  | "exclusions.allExcluded"
+  | "exclusions.excluded"
+  | "exclusions.noExclusions"
+  | "exclusions.quickFooter"
+  | "exclusions.addTitle"
+  | "exclusions.addInfo"
+  | "exclusions.searchEmployee"
+  | "exclusions.noEmployeeFound"
+  | "exclusions.reason"
+  | "exclusions.additionalReason"
+  | "exclusions.additionalReasonPlaceholder"
+  | "exclusions.add"
+  | "exclusions.limitPeriod"
+  | "exclusions.until"
+  | "exclusions.activeExclusions"
+  | "exclusions.noActiveExclusions"
+  | "exclusions.justification"
+  | "exclusions.validFrom"
+  | "exclusions.validTo"
+  | "exclusions.createdBy"
+  | "exclusions.createdAt"
+  | "exclusions.actions"
+  | "exclusions.deactivate"
+  | "exclusions.deletePermanently"
+  | "exclusions.showInactive"
+  | "exclusions.inactiveExclusions"
+  | "exclusions.deactivatedBy"
+  | "exclusions.deactivatedAt"
+  | "exclusions.introText"
+  | "exclusions.tooltipReason"
+  | "exclusions.tooltipAdditionalReason"
+  | "exclusions.tooltipLimitPeriod"
+  | "exclusions.tooltipActiveExclusions"
+  | "exclusions.tooltipEmployee"
+  | "exclusions.tooltipReasonCol"
+  | "exclusions.tooltipJustification"
+  | "exclusions.tooltipValidFrom"
+  | "exclusions.tooltipValidTo"
+  | "exclusions.tooltipCreatedBy"
+  | "exclusions.tooltipCreatedAt"
+  | "exclusions.tooltipActions"
+  | "exclusions.tooltipShowInactive"
+  | "exclusions.tooltipInactive"
+  | "rules.title"
+  | "rules.subtitle"
+  | "rules.titleAlt"
+  | "rules.subtitleAlt"
+  | "rules.catPriorities"
+  | "rules.catRoleRules"
+  | "rules.catLoadBalancing"
+  | "rules.catExceptions"
+  | "rules.newStarter"
+  | "rules.normalOperation"
+  | "rules.noTiersConfigured"
+  | "rules.adjustOrder"
+  | "rules.types"
+  | "rules.priorities"
+  | "rules.all"
+  | "rules.onlyOtherTeamsHandovers"
+  | "rules.allowTroubleTickets"
+  | "rules.ccOnlyAbove24h"
+  | "rules.blockedTicketTypes"
+  | "rules.allowedCcTicketTypes"
+  | "rules.mixableTicketTypes"
+  | "rules.ttExceptionResourceShortage"
+  | "rules.mixOnlySameSystem"
+  | "rules.mixOnlySamePriority"
+  | "rules.ttExceptionRemainingTime"
+  | "rules.maxShPerWorkerSystem"
+  | "rules.maxTimeDiffCcGrouping"
+  | "rules.fewestTicketsFirst"
+  | "rules.stableOrder"
+  | "rules.overallTicketLimit"
+  | "rules.noLimit"
+  | "rules.limitsPerTicketType"
+  | "rules.limitsPerRole"
+  | "rules.limitsPerRoleAndType"
+  | "rules.preferExpedite"
+  | "rules.noVisualEditor"
+  | "rules.emptyNoOverride"
+  | "rules.changeNote"
+  | "rules.changeNotePlaceholder"
+  | "rules.showAdvancedJson"
+  | "rules.hideAdvancedJson"
+  | "rules.advancedJsonOnlySpecial"
+  | "rules.history"
+  | "rules.changeHistory"
+  | "rules.lastChangedBy"
+  | "rules.version"
+  | "rules.rollback"
+  | "rules.noExplanation"
+  | "rules.noCategoryDescription"
+  | "sc.statusDraft"
+  | "sc.statusInReview"
+  | "sc.statusApproved"
+  | "sc.statusActivated"
+  | "sc.statusFailed"
+  | "sc.severityCritical"
+  | "sc.severityRelevant"
+  | "sc.severityHint"
+  | "sc.title"
+  | "sc.subtitle"
+  | "sc.generating"
+  | "sc.generateDraft"
+  | "sc.shifts"
+  | "sc.conflicts"
+  | "sc.errors"
+  | "sc.version"
+  | "sc.created"
+  | "sc.by"
+  | "sc.on"
+  | "sc.markInReview"
+  | "sc.approve"
+  | "sc.activatePlan"
+  | "sc.excelExport"
+  | "sc.discard"
+  | "sc.activateModalTitle"
+  | "sc.cannotBeUndone"
+  | "sc.confirmActivate"
+  | "sc.shiftPlanning"
+  | "sc.noDraftHint"
+  | "sc.generateFirstDraft"
+  | "sc.activatedBy"
+  | "sc.selectOrGenerateDraft"
+  | "sc.draftVersionsFor"
+  | "sc.noVersions"
+  | "sc.status"
+  | "sc.createdBy"
+  | "sc.createdAt"
+  | "sc.approvedBy"
+  | "sc.note"
+  | "sc.draftShiftPlan"
+  | "sc.draftLabel"
+  | "sc.target"
+  | "sc.actual"
+  | "sc.conflictCenter"
+  | "sc.noConflicts"
+  | "sc.explanationsPerAssignment"
+  | "sc.noExplanations"
+  | "sc.day"
+  | "sc.noFairnessData"
+  | "sc.fairnessOverview"
+  | "sc.nights"
+  | "sc.weekends"
+  | "sc.earlyShifts"
+  | "sc.early"
+  | "sc.late"
+  | "sc.deviation"
+  | "sc.loadPlanningBasis"
+  | "sc.planningBasisFor"
+  | "sc.employees"
+  | "sc.absences"
+  | "sc.noAbsences"
+  | "sc.permanentExclusions"
+  | "sc.noExclusions"
+  | "sc.skills"
+  | "sc.minimumStaffing"
+  | "sc.shift"
+  | "sc.atLeast"
+  | "sc.people"
+  | "sc.noRulesDefined"
+  | "sc.preferredColleagues"
+  | "sc.noPreferredColleagues"
+  | "sc.helpTitle"
+  | "sc.confirmDeleteDraft"
+  | "sc.tabOverview"
+  | "sc.tabDraftView"
+  | "sc.tabConflictCenter"
+  | "sc.tabExplanations"
+  | "sc.tabPlanningBasis"
+  | "sc.tabVersions"
+  | "sc.tabHelp"
+  | "sc.exportFailed"
+  | "sc.confirmDeleteDraft"
+  | "sc.helpTitle"
+  | "sc.tabFairness"
+  /* ── Admin Settings ── */
+  | "admin.title"
+  | "admin.subtitle"
+  | "admin.controlCenter"
+  | "admin.allSettings"
+  | "admin.tilesDescription"
+  | "admin.tabShiftplan"
+  | "admin.tabShiftplanDesc"
+  | "admin.tabTeamsDesc"
+  | "admin.tabTv"
+  | "admin.tabTvDesc"
+  | "admin.tabThresholds"
+  | "admin.tabThresholdsDesc"
+  | "admin.tabTogglesDesc"
+  | "admin.tabFeedback"
+  | "admin.tabFeedbackDesc"
+  | "admin.tabOdinDesc"
+  | "admin.tabMaintenance"
+  | "admin.tabMaintenanceDesc"
+  | "admin.tabAudit"
+  | "admin.tabAuditDesc"
+  | "admin.tvConfigHint"
+  | "admin.tvSlides"
+  | "admin.tvHeaderNote"
+  | "admin.durationSec"
+  | "admin.duration"
+  | "admin.order"
+  | "admin.onlyWithData"
+  | "admin.saveChanges"
+  | "admin.lastChangedBy"
+  | "admin.odinLogic"
+  | "admin.odinLogicDesc"
+  | "admin.ticketExclusions"
+  | "admin.ticketExclusionsDesc"
+  | "admin.employeeExclusions"
+  | "admin.employeeExclusionsDesc"
+  | "admin.manualExclusionList"
+  | "admin.manualExclusionListDesc"
+  | "admin.manualExclusionSubDesc"
+  | "admin.permanentExclusions"
+  | "admin.permanentExclusionsDesc"
+  | "admin.resetTicketDb"
+  | "admin.resetTicketDbDesc"
+  | "admin.affectedAreas"
+  | "admin.resetDbLiveDesc"
+  | "admin.resetDialogTitle"
+  | "admin.resetDialogDesc"
+  | "admin.authPhrase"
+  | "admin.auditNote"
+  | "admin.auditNotePlaceholder"
+  | "admin.runReset"
+  | "admin.resetting"
+  | "admin.crawlerStaleAfter"
+  | "admin.minutes"
+  | "admin.commitRiskBelow"
+  | "admin.hours"
+  | "admin.escalateAfter"
+  | "admin.understaffingFrom"
+  | "admin.missingPeople"
+  | "admin.defaultSlideDuration"
+  | "admin.fontScaleFactor"
+  | "admin.compactCards"
+  | "admin.autoScroll"
+  | "admin.animations"
+  | "admin.commitWindow"
+  | "admin.showStaleTickets"
+  | "admin.tvCrawlerStale"
+  | "admin.globalThresholds"
+  | "admin.tvModePresentation"
+  | "admin.noToggles"
+  | "admin.feedbackRules"
+  | "admin.feedbackEnabled"
+  | "admin.allowScreenshots"
+  | "admin.maxFileSize"
+  | "admin.submittedFeedback"
+  | "admin.noFeedback"
+  | "admin.from"
+  | "admin.unknown"
+  | "admin.allAreas"
+  | "admin.appSettings"
+  | "admin.timestamp"
+  | "admin.area"
+  | "admin.setting"
+  | "admin.old"
+  | "admin.new"
+  | "admin.by"
+  | "admin.note"
+  | "admin.noChangesLogged"
+  | "admin.on"
+  /* ── Teams Communication Center ── */
+  | "teams.quietHoursStart"
+  | "teams.quietHoursEnd"
+  | "teams.criticalOnly"
+  | "teams.maxMessagesDay"
+  | "teams.digestInterval"
+  | "teams.defaultCooldown"
+  | "teams.escalationDelay"
+  | "teams.fallbackRecipient"
+  | "teams.duplicateWindow"
+  | "teams.notifySystemExclusions"
+  | "teams.notifySubtypeExclusions"
+  | "teams.liveOnly"
+  | "teams.directRecipients"
+  | "teams.specificShifts"
+  | "teams.groupTargets"
+  | "teams.channelFallback"
+  | "teams.titleTemplate"
+  | "teams.bodyTemplate"
+  | "teams.botBaseUrl"
+  | "teams.timingMatrix"
+  | "teams.standardPersonShift"
+  | "teams.standardGroupMessages"
+  | "teams.globalDeliveryRules"
+  | "teams.globalDeliveryRulesDesc"
+  | "teams.dispatcherExcluded"
+  | "teams.dispatcherExcludedDesc"
+  | "teams.messageOrchestration"
+  | "teams.messageOrchestrationDesc"
+  | "teams.on"
+  | "teams.off"
+  | "teams.dispatcherReview"
+  | "teams.systemSubtypeExclusions"
+  | "teams.deliveryPath"
+  | "teams.peopleChannelRouting"
+  | "teams.routingPrep"
+  | "teams.whoGetsWhat"
+  | "teams.advancedConfigured"
+  | "teams.basic"
+  | "teams.immediate"
+  | "teams.priority"
+  | "teams.mode"
+  | "teams.duplicateProtection"
+  | "teams.yes"
+  | "teams.no"
+  | "teams.eventDescription"
+  /* ── Weekplan ── */
+  | "weekplan.title"
+  | "weekplan.today"
+  | "weekplan.showActiveOnly"
+  | "weekplan.editOn"
+  | "weekplan.edit"
+  | "weekplan.saveFailed"
+  | "weekplan.roleHint"
+  | "weekplan.changeShift"
+  | "weekplan.selectShift"
+  | "weekplan.empty"
+  | "weekplan.apply"
+  | "weekplan.roleFor"
+  | "weekplan.roleForDays"
+  | "weekplan.removeRole"
+  | "weekplan.removeRoles"
+  | "weekplan.loading"
+  | "weekplan.highlightHint"
+  | "weekplan.holiday"
+  | "weekplan.daySelected"
+  | "weekplan.daysSelected"
+  /* ── Handover ── */
+  | "handover.title"
+  | "handover.subtitle"
+  | "handover.newTask"
+  | "handover.hideCompleted"
+  | "handover.showCompleted"
+  | "handover.statusDone"
+  | "handover.statusInProgress"
+  | "handover.statusOpen"
+  /* ── Handover Form ── */
+  | "handover.formTitle"
+  | "handover.ticketNumber"
+  | "handover.customerName"
+  | "handover.area"
+  | "handover.type"
+  | "handover.priority"
+  | "handover.commitTime"
+  | "handover.description"
+  | "handover.selectFiles"
+  | "handover.filesSelected"
+  | "handover.clearSelection"
+  | "handover.requiredFields"
+  /* ── Shift Context Menu ── */
+  | "shiftContext.employee"
+  | "shiftContext.daySelected"
+  | "shiftContext.daysSelected"
+  | "shiftContext.early1"
+  | "shiftContext.early2"
+  | "shiftContext.late1"
+  | "shiftContext.late2"
+  | "shiftContext.night"
+  | "shiftContext.absence"
+  | "shiftContext.vacation"
+  | "shiftContext.sick"
+  | "shiftContext.training"
+  | "shiftContext.offsite"
+  | "shiftContext.clearDelete"
+  | "shiftContext.competencies"
+  | "shiftContext.changeHistory"
+  | "shiftContext.manageRules"
+  /* ── Shiftplan extras ── */
+  | "shiftplan.warningsTooltip"
+  | "shiftplan.warningsOn"
+  | "shiftplan.warnings"
+  | "shiftplan.wellbeing"
+  | "shiftplan.hiddenOn"
+  | "shiftplan.hidden"
+  /* ── Handover List / Item ── */
+  | "handover.completedHandovers"
+  | "handover.latestHandovers"
+  | "handover.syncing"
+  | "handover.alreadyTaken"
+  | "handover.takeOver"
+  | "handover.done"
+  /* ── CreateTaskModal ── */
+  | "handover.createTask"
+  | "handover.assignee"
+  | "handover.loadingEllipsis"
+  | "handover.pleaseSelect"
+  | "handover.dueBy"
+  | "handover.recurrence"
+  | "handover.recurrenceNone"
+  | "handover.recurrenceDaily"
+  | "handover.recurrenceWeekly"
+  | "handover.recurrenceMonthly"
+  | "handover.whatToDo"
+  | "handover.create"
+  /* ── ConstraintDialog ── */
+  | "constraints.title"
+  | "constraints.noNight"
+  | "constraints.earlyOnly"
+  | "constraints.maxWeekends"
+  /* ── ExportMenu ── */
+  | "export.options"
+  | "export.menu"
+  | "export.shiftplanXlsx"
+  | "export.changeLog"
+  | "export.noChanges"
+  /* ── HistoryDialog ── */
+  | "history.title"
+  | "history.date"
+  | "history.old"
+  | "history.new"
+  | "history.changedBy"
+  | "history.timestamp"
+  | "history.loading"
+  | "history.noChanges"
+  | "history.deleted"
+  /* ── ShiftStatsPanel ── */
+  | "stats.hide"
+  | "stats.show"
+  | "stats.nightShifts"
+  | "stats.weekendShifts"
+  | "stats.conflicts"
+  /* ── CompetencyModal ── */
+  | "competency.title"
+  | "competency.basic"
+  | "competency.advanced"
+  | "competency.expert"
+  | "competency.noCompetencies"
+  | "competency.newCompetency"
+  | "competency.skillPlaceholder"
+  | "competency.level"
+  | "competency.notesPlaceholder"
+  | "competency.add"
+  | "competency.addCompetency";
 
-type LanguageOption = {
-  code: LanguageCode;
-  label: string;
-  nativeLabel: string;
-  shortLabel: string;
-  dir?: "ltr" | "rtl";
-};
-
-type LanguageContextValue = {
-  language: LanguageCode;
-  languages: LanguageOption[];
-  setLanguage: (nextLanguage: LanguageCode, options?: { persist?: boolean }) => Promise<void>;
-  t: (key: TranslationKey) => string;
-  direction: "ltr" | "rtl";
-};
-
-const DEFAULT_LANGUAGE: LanguageCode = "de";
-const STORAGE_KEY = "odin.language";
-
-export const LANGUAGE_TO_LOCALE: Record<LanguageCode, string> = {
-  de: "de-DE",
-  en: "en-US",
-  sq: "sq-AL",
-  bs: "bs-BA",
-  fr: "fr-FR",
-  es: "es-ES",
-  "pt-BR": "pt-BR",
-  "fa-AF": "fa-AF",
-};
-
-export const LANGUAGE_OPTIONS: LanguageOption[] = [
-  { code: "de", label: "Deutsch", nativeLabel: "Deutsch", shortLabel: "DE" },
-  { code: "en", label: "English", nativeLabel: "English", shortLabel: "EN" },
-  { code: "sq", label: "Albanisch", nativeLabel: "Shqip", shortLabel: "SQ" },
-  { code: "bs", label: "Bosnisch", nativeLabel: "Bosanski", shortLabel: "BS" },
-  { code: "fr", label: "Französisch", nativeLabel: "Français", shortLabel: "FR" },
-  { code: "es", label: "Spanisch", nativeLabel: "Español", shortLabel: "ES" },
-  { code: "pt-BR", label: "Portugiesisch (Brasilien)", nativeLabel: "Português (Brasil)", shortLabel: "PT" },
-  { code: "fa-AF", label: "Dari (Afghanistan)", nativeLabel: "دری (افغانستان)", shortLabel: "دری", dir: "rtl" },
-];
+/* ─────────────────────────────────────────────────────────────────────── */
+/*  TRANSLATIONS                                                           */
+/* ─────────────────────────────────────────────────────────────────────── */
 
 const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
-  "header.crawlerUpdate": {
-    de: "Crawler-Update",
-    en: "Crawler update",
-    sq: "Përditësimi i crawler-it",
-    bs: "Ažuriranje crawlera",
-    fr: "Mise à jour du crawler",
-    es: "Actualización del crawler",
-    "pt-BR": "Atualização do crawler",
-    "fa-AF": "به‌روزرسانی خزنده",
-  },
-  "header.noCurrentCrawlerData": {
-    de: "Keine aktuellen Crawler-Daten",
-    en: "No current crawler data",
-    sq: "Nuk ka të dhëna aktuale nga crawler-i",
-    bs: "Nema aktuelnih crawler podataka",
-    fr: "Aucune donnée crawler actuelle",
-    es: "No hay datos actuales del crawler",
-    "pt-BR": "Sem dados atuais do crawler",
-    "fa-AF": "دادهٔ تازه از خزنده موجود نیست",
-  },
-  "header.activeTickets": {
-    de: "Aktive Tickets",
-    en: "Active tickets",
-    sq: "Tiketat aktive",
-    bs: "Aktivni tiketi",
-    fr: "Tickets actifs",
-    es: "Tickets activos",
-    "pt-BR": "Tickets ativos",
-    "fa-AF": "تیکت‌های فعال",
-  },
-  "header.shiftplan": {
-    de: "Schichtplan",
-    en: "Shift plan",
-    sq: "Plani i ndërrimeve",
-    bs: "Plan smjena",
-    fr: "Planning des shifts",
-    es: "Plan de turnos",
-    "pt-BR": "Plano de turnos",
-    "fa-AF": "برنامه شیفت",
-  },
-  "header.noUpdateAvailable": {
-    de: "Kein Update verfügbar",
-    en: "No update available",
-    sq: "Asnjë përditësim i disponueshëm",
-    bs: "Nema dostupnog ažuriranja",
-    fr: "Aucune mise à jour disponible",
-    es: "No hay actualización disponible",
-    "pt-BR": "Nenhuma atualização disponível",
-    "fa-AF": "به‌روزرسانی در دسترس نیست",
-  },
-  "header.infos": {
-    de: "Infos",
-    en: "Info",
-    sq: "Informacione",
-    bs: "Informacije",
-    fr: "Infos",
-    es: "Información",
-    "pt-BR": "Informações",
-    "fa-AF": "اطلاعات",
-  },
-  "header.teamsActive": {
-    de: "Teams aktiv",
-    en: "Teams active",
-    sq: "Teams aktiv",
-    bs: "Teams aktivan",
-    fr: "Teams actif",
-    es: "Teams activo",
-    "pt-BR": "Teams ativo",
-    "fa-AF": "Teams فعال",
-  },
-  "header.teamsInactive": {
-    de: "Teams inaktiv",
-    en: "Teams inactive",
-    sq: "Teams joaktiv",
-    bs: "Teams neaktivan",
-    fr: "Teams inactif",
-    es: "Teams inactivo",
-    "pt-BR": "Teams inativo",
-    "fa-AF": "Teams غیرفعال",
-  },
-  "header.odinLogicActive": {
-    de: "ODIN-Logik aktiv",
-    en: "ODIN logic active",
-    sq: "Logjika ODIN aktive",
-    bs: "ODIN logika aktivna",
-    fr: "Logique ODIN active",
-    es: "Lógica ODIN activa",
-    "pt-BR": "Lógica ODIN ativa",
-    "fa-AF": "منطق ODIN فعال",
-  },
-  "header.odinLogicInactive": {
-    de: "ODIN-Logik inaktiv",
-    en: "ODIN logic inactive",
-    sq: "Logjika ODIN joaktive",
-    bs: "ODIN logika neaktivna",
-    fr: "Logique ODIN inactive",
-    es: "Lógica ODIN inactiva",
-    "pt-BR": "Lógica ODIN inativa",
-    "fa-AF": "منطق ODIN غیرفعال",
-  },
-  "header.systemMetrics": {
-    de: "Systemmetriken",
-    en: "System metrics",
-    sq: "Metrikat e sistemit",
-    bs: "Sistemske metrike",
-    fr: "Métriques système",
-    es: "Métricas del sistema",
-    "pt-BR": "Métricas do sistema",
-    "fa-AF": "شاخص‌های سیستم",
-  },
-  "common.settings": {
-    de: "Einstellungen",
-    en: "Settings",
-    sq: "Cilësimet",
-    bs: "Postavke",
-    fr: "Paramètres",
-    es: "Ajustes",
-    "pt-BR": "Configurações",
-    "fa-AF": "تنظیمات",
-  },
-  "common.logout": {
-    de: "Abmelden",
-    en: "Log out",
-    sq: "Dilni",
-    bs: "Odjava",
-    fr: "Se déconnecter",
-    es: "Cerrar sesión",
-    "pt-BR": "Sair",
-    "fa-AF": "خروج",
-  },
-  "common.language": {
-    de: "Sprache",
-    en: "Language",
-    sq: "Gjuha",
-    bs: "Jezik",
-    fr: "Langue",
-    es: "Idioma",
-    "pt-BR": "Idioma",
-    "fa-AF": "زبان",
-  },
-  "common.themeDark": {
-    de: "Dunkel",
-    en: "Dark",
-    sq: "Errët",
-    bs: "Tamno",
-    fr: "Sombre",
-    es: "Oscuro",
-    "pt-BR": "Escuro",
-    "fa-AF": "تیره",
-  },
-  "common.themeLight": {
-    de: "Hell",
-    en: "Light",
-    sq: "Ndriçuar",
-    bs: "Svijetlo",
-    fr: "Clair",
-    es: "Claro",
-    "pt-BR": "Claro",
-    "fa-AF": "روشن",
-  },
-  "nav.dashboard": {
-    de: "Dashboard",
-    en: "Dashboard",
-    sq: "Paneli",
-    bs: "Nadzorna ploča",
-    fr: "Tableau de bord",
-    es: "Panel",
-    "pt-BR": "Painel",
-    "fa-AF": "داشبورد",
-  },
-  "nav.shiftplan": {
-    de: "Schichtplan",
-    en: "Shift plan",
-    sq: "Plani i ndërrimeve",
-    bs: "Plan smjena",
-    fr: "Planning des shifts",
-    es: "Plan de turnos",
-    "pt-BR": "Plano de turnos",
-    "fa-AF": "برنامه شیفت",
-  },
-  "nav.handover": {
-    de: "Handover",
-    en: "Handover",
-    sq: "Dorëzim",
-    bs: "Primopredaja",
-    fr: "Relève",
-    es: "Relevo",
-    "pt-BR": "Passagem de turno",
-    "fa-AF": "تحویل شیفت",
-  },
-  "nav.tickets": {
-    de: "Tickets",
-    en: "Tickets",
-    sq: "Tiketat",
-    bs: "Tiketi",
-    fr: "Tickets",
-    es: "Tickets",
-    "pt-BR": "Tickets",
-    "fa-AF": "تیکت‌ها",
-  },
-  "nav.tvDashboard": {
-    de: "TV Dashboard",
-    en: "TV dashboard",
-    sq: "Paneli TV",
-    bs: "TV nadzorna ploča",
-    fr: "Tableau TV",
-    es: "Panel TV",
-    "pt-BR": "Painel TV",
-    "fa-AF": "داشبورد تلویزیون",
-  },
-  "nav.protokoll": {
-    de: "Protokoll",
-    en: "Log",
-    sq: "Protokolli",
-    bs: "Protokol",
-    fr: "Journal",
-    es: "Protocolo",
-    "pt-BR": "Protocolo",
-    "fa-AF": "گزارش",
-  },
-  "nav.commitCompliance": {
-    de: "Commit Compliance",
-    en: "Commit compliance",
-    sq: "Përputhshmëria e commit-eve",
-    bs: "Usklađenost commit-a",
-    fr: "Conformité des commits",
-    es: "Cumplimiento de commits",
-    "pt-BR": "Conformidade de commits",
-    "fa-AF": "انطباق کامیت‌ها",
-  },
-  "nav.odinLogic": {
-    de: "ODIN-Logik",
-    en: "ODIN logic",
-    sq: "Logjika ODIN",
-    bs: "ODIN logika",
-    fr: "Logique ODIN",
-    es: "Lógica ODIN",
-    "pt-BR": "Lógica ODIN",
-    "fa-AF": "منطق ODIN",
-  },
-  "nav.shiftplanControl": {
-    de: "Schichtplaner",
-    en: "Shift planner",
-    sq: "Planifikuesi i ndërrimeve",
-    bs: "Planer smjena",
-    fr: "Planificateur de shifts",
-    es: "Planificador de turnos",
-    "pt-BR": "Planejador de turnos",
-    "fa-AF": "برنامه‌ریز شیفت",
-  },
-  "nav.teamsCenter": {
-    de: "Teams Center",
-    en: "Teams center",
-    sq: "Qendra Teams",
-    bs: "Teams centar",
-    fr: "Centre Teams",
-    es: "Centro de Teams",
-    "pt-BR": "Central Teams",
-    "fa-AF": "مرکز Teams",
-  },
-  "nav.adminSettings": {
-    de: "Admin Settings",
-    en: "Admin settings",
-    sq: "Cilësimet e administratorit",
-    bs: "Admin postavke",
-    fr: "Paramètres admin",
-    es: "Ajustes de administrador",
-    "pt-BR": "Configurações de admin",
-    "fa-AF": "تنظیمات مدیر",
-  },
-  "nav.userManagement": {
-    de: "User Management",
-    en: "User management",
-    sq: "Menaxhimi i përdoruesve",
-    bs: "Upravljanje korisnicima",
-    fr: "Gestion des utilisateurs",
-    es: "Gestión de usuarios",
-    "pt-BR": "Gerenciamento de usuários",
-    "fa-AF": "مدیریت کاربران",
-  },
-  "nav.statistics": {
-    de: "Statistiken",
-    en: "Statistics",
-    sq: "Statistikat",
-    bs: "Statistike",
-    fr: "Statistiques",
-    es: "Estadísticas",
-    "pt-BR": "Estatísticas",
-    "fa-AF": "آمار",
-  },
-  "nav.ticketAudit": {
-    de: "Ticket-Audit",
-    en: "Ticket audit",
-    sq: "Auditimi i tiketave",
-    bs: "Revizija tiketa",
-    fr: "Audit des tickets",
-    es: "Auditoría de tickets",
-    "pt-BR": "Auditoria de tickets",
-    "fa-AF": "بررسی تیکت‌ها",
-  },
-  "nav.weekPlanning": {
-    de: "Wochenplanung",
-    en: "Week planning",
-    sq: "Planifikimi javor",
-    bs: "Sedmično planiranje",
-    fr: "Planification hebdomadaire",
-    es: "Planificación semanal",
-    "pt-BR": "Planejamento semanal",
-    "fa-AF": "برنامه‌ریزی هفتگی",
-  },
-  "nav.teamsNotifications": {
-    de: "Teams Benachrichtigungen",
-    en: "Teams notifications",
-    sq: "Njoftimet Teams",
-    bs: "Teams obavijesti",
-    fr: "Notifications Teams",
-    es: "Notificaciones de Teams",
-    "pt-BR": "Notificações do Teams",
-    "fa-AF": "اعلان‌های Teams",
-  },
-  "nav.automatedAssignment": {
-    de: "Automated Assignment",
-    en: "Automated assignment",
-    sq: "Caktim automatik",
-    bs: "Automatska dodjela",
-    fr: "Attribution automatique",
-    es: "Asignación automática",
-    "pt-BR": "Atribuição automática",
-    "fa-AF": "واگذاری خودکار",
-  },
-  "nav.operationsNode": {
-    de: "Operations Dispatching and Intelligence Node",
-    en: "Operations Dispatching and Intelligence Node",
-    sq: "Nyja e Operacioneve, Dispeçimit dhe Inteligjencës",
-    bs: "Čvor za operacije, dispečing i inteligenciju",
-    fr: "Nœud d'opérations, de dispatching et d'intelligence",
-    es: "Nodo de operaciones, despacho e inteligencia",
-    "pt-BR": "Nó de operações, despacho e inteligência",
-    "fa-AF": "گره عملیات، دیسپچ و هوشمندی",
-  },
-  "settings.title": {
-    de: "EINSTELLUNGEN",
-    en: "SETTINGS",
-    sq: "CILËSIMET",
-    bs: "POSTAVKE",
-    fr: "PARAMÈTRES",
-    es: "AJUSTES",
-    "pt-BR": "CONFIGURAÇÕES",
-    "fa-AF": "تنظیمات",
-  },
-  "settings.personalAppSettings": {
-    de: "Persönliche App-Einstellungen",
-    en: "Personal app settings",
-    sq: "Cilësimet personale të aplikacionit",
-    bs: "Lične postavke aplikacije",
-    fr: "Paramètres personnels de l'application",
-    es: "Ajustes personales de la aplicación",
-    "pt-BR": "Configurações pessoais do aplicativo",
-    "fa-AF": "تنظیمات شخصی برنامه",
-  },
-  "settings.changePassword": {
-    de: "Passwort ändern",
-    en: "Change password",
-    sq: "Ndrysho fjalëkalimin",
-    bs: "Promijeni lozinku",
-    fr: "Changer le mot de passe",
-    es: "Cambiar contraseña",
-    "pt-BR": "Alterar senha",
-    "fa-AF": "تغییر رمز عبور",
-  },
-  "settings.startPasswordChange": {
-    de: "Startpasswort ändern",
-    en: "Change starter password",
-    sq: "Ndrysho fjalëkalimin fillestar",
-    bs: "Promijeni početnu lozinku",
-    fr: "Changer le mot de passe initial",
-    es: "Cambiar la contraseña inicial",
-    "pt-BR": "Alterar senha inicial",
-    "fa-AF": "تغییر رمز آغازین",
-  },
-  "settings.securityRequirement": {
-    de: "Sicherheitsvorgabe",
-    en: "Security requirement",
-    sq: "Kërkesë sigurie",
-    bs: "Sigurnosni zahtjev",
-    fr: "Exigence de sécurité",
-    es: "Requisito de seguridad",
-    "pt-BR": "Exigência de segurança",
-    "fa-AF": "الزام امنیتی",
-  },
-  "settings.securityRequirementBody": {
-    de: "Dieses Konto verwendet noch das initiale Passwort. Bitte ändere es jetzt. Bis dahin bleibt ODIN auf diese Seite beschränkt.",
-    en: "This account is still using the initial password. Please change it now. Until then, ODIN remains limited to this page.",
-    sq: "Kjo llogari ende përdor fjalëkalimin fillestar. Ju lutem ndryshojeni tani. Deri atëherë, ODIN mbetet i kufizuar në këtë faqe.",
-    bs: "Ovaj račun još koristi početnu lozinku. Molimo promijenite je sada. Do tada je ODIN ograničen na ovu stranicu.",
-    fr: "Ce compte utilise encore le mot de passe initial. Veuillez le modifier maintenant. D'ici là, ODIN reste limité à cette page.",
-    es: "Esta cuenta aún usa la contraseña inicial. Cámbiala ahora. Hasta entonces, ODIN queda limitado a esta página.",
-    "pt-BR": "Esta conta ainda usa a senha inicial. Altere-a agora. Até lá, o ODIN fica limitado a esta página.",
-    "fa-AF": "این حساب هنوز از رمز عبور اولیه استفاده می‌کند. لطفاً همین حالا آن را تغییر دهید. تا آن زمان، ODIN به همین صفحه محدود می‌ماند.",
-  },
-  "settings.profile": {
-    de: "Profil",
-    en: "Profile",
-    sq: "Profili",
-    bs: "Profil",
-    fr: "Profil",
-    es: "Perfil",
-    "pt-BR": "Perfil",
-    "fa-AF": "پروفایل",
-  },
-  "settings.name": {
-    de: "Name",
-    en: "Name",
-    sq: "Emri",
-    bs: "Ime",
-    fr: "Nom",
-    es: "Nombre",
-    "pt-BR": "Nome",
-    "fa-AF": "نام",
-  },
-  "settings.email": {
-    de: "E-Mail",
-    en: "Email",
-    sq: "Email",
-    bs: "E-mail",
-    fr: "E-mail",
-    es: "Correo electrónico",
-    "pt-BR": "E-mail",
-    "fa-AF": "ایمیل",
-  },
-  "settings.location": {
-    de: "Standort",
-    en: "Location",
-    sq: "Lokacioni",
-    bs: "Lokacija",
-    fr: "Site",
-    es: "Ubicación",
-    "pt-BR": "Localização",
-    "fa-AF": "موقعیت",
-  },
-  "settings.team": {
-    de: "Team",
-    en: "Team",
-    sq: "Ekipi",
-    bs: "Tim",
-    fr: "Équipe",
-    es: "Equipo",
-    "pt-BR": "Equipe",
-    "fa-AF": "تیم",
-  },
-  "settings.activeSince": {
-    de: "Aktiv seit",
-    en: "Active since",
-    sq: "Aktiv që nga",
-    bs: "Aktivan od",
-    fr: "Actif depuis",
-    es: "Activo desde",
-    "pt-BR": "Ativo desde",
-    "fa-AF": "فعال از",
-  },
-  "settings.lastLogin": {
-    de: "Letzter Login",
-    en: "Last login",
-    sq: "Hyrja e fundit",
-    bs: "Posljednja prijava",
-    fr: "Dernière connexion",
-    es: "Último inicio de sesión",
-    "pt-BR": "Último login",
-    "fa-AF": "آخرین ورود",
-  },
-  "settings.app": {
-    de: "App",
-    en: "App",
-    sq: "Aplikacioni",
-    bs: "Aplikacija",
-    fr: "Application",
-    es: "Aplicación",
-    "pt-BR": "Aplicativo",
-    "fa-AF": "برنامه",
-  },
-  "settings.language": {
-    de: "Sprache",
-    en: "Language",
-    sq: "Gjuha",
-    bs: "Jezik",
-    fr: "Langue",
-    es: "Idioma",
-    "pt-BR": "Idioma",
-    "fa-AF": "زبان",
-  },
-  "settings.theme": {
-    de: "Theme",
-    en: "Theme",
-    sq: "Tema",
-    bs: "Tema",
-    fr: "Thème",
-    es: "Tema",
-    "pt-BR": "Tema",
-    "fa-AF": "تم",
-  },
-  "settings.notifications": {
-    de: "Benachrichtigungen",
-    en: "Notifications",
-    sq: "Njoftimet",
-    bs: "Obavijesti",
-    fr: "Notifications",
-    es: "Notificaciones",
-    "pt-BR": "Notificações",
-    "fa-AF": "اعلان‌ها",
-  },
-  "settings.emailNotifications": {
-    de: "E-Mail Benachrichtigungen",
-    en: "Email notifications",
-    sq: "Njoftimet me email",
-    bs: "E-mail obavijesti",
-    fr: "Notifications e-mail",
-    es: "Notificaciones por correo",
-    "pt-BR": "Notificações por e-mail",
-    "fa-AF": "اعلان‌های ایمیلی",
-  },
-  "settings.browserNotifications": {
-    de: "Browser Benachrichtigungen",
-    en: "Browser notifications",
-    sq: "Njoftimet e shfletuesit",
-    bs: "Obavijesti preglednika",
-    fr: "Notifications du navigateur",
-    es: "Notificaciones del navegador",
-    "pt-BR": "Notificações do navegador",
-    "fa-AF": "اعلان‌های مرورگر",
-  },
-  "settings.shiftReminders": {
-    de: "Schicht-Erinnerungen",
-    en: "Shift reminders",
-    sq: "Kujtesat e ndërrimit",
-    bs: "Podsjetnici za smjenu",
-    fr: "Rappels de shift",
-    es: "Recordatorios de turno",
-    "pt-BR": "Lembretes de turno",
-    "fa-AF": "یادآوری‌های شیفت",
-  },
-  "settings.shiftPreferences": {
-    de: "Schichtplan-Wünsche",
-    en: "Shift preferences",
-    sq: "Preferencat e ndërrimeve",
-    bs: "Želje za smjene",
-    fr: "Préférences de shift",
-    es: "Preferencias de turno",
-    "pt-BR": "Preferências de turno",
-    "fa-AF": "ترجیحات شیفت",
-  },
-  "settings.shiftPreferencesBody": {
-    de: "Lege deine bevorzugten und unerwünschten Schichten, verfügbare Tage und weitere Wünsche fest. Diese werden bei der automatischen Schichtplanung berücksichtigt.",
-    en: "Define your preferred and unwanted shifts, available days, and further wishes. These are considered during automatic shift planning.",
-    sq: "Përcakto ndërrimet e preferuara dhe të padëshiruara, ditët e disponueshme dhe dëshirat e tjera. Këto merren parasysh gjatë planifikimit automatik.",
-    bs: "Postavite željene i nepoželjne smjene, dostupne dane i druge želje. To se uzima u obzir tokom automatskog planiranja smjena.",
-    fr: "Définissez vos shifts préférés et indésirables, vos jours disponibles et d'autres souhaits. Ils sont pris en compte lors de la planification automatique.",
-    es: "Define tus turnos preferidos y no deseados, los días disponibles y otras preferencias. Se tienen en cuenta en la planificación automática.",
-    "pt-BR": "Defina seus turnos preferidos e indesejados, dias disponíveis e outras preferências. Isso é considerado no planejamento automático.",
-    "fa-AF": "شیفت‌های دلخواه و نامطلوب، روزهای در دسترس و سایر خواسته‌های خود را تعیین کنید. این موارد در برنامه‌ریزی خودکار شیفت در نظر گرفته می‌شوند.",
-  },
-  "settings.systemThresholds": {
-    de: "System-Schwellenwerte",
-    en: "System thresholds",
-    sq: "Pragjet e sistemit",
-    bs: "Sistemski pragovi",
-    fr: "Seuils système",
-    es: "Umbrales del sistema",
-    "pt-BR": "Limiares do sistema",
-    "fa-AF": "آستانه‌های سیستم",
-  },
-  "settings.loading": {
-    de: "Lade Einstellungen…",
-    en: "Loading settings...",
-    sq: "Po ngarkohen cilësimet...",
-    bs: "Učitavanje postavki...",
-    fr: "Chargement des paramètres...",
-    es: "Cargando ajustes...",
-    "pt-BR": "Carregando configurações...",
-    "fa-AF": "در حال بارگیری تنظیمات...",
-  },
+  /* ── Header ── */
+  "header.crawlerUpdate": { de: "Crawler-Update", en: "Crawler update" },
+  "header.noCurrentCrawlerData": { de: "Keine aktuellen Crawler-Daten", en: "No current crawler data" },
+  "header.activeTickets": { de: "Aktive Tickets", en: "Active tickets" },
+  "header.shiftplan": { de: "Schichtplan", en: "Shift plan" },
+  "header.noUpdateAvailable": { de: "Kein Update verfügbar", en: "No update available" },
+  "header.infos": { de: "Infos", en: "Info" },
+  "header.teamsActive": { de: "Teams aktiv", en: "Teams active" },
+  "header.teamsInactive": { de: "Teams inaktiv", en: "Teams inactive" },
+  "header.odinLogicActive": { de: "ODIN-Logik aktiv", en: "ODIN logic active" },
+  "header.odinLogicInactive": { de: "ODIN-Logik inaktiv", en: "ODIN logic inactive" },
+  "header.systemMetrics": { de: "Systemmetriken", en: "System metrics" },
+  "header.imageLoadError": { de: "Bilder konnten nicht geladen werden.", en: "Images could not be loaded." },
+  "header.uploadFailed": { de: "Upload fehlgeschlagen.", en: "Upload failed." },
+  "header.confirmDeleteImage": { de: "Bild löschen?", en: "Delete image?" },
+  "header.deleteFailed": { de: "Löschen fehlgeschlagen.", en: "Delete failed." },
+  "header.visibilityChangeFailed": { de: "Sichtbarkeit konnte nicht geändert werden.", en: "Visibility could not be changed." },
+  "header.uploading": { de: "Wird hochgeladen…", en: "Uploading…" },
+  "header.uploadButton": { de: "Bilder hochladen", en: "Upload images" },
+  "header.fileFormats": { de: "JPG, PNG, WebP, GIF · max. 20 MB pro Datei", en: "JPG, PNG, WebP, GIF · max. 20 MB per file" },
+  "header.noImagesAvailable": { de: "Keine Event-Bilder vorhanden", en: "No event images available" },
+  "header.imageVisibleHint": { de: "Sichtbar – klicken zum Ausblenden", en: "Visible – click to hide" },
+  "header.imageHiddenHint": { de: "Ausgeblendet – klicken zum Einblenden", en: "Hidden – click to show" },
+  "header.deleteTooltip": { de: "Löschen", en: "Delete" },
+  "header.instructions": { de: "Anweisungen", en: "Instructions" },
+  "header.projects": { de: "Projekte", en: "Projects" },
+  "header.quickLinks": { de: "Schnellzugriffe", en: "Quick links" },
+  "header.links": { de: "Links", en: "Links" },
+  "header.infoAndInstructions": { de: "Informationen und Anweisungen", en: "Information and instructions" },
+  "header.teamsActiveTooltip": { de: "Teams Benachrichtigungen sind aktiv – Benachrichtigungsfunktion ist eingeschaltet", en: "Teams notifications are active – notification delivery is enabled" },
+  "header.teamsInactiveTooltip": { de: "Teams Benachrichtigungen sind inaktiv – keine automatischen Benachrichtigungen", en: "Teams notifications are inactive – no automatic notifications" },
+  "header.odinLogicActiveTooltip": { de: "ODIN-Logik ist aktiv – automatische Zuweisungslogik ist eingeschaltet", en: "ODIN logic is active – automatic assignment logic is enabled" },
+  "header.odinLogicInactiveTooltip": { de: "ODIN-Logik ist inaktiv – keine automatische Ticketzuweisung", en: "ODIN logic is inactive – no automatic ticket assignment" },
+  "header.notAvailable": { de: "nicht verfügbar", en: "not available" },
+  "header.loggedIn": { de: "Eingeloggt", en: "Logged in" },
+  "header.ofApprovedUsers": { de: "freigegebenen Nutzern", en: "approved users" },
+  "header.utilization": { de: "Auslastung", en: "Utilisation" },
+  "header.systemLoad": { de: "Systemlast", en: "System load" },
+  "header.dbStorage": { de: "DB-Speicher", en: "DB storage" },
+  "header.activeConnections": { de: "aktive Verbindungen", en: "active connections" },
+  "header.ticketLoad": { de: "Ticketlast", en: "Ticket load" },
+  "header.ticketsPerUser": { de: "Tickets / online User", en: "tickets / online user" },
+
+  /* ── Common ── */
+  "common.settings": { de: "Einstellungen", en: "Settings" },
+  "common.logout": { de: "Abmelden", en: "Log out" },
+  "common.language": { de: "Sprache", en: "Language" },
+  "common.themeDark": { de: "Dunkel", en: "Dark" },
+  "common.themeLight": { de: "Hell", en: "Light" },
+  "common.noData": { de: "Keine Daten", en: "No data" },
+  "common.loading": { de: "Lädt…", en: "Loading…" },
+  "common.save": { de: "Speichern", en: "Save" },
+  "common.saving": { de: "Speichern…", en: "Saving…" },
+  "common.cancel": { de: "Abbrechen", en: "Cancel" },
+  "common.apply": { de: "Übernehmen", en: "Apply" },
+  "common.date": { de: "Datum", en: "Date" },
+  "common.employee": { de: "Mitarbeiter", en: "Employee" },
+  "common.close": { de: "Schließen", en: "Close" },
+  "common.delete": { de: "Löschen", en: "Delete" },
+  "common.refresh": { de: "Aktualisieren", en: "Refresh" },
+  "common.total": { de: "Gesamt", en: "Total" },
+  "common.active": { de: "Aktiv", en: "Active" },
+  "common.peak": { de: "Peak", en: "Peak" },
+
+  /* ── Navigation ── */
+  "nav.dashboard": { de: "Dashboard", en: "Dashboard" },
+  "nav.shiftplan": { de: "Schichtplan", en: "Shift plan" },
+  "nav.handover": { de: "Handover", en: "Handover" },
+  "nav.tickets": { de: "Tickets", en: "Tickets" },
+  "nav.tvDashboard": { de: "TV Dashboard", en: "TV dashboard" },
+  "nav.protokoll": { de: "Protokoll", en: "Log" },
+  "nav.commitCompliance": { de: "Commit Compliance", en: "Commit compliance" },
+  "nav.odinLogic": { de: "ODIN-Logik", en: "ODIN logic" },
+  "nav.shiftplanControl": { de: "Schichtplaner", en: "Shift planner" },
+  "nav.teamsCenter": { de: "Teams Center", en: "Teams centre" },
+  "nav.adminSettings": { de: "Admin-Einstellungen", en: "Admin settings" },
+  "nav.userManagement": { de: "Benutzerverwaltung", en: "User management" },
+  "nav.statistics": { de: "Statistiken", en: "Statistics" },
+  "nav.ticketAudit": { de: "Ticket-Audit", en: "Ticket audit" },
+  "nav.weekPlanning": { de: "Wochenplanung", en: "Week planning" },
+  "nav.teamsNotifications": { de: "Teams Benachrichtigungen", en: "Teams notifications" },
+  "nav.automatedAssignment": { de: "Automatisierte Zuweisung", en: "Automated assignment" },
+  "nav.operationsNode": { de: "Operations Dispatching and Intelligence Node", en: "Operations Dispatching and Intelligence Node" },
+
+  /* ── Settings ── */
+  "settings.title": { de: "EINSTELLUNGEN", en: "SETTINGS" },
+  "settings.personalAppSettings": { de: "Persönliche App-Einstellungen", en: "Personal app settings" },
+  "settings.changePassword": { de: "Passwort ändern", en: "Change password" },
+  "settings.startPasswordChange": { de: "Startpasswort ändern", en: "Change starter password" },
+  "settings.securityRequirement": { de: "Sicherheitsvorgabe", en: "Security requirement" },
+  "settings.securityRequirementBody": { de: "Dieses Konto verwendet noch das initiale Passwort. Bitte ändere es jetzt. Bis dahin bleibt ODIN auf diese Seite beschränkt.", en: "This account is still using the initial password. Please change it now. Until then, ODIN remains limited to this page." },
+  "settings.profile": { de: "Profil", en: "Profile" },
+  "settings.name": { de: "Name", en: "Name" },
+  "settings.email": { de: "E-Mail", en: "Email" },
+  "settings.location": { de: "Standort", en: "Location" },
+  "settings.team": { de: "Team", en: "Team" },
+  "settings.activeSince": { de: "Aktiv seit", en: "Active since" },
+  "settings.lastLogin": { de: "Letzter Login", en: "Last login" },
+  "settings.app": { de: "App", en: "App" },
+  "settings.language": { de: "Sprache", en: "Language" },
+  "settings.theme": { de: "Theme", en: "Theme" },
+  "settings.notifications": { de: "Benachrichtigungen", en: "Notifications" },
+  "settings.emailNotifications": { de: "E-Mail Benachrichtigungen", en: "Email notifications" },
+  "settings.browserNotifications": { de: "Browser Benachrichtigungen", en: "Browser notifications" },
+  "settings.shiftReminders": { de: "Schicht-Erinnerungen", en: "Shift reminders" },
+  "settings.shiftPreferences": { de: "Schichtplan-Wünsche", en: "Shift preferences" },
+  "settings.shiftPreferencesBody": { de: "Lege deine bevorzugten und unerwünschten Schichten, verfügbare Tage und weitere Wünsche fest. Diese werden bei der automatischen Schichtplanung berücksichtigt.", en: "Define your preferred and unwanted shifts, available days, and further wishes. These are considered during automatic shift planning." },
+  "settings.systemThresholds": { de: "System-Schwellenwerte", en: "System thresholds" },
+  "settings.loading": { de: "Lade Einstellungen…", en: "Loading settings…" },
+
+  /* ── Sidebar ── */
+  "sidebar.collapseDashboard": { de: "Dashboard einklappen", en: "Collapse dashboard" },
+  "sidebar.expandDashboard": { de: "Dashboard ausklappen", en: "Expand dashboard" },
+  "sidebar.collapseShiftplan": { de: "Shiftplan einklappen", en: "Collapse shift plan" },
+  "sidebar.expandShiftplan": { de: "Shiftplan ausklappen", en: "Expand shift plan" },
+  "sidebar.collapseLog": { de: "Protokoll einklappen", en: "Collapse log" },
+  "sidebar.expandLog": { de: "Protokoll ausklappen", en: "Expand log" },
+  "sidebar.openTutorial": { de: "Tutorial öffnen", en: "Open tutorial" },
+  "sidebar.tutorial": { de: "Tutorial", en: "Tutorial" },
+
+  /* ── Dashboard / Statistics ── */
+  "stats.title": { de: "Team-Statistiken", en: "Team statistics" },
+  "stats.refreshing": { de: "Aktualisierung…", en: "Refreshing…" },
+  "stats.lastLabel": { de: "Zuletzt", en: "Last" },
+  "stats.today": { de: "Heute", en: "Today" },
+  "stats.commitHealth": { de: "Commit-Gesundheit", en: "Commit health" },
+  "stats.onTime": { de: "PÜNKTLICH", en: "ON-TIME" },
+  "stats.expired": { de: "Überfällig", en: "Expired" },
+  "stats.overdue": { de: "Überfällig", en: "Overdue" },
+  "stats.activeTickets": { de: "Aktive Tickets", en: "Active tickets" },
+  "stats.smartHand": { de: "Smart Hand", en: "Smart hand" },
+  "stats.troubleTicket": { de: "Trouble Ticket", en: "Trouble ticket" },
+  "stats.crossConnect": { de: "Cross Connect", en: "Cross connect" },
+  "stats.other": { de: "Sonstige", en: "Other" },
+  "stats.closedWeek": { de: "Closed (Woche)", en: "Closed (week)" },
+  "stats.onTimeRate": { de: "pünktlich", en: "on-time" },
+  "stats.dispatchVsClosed": { de: "Dispatch vs. Closed", en: "Dispatch vs. closed" },
+  "stats.dispatched": { de: "Zugewiesen", en: "Dispatched" },
+  "stats.closed": { de: "Geschlossen", en: "Closed" },
+  "stats.ticketTypes": { de: "Ticket-Typen", en: "Ticket types" },
+  "stats.closedVsExpired": { de: "Closed vs. Expired", en: "Closed vs. expired" },
+  "stats.statusDistribution": { de: "Status-Verteilung", en: "Status distribution" },
+  "stats.dispatchPerDay": { de: "Dispatch / Tag", en: "Dispatch / day" },
+  "stats.closedPerDay": { de: "Closed / Tag", en: "Closed / day" },
+  "stats.expiredPerDay": { de: "Expired / Tag", en: "Expired / day" },
+  "stats.fetchError": { de: "Statistiken konnten nicht geladen werden.", en: "Statistics could not be loaded." },
+  "stats.retryNow": { de: "Erneut laden", en: "Retry" },
+
+  /* ── ODIN Logic ── */
+  "odin.title": { de: "ODIN-Logik", en: "ODIN Logic" },
+  "odin.subtitle": { de: "Assignment Engine · Shadow Mode · Entscheidungstransparenz", en: "Assignment engine · shadow mode · decision transparency" },
+  "odin.liveConfirmTitle": { de: "Produktive automatische Zuweisung aktivieren", en: "Enable productive auto-assignment" },
+  "odin.liveConfirmMessage": { de: "Du bist dabei, die produktive automatische Zuweisung zu aktivieren. Tickets werden ab sofort automatisch zugewiesen.", en: "You are about to enable productive automatic assignment. Tickets will be assigned automatically from now on." },
+  "odin.liveConfirmButton": { de: "Ja, Live-Automatik aktivieren", en: "Yes, enable live automation" },
+  "odin.shadowConfirmTitle": { de: "Automatische Zuweisung starten (Shadow)", en: "Start automatic assignment (shadow)" },
+  "odin.shadowConfirmMessage": { de: "Möchtest du die automatische Zuweisungslogik im Shadow-Modus starten?", en: "Do you want to start the automatic assignment logic in shadow mode?" },
+  "odin.shadowConfirmButton": { de: "Ja, Shadow-Automatik starten", en: "Yes, start shadow automation" },
+  "odin.stopConfirmTitle": { de: "Automatische Zuweisung stoppen", en: "Stop automatic assignment" },
+  "odin.stopConfirmMessage": { de: "Möchtest du die automatische Zuweisungslogik stoppen?", en: "Do you want to stop the automatic assignment logic?" },
+  "odin.stopConfirmButton": { de: "Ja, Automatik stoppen", en: "Yes, stop automation" },
+  "odin.runsTab": { de: "Runs & Logs", en: "Runs & logs" },
+  "odin.decisionsTab": { de: "Ticketentscheidungen", en: "Ticket decisions" },
+  "odin.reportTab": { de: "Run-Report", en: "Run report" },
+  "odin.logicTreeTab": { de: "Logikbaum", en: "Logic tree" },
+  "odin.flowTab": { de: "Zuweisungsfluss", en: "Assignment flow" },
+  "odin.settingsTab": { de: "Einstellungen", en: "Settings" },
+  "odin.crawlerOverride": { de: "Crawler-Override", en: "Crawler override" },
+  "odin.staleData": { de: "Veraltete Daten", en: "Stale data" },
+  "odin.dryRun": { de: "Dry-Run", en: "Dry run" },
+  "odin.shadowRun": { de: "Shadow-Run starten", en: "Start shadow run" },
+  "odin.runInProgress": { de: "Läuft…", en: "Running…" },
+  "odin.automaticAssignment": { de: "Automatische Zuweisung", en: "Automatic assignment" },
+  "odin.disabled": { de: "Deaktiviert", en: "Disabled" },
+  "odin.liveActive": { de: "Live aktiv", en: "Live active" },
+  "odin.shadowActive": { de: "Shadow aktiv", en: "Shadow active" },
+  "odin.lastStarted": { de: "Zuletzt gestartet", en: "Last started" },
+  "odin.stopped": { de: "Gestoppt", en: "Stopped" },
+  "odin.by": { de: "von", en: "by" },
+  "odin.mode": { de: "Modus", en: "Mode" },
+  "odin.startShadowAutomation": { de: "Shadow-Automatik starten", en: "Start shadow automation" },
+  "odin.startLiveAutomation": { de: "Live-Automatik starten", en: "Start live automation" },
+  "odin.stopAutomation": { de: "Automatik stoppen", en: "Stop automation" },
+  "odin.engineSettings": { de: "Engine Einstellungen", en: "Engine settings" },
+  "odin.selectRunForReport": { de: "Wähle zuerst einen Run im Tab \u201ERuns & Logs\u201C.", en: 'Select a run in the "Runs & logs" tab first.' },
+  "odin.loadReport": { de: "Report laden", en: "Load report" },
+  "odin.validationConsistent": { de: "✓ Ticketzählung konsistent", en: "✓ Ticket count consistent" },
+  "odin.validationInconsistent": { de: "⚠ Ticketzählung inkonsistent", en: "⚠ Ticket count inconsistent" },
+  "odin.processed": { de: "Verarbeitet", en: "Processed" },
+  "odin.assigned": { de: "Zugewiesen", en: "Assigned" },
+  "odin.unassigned": { de: "Nicht zugewiesen", en: "Unassigned" },
+  "odin.notRelevant": { de: "Nicht relevant", en: "Not relevant" },
+  "odin.crawlerOverrideActive": { de: "⚠ Crawler-Override war aktiv", en: "⚠ Crawler override was active" },
+  "odin.crawlerOverrideHint": { de: "Ergebnisse basieren möglicherweise auf veralteten Crawler-Daten.", en: "Results may be based on stale crawler data." },
+  "odin.assignedTickets": { de: "✓ Zugewiesene Tickets", en: "✓ Assigned tickets" },
+  "odin.unassignedTickets": { de: "✗ Nicht zugewiesene Tickets", en: "✗ Unassigned tickets" },
+  "odin.ticket": { de: "Ticket", en: "Ticket" },
+  "odin.system": { de: "System", en: "System" },
+  "odin.category": { de: "Kategorie", en: "Category" },
+  "odin.queue": { de: "Queue", en: "Queue" },
+  "odin.assignedTo": { de: "Zugewiesen an", en: "Assigned to" },
+  "odin.reason": { de: "Begründung", en: "Reason" },
+  "odin.status": { de: "Status", en: "Status" },
+  "odin.modeDryRun": { de: "Dry-Run", en: "Dry run" },
+
+  /* ── Teams Center ── */
+  "teams.channelDelivery": { de: "Kanalversand", en: "Channel delivery" },
+  "teams.personalMessages": { de: "Persönliche Nachrichten", en: "Personal messages" },
+  "teams.scope": { de: "Prüfumfang", en: "Scope" },
+  "teams.diagnosticsScope": { de: "Das Fehlercenter kombiniert Konfiguration, echte Authentifizierung, Graph-Lesetest und aktuelle Versandlage.", en: "Diagnostics combine configuration, real authentication, a Graph read test, and the current delivery state." },
+  "teams.diagnosticsValue": { de: "Dadurch sieht man nicht nur dass Teams nicht funktioniert, sondern woran es konkret scheitert.", en: "This shows not only that Teams is failing, but also why it is failing." },
+  "teams.checksDocumentation": { de: "Jeder Check dokumentiert Prüfschritt, Ergebnis, technische Details und den nächsten sinnvollen Arbeitsschritt.", en: "Each check documents the verification step, the result, technical details, and the next sensible action." },
+  "teams.commonCauses": { de: "Häufige Ursachen", en: "Common causes" },
+  "teams.blockingCauses": { de: "In der Praxis blockieren am häufigsten drei Dinge: fehlender Webhook, fehlende Graph-Rechte oder ein gültiges Token ohne Admin Consent.", en: "In practice, three things block delivery most often: a missing webhook, missing Graph permissions, or a valid token without admin consent." },
+  "teams.debugTip": { de: "Wenn Kanalversand läuft, persönliche Nachrichten aber nicht, liegt die Ursache fast immer im Graph- oder Bot-Pfad.", en: "If channel delivery works but personal messages do not, the root cause is almost always the Graph or bot path." },
+  "teams.howToUse": { de: "Wie man es nutzt", en: "How to use it" },
+  "teams.usageInstructions": { de: "Erst die roten Blocker beheben, dann die Hinweise prüfen, danach im Test Center mit Kanal- und Personaltest verifizieren.", en: "Fix the red blockers first, review the warnings second, then verify the result in the test centre with channel and personal tests." },
+  "teams.traceableAnalysis": { de: "So bleibt die Fehleranalyse nachvollziehbar und endet nicht bei einem reinen Konfigurations-Check.", en: "This keeps troubleshooting traceable instead of ending at a pure configuration check." },
+  "teams.eventsDescription": { de: "Welche ODIN-Events lösen Teams-Nachrichten aus? Jedes Event kann einzeln aktiviert/deaktiviert und konfiguriert werden.", en: "Which ODIN events trigger Teams messages? Each event can be enabled, disabled, and configured separately." },
+  "teams.eventActiveInactive": { de: "Event aktiv/inaktiv", en: "Event active/inactive" },
+  "teams.eventToggleHint": { de: "Schaltet das Event ein oder aus. Inaktive Events lösen keine Teams-Nachrichten aus, auch wenn die Bedingung im System eintritt.", en: "Turns the event on or off. Inactive events trigger no Teams messages even if the condition occurs in the system." },
+  "teams.important": { de: "Wichtig", en: "Important" },
+  "teams.disablingNote": { de: "Deaktivierung betrifft nur den Nachrichtenversand. Das Event selbst wird weiterhin im System erkannt und geloggt.", en: "Disabling only affects message delivery. The event itself is still recognised and logged by the system." },
+
+  /* ── User Access ── */
+  "userAccess.loadFailed": { de: "Konnte User-Rechte nicht laden", en: "Could not load user permissions" },
+  "userAccess.saveFailed": { de: "Konnte Änderungen nicht speichern", en: "Could not save changes" },
+  "userAccess.resetFailed": { de: "Konnte Overrides nicht zurücksetzen", en: "Could not reset overrides" },
+  "userAccess.title": { de: "User Rechte", en: "User permissions" },
+  "userAccess.department": { de: "Abteilung", en: "Department" },
+  "userAccess.role": { de: "Rolle", en: "Role" },
+  "userAccess.overrideHint": { de: "Kein Override gesetzt = Rollenstandard gilt. Setze Overrides nur wenn nötig.", en: "No override set = role default applies. Set overrides only when necessary." },
+  "userAccess.loading": { de: "Lade Rechte…", en: "Loading permissions…" },
+  "userAccess.standard": { de: "Standard", en: "Default" },
+  "userAccess.departmentDefault": { de: "Abteilungsstandard", en: "Department default" },
+  "userAccess.noAccess": { de: "Kein Zugriff", en: "No access" },
+  "userAccess.read": { de: "Lesen", en: "Read" },
+  "userAccess.write": { de: "Schreiben", en: "Write" },
+  "userAccess.clearOverrides": { de: "Alle Overrides löschen", en: "Clear all overrides" },
+
+  /* ── Group Access ── */
+  "groupAccess.loadFailed": { de: "Konnte Abteilungen nicht laden", en: "Could not load departments" },
+  "groupAccess.saveFailed": { de: "Speichern fehlgeschlagen", en: "Saving failed" },
+  "groupAccess.keyLabelRequired": { de: "Key und Label sind erforderlich", en: "Key and label are required" },
+  "groupAccess.createFailed": { de: "Abteilung konnte nicht erstellt werden", en: "Department could not be created" },
+  "groupAccess.selectDepartment": { de: "Abteilung auswählen", en: "Select department" },
+  "groupAccess.newDepartment": { de: "Neue Abteilung anlegen", en: "Create new department" },
+  "groupAccess.keyPlaceholder": { de: "Key (z.\u00A0B. qa-team)", en: "Key (e.g. qa-team)" },
+  "groupAccess.labelPlaceholder": { de: "Label (z.\u00A0B. QA Team)", en: "Label (e.g. QA Team)" },
+  "groupAccess.create": { de: "Anlegen", en: "Create" },
+  "groupAccess.hint": { de: "Hinweis: Keys werden automatisch normalisiert (Kleinschreibung, Bindestriche).", en: "Note: keys are normalised automatically (lowercase, hyphens)." },
+  "groupAccess.page": { de: "Seite", en: "Page" },
+  "groupAccess.departmentStandard": { de: "Abteilungsstandard", en: "Department default" },
+  "groupAccess.selectAccess": { de: "Zugriff auswählen", en: "Select access" },
+  "groupAccess.title": { de: "Abteilung Access (Pages)", en: "Department access (pages)" },
+  "groupAccess.noAccess": { de: "Kein Zugriff", en: "No access" },
+  "groupAccess.read": { de: "Lesen", en: "Read" },
+  "groupAccess.write": { de: "Schreiben", en: "Write" },
+
+  /* ── Add User ── */
+  "addUser.createFailed": { de: "User konnte nicht angelegt werden", en: "User could not be created" },
+  "addUser.title": { de: "User anlegen", en: "Create user" },
+  "addUser.subtitle": { de: "Startpasswort wird beim Anlegen gesetzt und beim ersten Login zwingend zur Änderung markiert.", en: "An initial password is set during creation and must be changed on first login." },
+  "addUser.note": { de: "Nutzer können auch ohne vorhandenen Schichtplan-Eintrag angelegt werden.", en: "Users can also be created without an existing shift plan entry." },
+  "addUser.firstName": { de: "Vorname", en: "First name" },
+  "addUser.lastName": { de: "Nachname", en: "Last name" },
+  "addUser.email": { de: "E-Mail", en: "Email" },
+  "addUser.initialPassword": { de: "Startpasswort", en: "Initial password" },
+  "addUser.passwordPlaceholder": { de: "Initiales Passwort für den ersten Login", en: "Initial password for the first login" },
+  "addUser.location": { de: "Standort (IBX)", en: "Location (IBX)" },
+  "addUser.locationPlaceholder": { de: "Standort auswählen", en: "Select location" },
+  "addUser.department": { de: "Abteilung", en: "Department" },
+  "addUser.departmentPlaceholder": { de: "Abteilung auswählen", en: "Select department" },
+  "addUser.role": { de: "Rolle", en: "Role" },
+  "addUser.submit": { de: "User anlegen", en: "Create user" },
+
+  /* ── Holidays ── */
+  "holidays.newYearsDay": { de: "Neujahr", en: "New Year's Day" },
+  "holidays.labourDay": { de: "Tag der Arbeit", en: "Labour Day" },
+  "holidays.germanUnityDay": { de: "Tag der Deutschen Einheit", en: "German Unity Day" },
+  "holidays.christmasDay1": { de: "1. Weihnachtstag", en: "Christmas Day" },
+  "holidays.christmasDay2": { de: "2. Weihnachtstag", en: "Boxing Day" },
+  "holidays.goodFriday": { de: "Karfreitag", en: "Good Friday" },
+  "holidays.easterMonday": { de: "Ostermontag", en: "Easter Monday" },
+  "holidays.ascensionDay": { de: "Christi Himmelfahrt", en: "Ascension Day" },
+  "holidays.whitMonday": { de: "Pfingstmontag", en: "Whit Monday" },
+  "holidays.corpusChristi": { de: "Fronleichnam", en: "Corpus Christi" },
+  "holidays.generic": { de: "Feiertag", en: "Public holiday" },
+  /* ── Login ── */
+  "login.loginFailed": { de: "Anmeldung fehlgeschlagen. Bitte Daten prüfen.", en: "Sign-in failed. Please check your credentials." },
+  "login.emailHint": { de: "Melde dich mit deiner Firmen-E-Mail-Adresse an. Falls du noch kein Konto hast, kannst du dich unten registrieren.", en: "Sign in with your corporate email address. If you do not have an account yet, you can register below." },
+  "login.email": { de: "E-Mail", en: "Email" },
+  "login.emailPlaceholder": { de: "vorname.nachname@eu.equinix.com", en: "firstname.lastname@eu.equinix.com" },
+  "login.password": { de: "Passwort", en: "Password" },
+  "login.hidePassword": { de: "Passwort verbergen", en: "Hide password" },
+  "login.showPassword": { de: "Passwort anzeigen", en: "Show password" },
+  "login.loggingIn": { de: "Anmelden…", en: "Signing in..." },
+  "login.loginButton": { de: "Anmelden", en: "Sign in" },
+  "login.forgotPassword": { de: "Passwort vergessen?", en: "Forgot password?" },
+  "login.noAccount": { de: "Noch kein Konto?", en: "No account yet?" },
+  "login.register": { de: "Registrieren", en: "Register" },
+  /* ── ForgotPassword ── */
+  "forgotPassword.title": { de: "Passwort zurücksetzen", en: "Reset password" },
+  "forgotPassword.subtitle": { de: "Du erhältst einen Reset-Link per E-Mail", en: "You will receive a reset link by email" },
+  "forgotPassword.email": { de: "E-Mail", en: "Email" },
+  "forgotPassword.emailPlaceholder": { de: "vorname.nachname@eu.equinix.com", en: "firstname.lastname@eu.equinix.com" },
+  "forgotPassword.submitButton": { de: "Reset-Link senden", en: "Send reset link" },
+  "forgotPassword.backToLogin": { de: "Zurück zum Login", en: "Back to login" },
+  /* ── AccessDenied ── */
+  "accessDenied.title": { de: "Zugriff verweigert", en: "Access denied" },
+  "accessDenied.message": { de: "Du hast keine Berechtigung, diese Seite aufzurufen.", en: "You do not have permission to open this page." },
+  "accessDenied.backButton": { de: "Zurück", en: "Back" },
+  /* ── CommitCompliance ── */
+  "commitCompliance.pdfOnlyError": { de: "Nur PDF-Dateien erlaubt.", en: "Only PDF files are allowed." },
+  "commitCompliance.uploadFailedError": { de: "Upload fehlgeschlagen.", en: "Upload failed." },
+  "commitCompliance.subtitle": { de: "PDF-Dateien hochladen für Analyse", en: "Upload PDF files for analysis" },
+  "commitCompliance.uploadSection": { de: "PDF-Upload", en: "PDF upload" },
+  "commitCompliance.uploadingButton": { de: "Wird hochgeladen...", en: "Uploading..." },
+  "commitCompliance.uploadButton": { de: "Hochladen", en: "Upload" },
+  "commitCompliance.uploadedFiles": { de: "Hochgeladene Dateien", en: "Uploaded files" },
+  /* ── DBS ── */
+  "dbs.coloDashboardTitle": { de: "Colo-Dashboard", en: "Colo dashboard" },
+  "dbs.coloDashboardDesc": { de: "Zeigt die für die aktuelle Woche geplanten Arbeiten an.", en: "Shows the work planned for the current week." },
+  "dbs.completeListTitle": { de: "Vollständige Liste", en: "Complete list" },
+  "dbs.completeListDesc": { de: "Vollständiger Colo 2.0 Excel-Datensatz.", en: "Complete Colo 2.0 Excel dataset." },
+  "dbs.networkViewTitle": { de: "Netzwerkansicht", en: "Network view" },
+  "dbs.networkViewDesc": { de: "Grafische Kabelvisualisierung im FNT-Stil.", en: "Graphical cable visualization in an FNT-style layout." },
+  "dbs.pageSubtitle": { de: "Colocation Planung und Übersicht", en: "Colocation planning and overview" },
+  /* ── EmployeeContacts ── */
+  "employeeContacts.title": { de: "Mitarbeiter-Kontakte", en: "Employee contacts" },
+  "employeeContacts.subtitle": { de: "E-Mail-Adressen für Schichtplan-Benachrichtigungen", en: "Email addresses for shift plan notifications" },
+  /* ── DashboardInfoBar ── */
+  "dashboardInfo.deleteEntryConfirm": { de: "Eintrag wirklich löschen?", en: "Delete this entry?" },
+  "dashboardInfo.displayActive": { de: "ANZEIGE AKTIV", en: "DISPLAY ACTIVE" },
+  "dashboardInfo.hidden": { de: "VERBORGEN", en: "HIDDEN" },
+  "dashboardInfo.hideButton": { de: "Ausblenden", en: "Hide" },
+  "dashboardInfo.showButton": { de: "Anzeigen", en: "Show" },
+  "dashboardInfo.noEntries": { de: "Keine Einträge vorhanden.", en: "No entries available." },
+  "dashboardInfo.typeInstruction": { de: "Anweisung", en: "Instruction" },
+  "dashboardInfo.typeInformation": { de: "Information", en: "Information" },
+  "dashboardInfo.deletionBadge": { de: "Löschung", en: "Deletion" },
+  "dashboardInfo.addPlaceholder": { de: "Neue Information hinzufügen...", en: "Add new information..." },
+  "dashboardInfo.settingsMenu": { de: "Einstellungen", en: "Settings" },
+  "dashboardInfo.markAsInfo": { de: "Als Information markieren", en: "Mark as information" },
+  "dashboardInfo.markAsInstruction": { de: "Als Anweisung markieren", en: "Mark as instruction" },
+  "dashboardInfo.autoDeletion": { de: "Automatische Löschung", en: "Automatic deletion" },
+  "dashboardInfo.removeAutoDeletion": { de: "Auto-Löschung entfernen", en: "Remove auto deletion" },
+  /* ── ProjectsPanel ── */
+  "projects.createNewProject": { de: "Neues Projekt erstellen", en: "Create new project" },
+  "projects.projectNameLabel": { de: "Projektname *", en: "Project name *" },
+  "projects.projectNamePlaceholder": { de: "Projektname", en: "Project name" },
+  "projects.responsibleLabel": { de: "Verantwortlich", en: "Responsible" },
+  "projects.responsiblePlaceholder": { de: "Name oder Team", en: "Name or team" },
+  "projects.endDateLabel": { de: "Geplantes Enddatum", en: "Planned end date" },
+  "projects.progressLabel": { de: "Fortschritt", en: "Progress" },
+  "projects.descriptionLabel": { de: "Beschreibung", en: "Description" },
+  "projects.descriptionPlaceholder": { de: "Optionale Beschreibung...", en: "Optional description..." },
+  "projects.createProjectButton": { de: "Projekt erstellen", en: "Create project" },
+  "projects.completedBadge": { de: "Abgeschlossen", en: "Completed" },
+  "projects.overdue": { de: "überfällig", en: "overdue" },
+  "projects.today": { de: "heute", en: "today" },
+  "projects.markCompletedConfirm": { de: "Projekt als abgeschlossen markieren?", en: "Mark project as completed?" },
+  "projects.loadingLabel": { de: "Lade Projekte...", en: "Loading projects..." },
+  "projects.newProjectButton": { de: "Neues Projekt", en: "New project" },
+  "projects.activeSection": { de: "Aktiv", en: "Active" },
+  "projects.completedSection": { de: "Abgeschlossen", en: "Completed" },
+  "projects.noProjects": { de: "Noch keine Projekte vorhanden.", en: "No projects available yet." },
+  "projects.createFirstButton": { de: "Erstes Projekt erstellen", en: "Create first project" },
+  /* ── Register ── */
+  "register.registerFailed": { de: "Registrierung fehlgeschlagen", en: "Registration failed" },
+  "register.title": { de: "Konto registrieren", en: "Register account" },
+  "register.subtitle": { de: "Registrierung erfordert Admin-Freigabe", en: "Registration requires administrator approval" },
+  "register.infoLineOne": { de: "Verwende deine Firmen-E-Mail-Adresse, zum Beispiel vorname.nachname@firma.de.", en: "Use your corporate email address, for example first.last@company.com." },
+  "register.infoLineTwo": { de: "Nach der Registrierung muss ein Admin dein Konto freigeben, bevor du dich einloggen kannst.", en: "After registration, an administrator must approve your account before you can sign in." },
+  "register.firstName": { de: "Vorname", en: "First name" },
+  "register.lastName": { de: "Nachname", en: "Last name" },
+  "register.email": { de: "E-Mail", en: "Email" },
+  "register.emailPlaceholder": { de: "vorname.nachname@eu.equinix.com", en: "firstname.lastname@eu.equinix.com" },
+  "register.location": { de: "Standort (IBX)", en: "Location (IBX)" },
+  "register.locationPlaceholder": { de: "Standort auswählen", en: "Select location" },
+  "register.department": { de: "Abteilung", en: "Department" },
+  "register.departmentPlaceholder": { de: "Abteilung auswählen", en: "Select department" },
+  "register.password": { de: "Passwort", en: "Password" },
+  "register.hidePassword": { de: "Passwort verbergen", en: "Hide password" },
+  "register.showPassword": { de: "Passwort anzeigen", en: "Show password" },
+  "register.passwordHint": { de: "Mindestens 8 Zeichen mit Groß-/Kleinbuchstaben und einer Zahl.", en: "At least 8 characters with uppercase, lowercase, and one number." },
+  "register.successTitle": { de: "Registrierung erfolgreich!", en: "Registration successful!" },
+  "register.successBody": { de: "Dein Konto wurde angelegt. Ein Admin gibt es frei, bevor du dich anmelden kannst.", en: "Your account request was created. An administrator must approve it before you can sign in." },
+  "register.submitting": { de: "Wird gesendet…", en: "Submitting..." },
+  "register.submitButton": { de: "Registrierung anfragen", en: "Request registration" },
+  "register.backToLogin": { de: "Zurück zum Login", en: "Back to login" },
+  /* ── TicketAudit ── */
+  "ticketAudit.today": { de: "Heute", en: "Today" },
+  "ticketAudit.week": { de: "Woche", en: "Week" },
+  "ticketAudit.month": { de: "Monat", en: "Month" },
+  "ticketAudit.year": { de: "Jahr", en: "Year" },
+  "ticketAudit.customRange": { de: "Zeitraum", en: "Range" },
+  "ticketAudit.subtitle": { de: "Administratives Auswertungs-Dashboard – Ticketaktivität und manuelle Übernahmen", en: "Administrative analytics dashboard – ticket activity and manual takeovers" },
+  "ticketAudit.rangeLabel": { de: "Zeitraum", en: "Range" },
+  "ticketAudit.manualTakeoversTitle": { de: "Manuelle Ticketübernahmen ohne ODIN-Zuweisung", en: "Manual ticket takeovers without ODIN assignment" },
+  "ticketAudit.noManualTakeovers": { de: "Keine manuellen Übernahmen ohne Zuweisung im gewählten Zeitraum.", en: "No manual takeovers without assignment in the selected period." },
+  "ticketAudit.employee": { de: "Mitarbeiter", en: "Employee" },
+  "ticketAudit.withoutAssignment": { de: "Ohne Zuweisung", en: "Without assignment" },
+  "ticketAudit.total": { de: "Gesamt", en: "Total" },
+  "ticketAudit.share": { de: "Anteil", en: "Share" },
+  "ticketAudit.lastTakeover": { de: "Letzte Übernahme", en: "Last takeover" },
+  "ticketAudit.ticketTypes": { de: "Tickettypen", en: "Ticket types" },
+  "ticketAudit.processingStatsTitle": { de: "Bearbeitungsstatistik je Mitarbeiter", en: "Processing statistics by employee" },
+  "ticketAudit.noActivity": { de: "Keine Ticketaktivität im gewählten Zeitraum.", en: "No ticket activity in the selected period." },
+  "ticketAudit.closed": { de: "Geschlossen", en: "Closed" },
+  "ticketAudit.closeRate": { de: "Abschlussquote", en: "Close rate" },
+  "ticketAudit.definitionsTitle": { de: "Definitionen und Berechnungsgrundlagen", en: "Definitions and calculation rules" },
+  "ticketAudit.manualTakeoverDefLabel": { de: "Manuelle Übernahme ohne Zuweisung:", en: "Manual takeover without assignment:" },
+  "ticketAudit.manualTakeoverDefDesc": { de: "Ein Ticket, bei dem ein Mitarbeiter als Owner eingetragen ist, aber keine ODIN-Zuweisungsentscheidung existiert.", en: "A ticket where an employee is the owner but no ODIN assignment decision exists." },
+  "ticketAudit.processedTicketDefLabel": { de: "Bearbeitetes Ticket:", en: "Processed ticket:" },
+  "ticketAudit.processedTicketDefDesc": { de: "Ein Ticket, das einem Mitarbeiter als Owner zugeordnet ist und im gewählten Zeitraum aktiv war.", en: "A ticket assigned to an employee as owner and active during the selected period." },
+  "ticketAudit.closeRateDefLabel": { de: "Abschlussquote:", en: "Close rate:" },
+  "ticketAudit.closeRateDefDesc": { de: "Anteil der Tickets mit Abschlussdatum an der Gesamtzahl der zugeordneten Tickets.", en: "Share of tickets with a close date compared to the total assigned tickets." },
+
+  /* ── OdinLogicTree ── */
+  "logicTree.title": { de: "Zuweisungslogik - Entscheidungsbaum", en: "Assignment logic - decision tree" },
+  "logicTree.description": { de: "Visualisiert die aktuelle Pipeline der Assignment Engine. Klicken Sie auf Knoten mit Unterebenen, um diese ein-/auszuklappen.", en: "Visualizes the current assignment engine pipeline. Click nodes with child levels to expand or collapse them." },
+  "logicTree.badgeRule": { de: "Regel", en: "Rule" },
+  "logicTree.badgeAction": { de: "Aktion", en: "Action" },
+  "logicTree.openPoints": { de: "Offene Punkte", en: "Open points" },
+
+  /* ── ShiftAdminSettings ── */
+  "shiftAdmin.title": { de: "Schichtplaneinstellungen", en: "Shift plan settings" },
+  "shiftAdmin.subtitle": { de: "Konfiguration aller Regeln, Wochenend-Varianten und DBS-Parameter", en: "Configuration of all rules, weekend variants, and DBS parameters" },
+  "shiftAdmin.activeOn": { de: "Aktiv an", en: "Active on" },
+
+  /* ── Shiftplan ── */
+  "shiftplan.title": { de: "SCHICHTPLAN", en: "SHIFT PLAN" },
+  "shiftplan.shiftEarly": { de: "Früh", en: "Early" },
+  "shiftplan.shiftLate": { de: "Spät", en: "Late" },
+  "shiftplan.shiftNight": { de: "Nacht", en: "Night" },
+  "shiftplan.minStaffingViolated": { de: "Mindestbesetzung verletzt", en: "Minimum staffing violated" },
+  "shiftplan.minStaffingSolution": { de: "Mindeststaffing-Regel für diesen Tag prüfen und gezielt Mitarbeiter mit passender Schichtfähigkeit nachziehen.", en: "Review the minimum staffing rule for this day and add employees with matching shift capability." },
+  "shiftplan.skillGapDetected": { de: "Skill-Lücke erkannt", en: "Skill gap detected" },
+  "shiftplan.skillGapMeta": { de: "Skill-Lücke", en: "Skill gap" },
+  "shiftplan.skillGapSolution": { de: "Mitarbeiter mit passender Skill-Matrix einplanen oder die Schichtbesetzung so tauschen, dass die Mindestskills erhalten bleiben.", en: "Plan employees with the right skill matrix or rebalance shifts so required skills remain covered." },
+  "shiftplan.restTimeViolated": { de: "Ruhezeit verletzt", en: "Rest time violated" },
+  "shiftplan.hardTransitionDetected": { de: "Harter Schichtwechsel erkannt", en: "Hard shift transition detected" },
+  "shiftplan.restTimeSolution": { de: "Genug Ruhezeit herstellen, indem der Folgetag auf frei oder eine spätere Schicht umgestellt wird.", en: "Restore sufficient rest time by changing the following day to off-duty or a later shift." },
+  "shiftplan.hardTransitionSolution": { de: "Wechselkette glätten und harte Sprünge zwischen Nacht-, Spät- und Frühschicht reduzieren.", en: "Smooth the shift sequence and reduce hard jumps between night, late, and early shifts." },
+  "shiftplan.changesSaved": { de: "Änderungen erfolgreich gespeichert", en: "Changes saved successfully" },
+  "shiftplan.saveFailed": { de: "Speichern fehlgeschlagen", en: "Saving failed" },
+  "shiftplan.filenameMustContainYear": { de: "Dateiname muss ein Jahr enthalten (z. B. 2026)", en: "Filename must contain a year (for example 2026)" },
+  "shiftplan.excelImportFailed": { de: "Fehler beim Excel-Import", en: "Excel import failed" },
+  "shiftplan.exportFailed": { de: "Export fehlgeschlagen.", en: "Export failed." },
+  "shiftplan.holidayTooltip": { de: "Feiertage (Hessen) – Links: Overlay, Rechts: Liste", en: "Public holidays (Hesse) – left: overlay, right: list" },
+  "shiftplan.holidaysOn": { de: "Feiertage: an", en: "Holidays: on" },
+  "shiftplan.holidays": { de: "Feiertage", en: "Holidays" },
+  "shiftplan.noHolidays": { de: "Für dieses Jahr liegen aktuell keine Feiertage vor.", en: "There are currently no public holidays available for this year." },
+  "shiftplan.changeShift": { de: "Schicht ändern", en: "Change shift" },
+  "shiftplan.selectShift": { de: "Schicht wählen", en: "Select shift" },
+  "shiftplan.emptyShift": { de: "(Leer / Löschen)", en: "(Empty / Clear)" },
+  "shiftplan.early1": { de: "Früh 1", en: "Early 1" },
+  "shiftplan.early2": { de: "Früh 2", en: "Early 2" },
+  "shiftplan.late1": { de: "Spät 1", en: "Late 1" },
+  "shiftplan.late2": { de: "Spät 2", en: "Late 2" },
+  "shiftplan.offWeekend": { de: "Frei/WE", en: "Off/Weekend" },
+  "shiftplan.absent": { de: "Abwesend", en: "Absent" },
+
+  /* ── EmployeeExclusions ── */
+  "exclusions.reasonProject": { de: "Projektarbeit", en: "Project work" },
+  "exclusions.reasonAdminOverride": { de: "Admin-Vorgabe", en: "Admin override" },
+  "exclusions.reasonNoOperative": { de: "Keine operative Ticketbearbeitung", en: "No operational ticket handling" },
+  "exclusions.reasonTemporary": { de: "Temporär ausgeschlossen", en: "Temporarily excluded" },
+  "exclusions.title": { de: "Dauerhafte Assignment-Ausschlüsse", en: "Permanent assignment exclusions" },
+  "exclusions.subtitle": { de: "Mitarbeiter dauerhaft oder zeitlich begrenzt von automatischer Ticketzuweisung ausschließen", en: "Exclude employees from automatic ticket assignment permanently or for a limited time" },
+  "exclusions.quickExclude": { de: "Schnell-Ausschluss — Mitarbeiter per Drag & Drop oder Klick verschieben", en: "Quick exclusion - move employees via drag and drop or click" },
+  "exclusions.quickExcludeInfo": { de: "Für schnelle operative Eingriffe. Dabei wird automatisch der Grund \u201EAdmin-Vorgabe\u201C verwendet. Für genaue Gründe oder Zeiträume das Formular darunter nutzen.", en: "For quick operational interventions. The default reason is set to \u201CAdmin override\u201D automatically. Use the form below for specific reasons or date ranges." },
+  "exclusions.filterEmployees": { de: "Mitarbeiter filtern\u2026", en: "Filter employees..." },
+  "exclusions.available": { de: "Verfügbar", en: "Available" },
+  "exclusions.noMatches": { de: "Keine Treffer", en: "No matches" },
+  "exclusions.allExcluded": { de: "Alle Mitarbeiter sind ausgeschlossen", en: "All employees are excluded" },
+  "exclusions.excluded": { de: "Ausgeschlossen", en: "Excluded" },
+  "exclusions.noExclusions": { de: "Keine Ausschlüsse — Mitarbeiter hierher ziehen", en: "No exclusions - drag employees here" },
+  "exclusions.quickFooter": { de: "Schnell-Ausschlüsse verwenden Grund \u201EAdmin-Vorgabe\u201C. Für spezifische Gründe / Zeiträume das Formular unten nutzen.", en: "Quick exclusions use the reason \u201CAdmin override\u201D. Use the form below for specific reasons or time ranges." },
+  "exclusions.addTitle": { de: "Neuen Ausschluss hinzufügen (mit Grund / Zeitraum)", en: "Add new exclusion (with reason / time range)" },
+  "exclusions.addInfo": { de: "Hier können Ausschlüsse mit sauberer Begründung und optionalem Gültigkeitszeitraum angelegt werden.", en: "Create exclusions with a documented reason and an optional validity range." },
+  "exclusions.searchEmployee": { de: "Mitarbeiter suchen\u2026", en: "Search employee..." },
+  "exclusions.noEmployeeFound": { de: "Kein Mitarbeiter gefunden — manueller Name wird übernommen", en: "No employee found - manual name will be used" },
+  "exclusions.reason": { de: "Grund", en: "Reason" },
+  "exclusions.additionalReason": { de: "Zusätzliche Begründung", en: "Additional reason" },
+  "exclusions.additionalReasonPlaceholder": { de: "Zusätzliche Begründung (optional)", en: "Additional reason (optional)" },
+  "exclusions.add": { de: "Hinzufügen", en: "Add" },
+  "exclusions.limitPeriod": { de: "Zeitlich begrenzen (optional):", en: "Limit time period (optional):" },
+  "exclusions.until": { de: "bis", en: "to" },
+  "exclusions.activeExclusions": { de: "Aktive Ausschlüsse", en: "Active exclusions" },
+  "exclusions.noActiveExclusions": { de: "Keine aktiven Ausschlüsse vorhanden", en: "No active exclusions available" },
+  "exclusions.justification": { de: "Begründung", en: "Justification" },
+  "exclusions.validFrom": { de: "Gültig von", en: "Valid from" },
+  "exclusions.validTo": { de: "Gültig bis", en: "Valid to" },
+  "exclusions.createdBy": { de: "Erstellt von", en: "Created by" },
+  "exclusions.createdAt": { de: "Erstellt am", en: "Created at" },
+  "exclusions.actions": { de: "Aktionen", en: "Actions" },
+  "exclusions.deactivate": { de: "Deaktivieren", en: "Deactivate" },
+  "exclusions.deletePermanently": { de: "Endgültig löschen", en: "Delete permanently" },
+  "exclusions.showInactive": { de: "Auch deaktivierte Ausschlüsse anzeigen", en: "Also show inactive exclusions" },
+  "exclusions.inactiveExclusions": { de: "Deaktivierte Ausschlüsse", en: "Inactive exclusions" },
+  "exclusions.deactivatedBy": { de: "Deaktiviert von", en: "Deactivated by" },
+  "exclusions.deactivatedAt": { de: "Deaktiviert am", en: "Deactivated at" },
+  "exclusions.introText": { de: "Hier werden Mitarbeiter gepflegt, die ODIN gar nicht oder nur in bestimmten Zeiträumen automatisch berücksichtigen darf.", en: "Manage employees whom ODIN must exclude from automatic consideration either permanently or during defined periods." },
+  "exclusions.tooltipReason": { de: "Standardisierte Ursache für den Ausschluss, z. B. Projektarbeit, Training oder operative Aussteuerung.", en: "Standardized cause for the exclusion, for example project work, training, or operational removal." },
+  "exclusions.tooltipAdditionalReason": { de: "Freitext für Details, die aus dem Standardgrund nicht hervorgehen, z. B. Projektname oder Teamabsprache.", en: "Free text for details not covered by the standard reason, for example project name or team agreement." },
+  "exclusions.tooltipLimitPeriod": { de: "Mit Von/Bis kann ein Ausschluss automatisch nur für einen definierten Zeitraum gelten.", en: "Use From/To to limit an exclusion automatically to a defined period." },
+  "exclusions.tooltipActiveExclusions": { de: "Diese Mitarbeiter werden aktuell von ODIN bei der automatischen Auswahl ausgeschlossen.", en: "These employees are currently excluded by ODIN during automatic selection." },
+  "exclusions.tooltipEmployee": { de: "Betroffene Person, die aktuell von Auto-Assignments ausgenommen ist.", en: "Affected person currently excluded from auto assignments." },
+  "exclusions.tooltipReasonCol": { de: "Standardisierter Ausschlussgrund.", en: "Standardized exclusion reason." },
+  "exclusions.tooltipJustification": { de: "Zusätzlicher Freitext mit Kontext.", en: "Additional free-text context." },
+  "exclusions.tooltipValidFrom": { de: "Startdatum des Ausschlusses.", en: "Start date of the exclusion." },
+  "exclusions.tooltipValidTo": { de: "Optionales Enddatum. Danach kann der Ausschluss automatisch oder operativ beendet werden.", en: "Optional end date. Afterwards the exclusion can end automatically or operationally." },
+  "exclusions.tooltipCreatedBy": { de: "Wer den Ausschluss angelegt hat.", en: "Who created the exclusion." },
+  "exclusions.tooltipCreatedAt": { de: "Zeitpunkt der Anlage.", en: "Timestamp of creation." },
+  "exclusions.tooltipActions": { de: "Deaktivieren beendet den Ausschluss, Löschen entfernt ihn vollständig aus der Liste.", en: "Deactivate ends the exclusion, delete removes it completely from the list." },
+  "exclusions.tooltipShowInactive": { de: "Zeigt zusätzlich historische, bereits deaktivierte Ausschlüsse für Nachvollziehbarkeit und Audit.", en: "Also shows historical deactivated exclusions for auditability." },
+  "exclusions.tooltipInactive": { de: "Historische Einträge, die aktuell nicht mehr greifen, aber für Nachvollziehbarkeit erhalten bleiben.", en: "Historical entries that no longer apply but remain for traceability." },
+
+  /* ── AssignmentRulesEditor ── */
+  "rules.title": { de: "ODIN-Logik Konfiguration", en: "ODIN logic configuration" },
+  "rules.subtitle": { de: "Assignment Rules & Prioritäten", en: "Assignment rules and priorities" },
+  "rules.titleAlt": { de: "ODIN-Logik Konfiguration", en: "ODIN logic configuration" },
+  "rules.subtitleAlt": { de: "Assignment Rules, Prioritäten & Hierarchien", en: "Assignment rules, priorities, and hierarchies" },
+  "rules.catPriorities": { de: "Prioritäten", en: "Priorities" },
+  "rules.catRoleRules": { de: "Rollenregeln", en: "Role rules" },
+  "rules.catLoadBalancing": { de: "Lastverteilung", en: "Load balancing" },
+  "rules.catExceptions": { de: "Ausnahmen", en: "Exceptions" },
+  "rules.newStarter": { de: "Neustarter", en: "New starter" },
+  "rules.normalOperation": { de: "Normalbetrieb", en: "Normal operation" },
+  "rules.noTiersConfigured": { de: "Keine Prioritätsstufen definiert.", en: "No priority tiers defined." },
+  "rules.adjustOrder": { de: "Reihenfolge per Buttons anpassen", en: "Adjust order with the buttons" },
+  "rules.types": { de: "Typen", en: "Types" },
+  "rules.priorities": { de: "Prioritäten", en: "Priorities" },
+  "rules.all": { de: "alle", en: "all" },
+  "rules.onlyOtherTeamsHandovers": { de: "Nur OtherTeams-Handovers", en: "Only OtherTeams handovers" },
+  "rules.allowTroubleTickets": { de: "Trouble Tickets erlauben", en: "Allow Trouble Tickets" },
+  "rules.ccOnlyAbove24h": { de: "Cross Connect nur bei mehr als 24h Restzeit", en: "Allow Cross Connect only above 24h remaining" },
+  "rules.blockedTicketTypes": { de: "Explizit blockierte Tickettypen", en: "Explicitly blocked ticket types" },
+  "rules.allowedCcTicketTypes": { de: "Erlaubte Tickettypen für die CC-Rolle", en: "Allowed ticket types for the CC role" },
+  "rules.mixableTicketTypes": { de: "Zusätzlich mischbare Tickettypen", en: "Additional mixable ticket types" },
+  "rules.ttExceptionResourceShortage": { de: "TT-Ausnahme bei knappen Ressourcen", en: "TT exception during resource shortage" },
+  "rules.mixOnlySameSystem": { de: "Nur gleiches System mischen", en: "Mix only the same system" },
+  "rules.mixOnlySamePriority": { de: "Nur gleiche Priorität mischen", en: "Mix only the same priority" },
+  "rules.ttExceptionRemainingTime": { de: "TT-Ausnahme ab Restzeit", en: "TT exception from remaining time" },
+  "rules.maxShPerWorkerSystem": { de: "Maximale SH-Tickets pro Worker und System", en: "Maximum SH tickets per worker and system" },
+  "rules.maxTimeDiffCcGrouping": { de: "Maximale Restzeit-Differenz für CC-Systemgruppierung", en: "Maximum remaining-time difference for CC system grouping" },
+  "rules.fewestTicketsFirst": { de: "Wenigste Tickets zuerst", en: "Fewest tickets first" },
+  "rules.stableOrder": { de: "Stabile Reihenfolge", en: "Stable order" },
+  "rules.overallTicketLimit": { de: "Gesamtlimit aktiver Tickets pro Worker", en: "Overall limit of active tickets per worker" },
+  "rules.noLimit": { de: "Kein Limit", en: "No limit" },
+  "rules.limitsPerTicketType": { de: "Limits pro Tickettyp", en: "Limits per ticket type" },
+  "rules.limitsPerRole": { de: "Limits pro Rolle", en: "Limits per role" },
+  "rules.limitsPerRoleAndType": { de: "Limits pro Rolle und Tickettyp", en: "Limits per role and ticket type" },
+  "rules.preferExpedite": { de: "Expedite bevorzugen", en: "Prefer expedite" },
+  "rules.noVisualEditor": { de: "Für diese Regel ist noch kein visueller Editor hinterlegt. Nutze bei Bedarf den erweiterten JSON-Modus unten.", en: "No visual editor is implemented for this rule yet. Use the advanced JSON mode below if needed." },
+  "rules.emptyNoOverride": { de: "leer = kein Sonderlimit", en: "empty = no override" },
+  "rules.changeNote": { de: "Änderungsnotiz", en: "Change note" },
+  "rules.changeNotePlaceholder": { de: "Was wurde geändert und warum?", en: "What changed and why?" },
+  "rules.showAdvancedJson": { de: "Erweiterten JSON-Modus anzeigen", en: "Show advanced JSON mode" },
+  "rules.hideAdvancedJson": { de: "Erweiterten JSON-Modus ausblenden", en: "Hide advanced JSON mode" },
+  "rules.advancedJsonOnlySpecial": { de: "Nur für Sonderfälle oder neue Regelstrukturen. Änderungen hier überschreiben die visuellen Controls.", en: "Only for special cases or new rule structures. Changes here override the visual controls." },
+  "rules.history": { de: "Verlauf", en: "History" },
+  "rules.changeHistory": { de: "Änderungshistorie", en: "Change history" },
+  "rules.lastChangedBy": { de: "Zuletzt geändert von", en: "Last changed by" },
+  "rules.version": { de: "Version", en: "Version" },
+  "rules.rollback": { de: "Rollback", en: "Rollback" },
+  "rules.noExplanation": { de: "Keine zusätzliche Erklärung hinterlegt.", en: "No additional explanation available." },
+  "rules.noCategoryDescription": { de: "Keine zusätzliche Kategoriebeschreibung hinterlegt.", en: "No additional category description available." },
+
+  /* ── ShiftplanControlCenter ── */
+  "sc.statusDraft": { de: "Entwurf", en: "Draft" },
+  "sc.statusInReview": { de: "In Prüfung", en: "In review" },
+  "sc.statusApproved": { de: "Freigegeben", en: "Approved" },
+  "sc.statusActivated": { de: "Übernommen", en: "Activated" },
+  "sc.statusFailed": { de: "Fehlgeschlagen", en: "Failed" },
+  "sc.severityCritical": { de: "Kritisch", en: "Critical" },
+  "sc.severityRelevant": { de: "Relevant", en: "Relevant" },
+  "sc.severityHint": { de: "Hinweis", en: "Hint" },
+  "sc.title": { de: "Schichtplaner", en: "Shift planner" },
+  "sc.subtitle": { de: "Schichtplanung – Draft-Generierung, Prüfung, Freigabe und Übernahme", en: "Shift planning – draft generation, review, approval, and activation" },
+  "sc.generating": { de: "Wird generiert...", en: "Generating..." },
+  "sc.generateDraft": { de: "Draft generieren", en: "Generate draft" },
+  "sc.shifts": { de: "Schichten", en: "shifts" },
+  "sc.conflicts": { de: "Konflikte", en: "conflicts" },
+  "sc.errors": { de: "Fehler", en: "Errors" },
+  "sc.version": { de: "Version", en: "Version" },
+  "sc.created": { de: "Erstellt", en: "Created" },
+  "sc.by": { de: "von", en: "by" },
+  "sc.on": { de: "am", en: "on" },
+  "sc.markInReview": { de: "In Prüfung", en: "Mark in review" },
+  "sc.approve": { de: "Freigeben", en: "Approve" },
+  "sc.activatePlan": { de: "Als aktiven Plan übernehmen", en: "Activate this plan" },
+  "sc.excelExport": { de: "Excel Export", en: "Excel export" },
+  "sc.discard": { de: "Verwerfen", en: "Discard" },
+  "sc.activateModalTitle": { de: "Draft als aktiven Schichtplan übernehmen", en: "Activate draft as the live shift plan" },
+  "sc.cannotBeUndone": { de: "Diese Aktion kann nicht rückgängig gemacht werden.", en: "This action cannot be undone." },
+  "sc.confirmActivate": { de: "Ja, als aktiven Plan übernehmen", en: "Yes, activate this plan" },
+  "sc.shiftPlanning": { de: "Schichtplanung", en: "Shift planning" },
+  "sc.noDraftHint": { de: "W\u00e4hle einen Monat und klicke auf \u201EDraft generieren\u201C um zu starten", en: "Select a month and click \"Generate draft\" to begin" },
+  "sc.generateFirstDraft": { de: "Ersten Draft generieren", en: "Generate first draft" },
+  "sc.activatedBy": { de: "Übernommen von", en: "Activated by" },
+  "sc.selectOrGenerateDraft": { de: "Wähle einen Draft aus der Übersicht oder generiere einen neuen", en: "Select a draft from the overview or generate a new one" },
+  "sc.draftVersionsFor": { de: "Draft-Versionen für", en: "Draft versions for" },
+  "sc.noVersions": { de: "Keine Versionen vorhanden", en: "No versions available" },
+  "sc.status": { de: "Status", en: "Status" },
+  "sc.createdBy": { de: "Erstellt von", en: "Created by" },
+  "sc.createdAt": { de: "Erstellt am", en: "Created at" },
+  "sc.approvedBy": { de: "Freigegeben von", en: "Approved by" },
+  "sc.note": { de: "Notiz", en: "Note" },
+  "sc.draftShiftPlan": { de: "Draft-Schichtplan", en: "Draft shift plan" },
+  "sc.draftLabel": { de: "ENTWURF", en: "DRAFT" },
+  "sc.target": { de: "Soll", en: "Target" },
+  "sc.actual": { de: "Ist", en: "Actual" },
+  "sc.conflictCenter": { de: "Konfliktzentrum", en: "Conflict center" },
+  "sc.noConflicts": { de: "Keine Konflikte erkannt", en: "No conflicts detected" },
+  "sc.explanationsPerAssignment": { de: "Erklärungen pro Zuweisung", en: "Explanations per assignment" },
+  "sc.noExplanations": { de: "Keine Erklärungen vorhanden – bitte zuerst einen Draft generieren", en: "No explanations available yet – please generate a draft first" },
+  "sc.day": { de: "Tag", en: "Day" },
+  "sc.noFairnessData": { de: "Keine Fairness-Daten verfügbar – bitte zuerst einen Draft generieren", en: "No fairness data available yet – please generate a draft first" },
+  "sc.fairnessOverview": { de: "Fairnessübersicht", en: "Fairness overview" },
+  "sc.nights": { de: "Nächte", en: "Nights" },
+  "sc.weekends": { de: "Wochenenden", en: "Weekends" },
+  "sc.earlyShifts": { de: "Frühschichten", en: "Early shifts" },
+  "sc.early": { de: "Früh", en: "Early" },
+  "sc.late": { de: "Spät", en: "Late" },
+  "sc.deviation": { de: "Abweichung", en: "Deviation" },
+  "sc.loadPlanningBasis": { de: "Planungsbasis laden", en: "Load planning basis" },
+  "sc.planningBasisFor": { de: "Planungsbasis für", en: "Planning basis for" },
+  "sc.employees": { de: "Mitarbeiter", en: "Employees" },
+  "sc.absences": { de: "Abwesenheiten", en: "Absences" },
+  "sc.noAbsences": { de: "Keine Abwesenheiten", en: "No absences" },
+  "sc.permanentExclusions": { de: "Dauerhafte Ausschlüsse", en: "Permanent exclusions" },
+  "sc.noExclusions": { de: "Keine Ausschlüsse", en: "No exclusions" },
+  "sc.skills": { de: "Qualifikationen", en: "Skills" },
+  "sc.minimumStaffing": { de: "Mindestbesetzung", en: "Minimum staffing" },
+  "sc.shift": { de: "Schicht", en: "Shift" },
+  "sc.atLeast": { de: "mindestens", en: "at least" },
+  "sc.people": { de: "Personen", en: "people" },
+  "sc.noRulesDefined": { de: "Keine Regeln definiert", en: "No rules defined" },
+  "sc.preferredColleagues": { de: "Wunschkollegen", en: "Preferred colleagues" },
+  "sc.noPreferredColleagues": { de: "Keine Wunschkollegen", en: "No preferred colleagues" },
+  "sc.helpTitle": { de: "Hilfe – So funktioniert der Schichtplaner", en: "Help – how the shift planner works" },
+  "sc.confirmDeleteDraft": { de: "Diesen Draft endgültig löschen?", en: "Delete this draft permanently?" },
+  "sc.tabOverview": { de: "Übersicht", en: "Overview" },
+  "sc.tabDraftView": { de: "Draft-Ansicht", en: "Draft view" },
+  "sc.tabConflictCenter": { de: "Konfliktzentrum", en: "Conflict center" },
+  "sc.tabExplanations": { de: "Erklärungen", en: "Explanations" },
+  "sc.tabPlanningBasis": { de: "Planungsbasis", en: "Planning basis" },
+  "sc.tabVersions": { de: "Versionen", en: "Versions" },
+  "sc.tabHelp": { de: "Hilfe", en: "Help" },
+  "sc.exportFailed": { de: "Export fehlgeschlagen", en: "Export failed" },
+  "sc.tabFairness": { de: "Fairness", en: "Fairness" },
+
+  /* ── Admin Settings ── */
+  "admin.title": { de: "Admin-Einstellungen", en: "Admin settings" },
+  "admin.subtitle": { de: "Zentrale Konfiguration f\u00fcr Schichtplan, ODIN und Systemfunktionen", en: "Central configuration for shift planning, ODIN, and system functions" },
+  "admin.controlCenter": { de: "Kontrollzentrum", en: "Control center" },
+  "admin.allSettings": { de: "Alle administrativen Einstellungen an einem Ort", en: "All administrative settings in one place" },
+  "admin.tilesDescription": { de: "Die Kacheln f\u00fchren direkt in den jeweiligen Konfigurationsbereich. Schichtplan- und Teams-Einstellungen sind jetzt Teil der Admin-Einstellungen und nicht mehr separat ausgelagert.", en: "The tiles take you directly to the corresponding configuration area. Shift plan and Teams settings are now part of the admin settings instead of living in separate pages." },
+  "admin.tabShiftplan": { de: "Schichtplan", en: "Shift plan" },
+  "admin.tabShiftplanDesc": { de: "Definitionen, DBS-Pool und Planungsregeln", en: "Definitions, DBS pool, and planning rules" },
+  "admin.tabTeamsDesc": { de: "Events, Routing, Templates und Versandregeln zentral pflegen", en: "Manage events, routing, templates, and delivery rules centrally" },
+  "admin.tabTv": { de: "TV-Modus", en: "TV mode" },
+  "admin.tabTvDesc": { de: "Slides, Reihenfolge und Laufzeiten", en: "Slides, order, and durations" },
+  "admin.tabThresholds": { de: "Schwellenwerte", en: "Thresholds" },
+  "admin.tabThresholdsDesc": { de: "Globale Grenzwerte und TV-Parameter", en: "Global limits and TV parameters" },
+  "admin.tabTogglesDesc": { de: "Funktionen ein- und ausschalten", en: "Enable and disable features" },
+  "admin.tabFeedback": { de: "User-Feedback", en: "User feedback" },
+  "admin.tabFeedbackDesc": { de: "Gespeicherte R\u00fcckmeldungen und Upload-Regeln", en: "Stored feedback and upload rules" },
+  "admin.tabOdinDesc": { de: "ODIN-Regeln, manuelle Ausnahmen und dauerhafte Ausschl\u00fcsse", en: "ODIN rules, manual exceptions, and permanent exclusions" },
+  "admin.tabMaintenance": { de: "Wartung", en: "Maintenance" },
+  "admin.tabMaintenanceDesc": { de: "Reset- und Bereinigungsaktionen", en: "Reset and cleanup actions" },
+  "admin.tabAudit": { de: "\u00c4nderungsprotokoll", en: "Change log" },
+  "admin.tabAuditDesc": { de: "Alle Konfigurations\u00e4nderungen nachverfolgen", en: "Track all configuration changes" },
+  "admin.tvConfigHint": { de: "Slide-Dauern, Reihenfolge und Sichtbarkeit f\u00fcr den TV-Modus konfigurieren.", en: "Configure slide durations, order, and visibility for TV mode." },
+  "admin.tvSlides": { de: "TV-Slides", en: "TV slides" },
+  "admin.tvHeaderNote": { de: "Die Header-Transparenz bleibt erhalten. Der Assignment-Slide ist zus\u00e4tzlich separat steuerbar und kann in der Rotation ein- oder ausgeschaltet werden.", en: "Header transparency remains intact. The assignment slide can also be controlled separately and enabled or disabled in the rotation." },
+  "admin.durationSec": { de: "Dauer (Sek.)", en: "Duration (sec.)" },
+  "admin.duration": { de: "Dauer", en: "Duration" },
+  "admin.order": { de: "Reihenfolge", en: "Order" },
+  "admin.onlyWithData": { de: "Nur mit Daten", en: "Only with data" },
+  "admin.saveChanges": { de: "\u00c4nderungen speichern", en: "Save changes" },
+  "admin.lastChangedBy": { de: "Zuletzt ge\u00e4ndert von", en: "Last changed by" },
+  "admin.odinLogic": { de: "ODIN-Logik", en: "ODIN logic" },
+  "admin.odinLogicDesc": { de: "Die Regeln unten steuern die produktive ODIN-Zuweisungslogik. \u00c4nderungen werden versioniert und im \u00c4nderungsprotokoll festgehalten.", en: "The rules below control productive ODIN assignment logic. Changes are versioned and recorded in the change log." },
+  "admin.ticketExclusions": { de: "Ticket-Ausschl\u00fcsse", en: "Ticket exclusions" },
+  "admin.ticketExclusionsDesc": { de: "Diese Ausschl\u00fcsse sind operativ Teil der ODIN-Logik und deshalb zus\u00e4tzlich direkt hier verf\u00fcgbar.", en: "These exclusions are an operational part of ODIN logic and are therefore also available directly here." },
+  "admin.employeeExclusions": { de: "Mitarbeiter-Ausschl\u00fcsse", en: "Employee exclusions" },
+  "admin.employeeExclusionsDesc": { de: "Sinnvoll f\u00fcr Einarbeitung, Sonderprojekte, Buddy-Konstellationen oder manuelle Entlastung einzelner Mitarbeiter.", en: "Useful for onboarding, special projects, buddy setups, or manual workload relief for individual employees." },
+  "admin.manualExclusionList": { de: "Manuelle Ausnahmeliste", en: "Manual exclusion list" },
+  "admin.manualExclusionListDesc": { de: "Separater Direktzugriff auf die Ticket-Ausschlusslisten f\u00fcr Systemnamen und Subtypes.", en: "Separate direct access to the ticket exclusion lists for system names and subtypes." },
+  "admin.manualExclusionSubDesc": { de: "Systemnamen und Ticket-Subtypes, die ODIN nicht automatisch zuweisen darf, werden zentral in den Admin-Einstellungen gepflegt.", en: "System names and ticket subtypes that ODIN must not assign automatically are maintained centrally in the admin settings." },
+  "admin.permanentExclusions": { de: "Dauerhafte Ausschl\u00fcsse", en: "Permanent exclusions" },
+  "admin.permanentExclusionsDesc": { de: "Mitarbeiter, die ODIN dauerhaft oder zeitlich begrenzt nicht automatisch ber\u00fccksichtigen darf, werden hier zentral verwaltet.", en: "Employees that ODIN must not consider automatically, either permanently or temporarily, are managed centrally here." },
+  "admin.resetTicketDb": { de: "Ticket-Datenbank zur\u00fccksetzen", en: "Reset ticket database" },
+  "admin.resetTicketDbDesc": { de: "L\u00f6scht die live eingespielten Ticket-, Snapshot- und ODIN-Laufdaten. Manuell gepflegte Stammdaten bleiben erhalten.", en: "Deletes live-ingested ticket, snapshot, and ODIN run data. Manually maintained master data remains intact." },
+  "admin.affectedAreas": { de: "Betroffene Bereiche", en: "Affected areas" },
+  "admin.resetDbLiveDesc": { de: "L\u00f6scht operative Ticket- und Snapshot-Daten, ohne Stammdaten zu entfernen. Diese Aktion ist nur f\u00fcr bereinigte Neustarts oder Wartungsf\u00e4lle gedacht.", en: "Deletes operational ticket and snapshot data without removing master data. This action is only intended for clean restarts or maintenance cases." },
+  "admin.resetDialogTitle": { de: "Ticket-Datenbank wirklich zur\u00fccksetzen?", en: "Really reset the ticket database?" },
+  "admin.resetDialogDesc": { de: "Diese Aktion l\u00f6scht alle aktuellen Ticket-Snapshots und ODIN-L\u00e4ufe. Tippe RESET TICKETS ein, um den Reset freizugeben.", en: "This action deletes all current ticket snapshots and ODIN runs. Type RESET TICKETS to authorize the reset." },
+  "admin.authPhrase": { de: "Freigabephrase", en: "Authorization phrase" },
+  "admin.auditNote": { de: "Audit-Notiz", en: "Audit note" },
+  "admin.auditNotePlaceholder": { de: "Optionale Notiz f\u00fcr das Audit-Log", en: "Optional note for the audit log" },
+  "admin.runReset": { de: "Reset ausf\u00fchren", en: "Run reset" },
+  "admin.resetting": { de: "Setze zur\u00fcck...", en: "Resetting..." },
+  "admin.crawlerStaleAfter": { de: "Crawler veraltet nach", en: "Crawler stale after" },
+  "admin.minutes": { de: "Minuten", en: "minutes" },
+  "admin.commitRiskBelow": { de: "Commit-Risiko ab", en: "Commit risk below" },
+  "admin.hours": { de: "Stunden", en: "hours" },
+  "admin.escalateAfter": { de: "Eskalation nach", en: "Escalate after" },
+  "admin.understaffingFrom": { de: "Unterbesetzung ab", en: "Understaffing from" },
+  "admin.missingPeople": { de: "fehlende Personen", en: "missing people" },
+  "admin.defaultSlideDuration": { de: "Standard-Slide-Dauer", en: "Default slide duration" },
+  "admin.fontScaleFactor": { de: "Schriftgr\u00f6\u00dfe Faktor", en: "Font scale factor" },
+  "admin.compactCards": { de: "Kompakte Karten", en: "Compact cards" },
+  "admin.autoScroll": { de: "Auto-Scroll", en: "Auto scroll" },
+  "admin.animations": { de: "Animationen", en: "Animations" },
+  "admin.commitWindow": { de: "Commit-Fenster", en: "Commit window" },
+  "admin.showStaleTickets": { de: "Stale Tickets anzeigen", en: "Show stale tickets" },
+  "admin.tvCrawlerStale": { de: "TV Crawler-Stale", en: "TV crawler stale" },
+  "admin.globalThresholds": { de: "Globale Schwellenwerte", en: "Global thresholds" },
+  "admin.tvModePresentation": { de: "TV-Modus Darstellung", en: "TV mode presentation" },
+  "admin.noToggles": { de: "Keine Feature Toggles konfiguriert", en: "No feature toggles configured" },
+  "admin.feedbackRules": { de: "Feedback-Regeln", en: "Feedback rules" },
+  "admin.feedbackEnabled": { de: "Feedback-Funktion aktiv", en: "Feedback enabled" },
+  "admin.allowScreenshots": { de: "Screenshots erlauben", en: "Allow screenshots" },
+  "admin.maxFileSize": { de: "Max. Dateigr\u00f6\u00dfe (MB)", en: "Max file size (MB)" },
+  "admin.submittedFeedback": { de: "Eingereichte User-Feedbacks", en: "Submitted user feedback" },
+  "admin.noFeedback": { de: "Es liegen aktuell keine gespeicherten Feedbacks vor.", en: "There is currently no stored feedback." },
+  "admin.from": { de: "Von", en: "From" },
+  "admin.unknown": { de: "Unbekannt", en: "Unknown" },
+  "admin.allAreas": { de: "Alle Bereiche", en: "All areas" },
+  "admin.appSettings": { de: "App-Einstellungen", en: "App settings" },
+  "admin.timestamp": { de: "Zeitpunkt", en: "Timestamp" },
+  "admin.area": { de: "Bereich", en: "Area" },
+  "admin.setting": { de: "Einstellung", en: "Setting" },
+  "admin.old": { de: "Alt", en: "Old" },
+  "admin.new": { de: "Neu", en: "New" },
+  "admin.by": { de: "Von", en: "By" },
+  "admin.note": { de: "Notiz", en: "Note" },
+  "admin.noChangesLogged": { de: "Keine \u00c4nderungen protokolliert", en: "No changes logged" },
+  "admin.on": { de: "am", en: "on" },
+
+  /* ── Teams Communication Center ── */
+  "teams.quietHoursStart": { de: "Quiet Hours Start", en: "Quiet hours start" },
+  "teams.quietHoursEnd": { de: "Quiet Hours Ende", en: "Quiet hours end" },
+  "teams.criticalOnly": { de: "Nur kritische nachts", en: "Only critical overnight" },
+  "teams.maxMessagesDay": { de: "Max. Nachrichten/Tag", en: "Max messages/day" },
+  "teams.digestInterval": { de: "Digest-Intervall (Min)", en: "Digest interval (min)" },
+  "teams.defaultCooldown": { de: "Cooldown Standard (Min)", en: "Default cooldown (min)" },
+  "teams.escalationDelay": { de: "Eskalationsverz\u00f6gerung (Min)", en: "Escalation delay (min)" },
+  "teams.fallbackRecipient": { de: "Fallback-Empf\u00e4nger", en: "Fallback recipient" },
+  "teams.duplicateWindow": { de: "Duplikat-Fenster (Min)", en: "Duplicate window (min)" },
+  "teams.notifySystemExclusions": { de: "System-Ausschl\u00fcsse melden", en: "Notify on system exclusions" },
+  "teams.notifySubtypeExclusions": { de: "Subtype-Ausschl\u00fcsse melden", en: "Notify on subtype exclusions" },
+  "teams.liveOnly": { de: "Nur im Live-Modus senden", en: "Send only in live mode" },
+  "teams.directRecipients": { de: "Direkte Empf\u00e4nger", en: "Direct recipients" },
+  "teams.specificShifts": { de: "Nur f\u00fcr bestimmte Schichten", en: "Only for specific shifts" },
+  "teams.groupTargets": { de: "Gruppen-Ziele", en: "Group targets" },
+  "teams.channelFallback": { de: "Kanal-Fallback erlauben", en: "Allow channel fallback" },
+  "teams.titleTemplate": { de: "Titel-Vorlage", en: "Title template" },
+  "teams.bodyTemplate": { de: "Text-Vorlage", en: "Body template" },
+  "teams.botBaseUrl": { de: "Bot-Base-URL", en: "Bot base URL" },
+  "teams.timingMatrix": { de: "Wann soll wer eine Nachricht bekommen", en: "Who should receive which message when" },
+  "teams.standardPersonShift": { de: "Standardnachrichten f\u00fcr Personen/Schichten", en: "Standard messages for people/shifts" },
+  "teams.standardGroupMessages": { de: "Standardnachrichten f\u00fcr Gruppen", en: "Standard messages for groups" },
+  "teams.globalDeliveryRules": { de: "Globale Versandregeln", en: "Global delivery rules" },
+  "teams.globalDeliveryRulesDesc": { de: "Basisverhalten f\u00fcr Ruhezeiten, Deduplizierung und Eskalation.", en: "Base behavior for quiet hours, deduplication, and escalation." },
+  "teams.dispatcherExcluded": { de: "Dispatcher bei ausgeschlossenen Tickets", en: "Dispatcher for excluded tickets" },
+  "teams.dispatcherExcludedDesc": { de: "Diese Einstellungen steuern die neue Backend-Benachrichtigung f\u00fcr Tickets, die wegen Systemname oder Subtype in den manuellen Review laufen.", en: "These settings control the new backend notification for tickets moved into manual review because of system name or subtype exclusions." },
+  "teams.messageOrchestration": { de: "Nachrichten-Orchestrierung", en: "Message orchestration" },
+  "teams.messageOrchestrationDesc": { de: "Vorbereitung f\u00fcr feinere Regeln wie personenspezifische Standards\u00e4tze, Gruppenansprache und zeitabh\u00e4ngige Zustellung.", en: "Preparation for finer rules such as person-specific defaults, group addressing, and time-based delivery." },
+  "teams.on": { de: "An", en: "On" },
+  "teams.off": { de: "Aus", en: "Off" },
+  "teams.dispatcherReview": { de: "Dispatcher-Review", en: "Dispatcher review" },
+  "teams.systemSubtypeExclusions": { de: "System- und Subtype-Ausschl\u00fcsse", en: "System and subtype exclusions" },
+  "teams.deliveryPath": { de: "Zustellpfad", en: "Delivery path" },
+  "teams.peopleChannelRouting": { de: "Personen und Kanalsteuerung", en: "People and channel routing" },
+  "teams.routingPrep": { de: "Routing-Vorbereitung", en: "Routing preparation" },
+  "teams.whoGetsWhat": { de: "Wer bekommt wann welche Nachricht", en: "Who gets which message and when" },
+  "teams.advancedConfigured": { de: "Erweitert konfiguriert", en: "Advanced" },
+  "teams.basic": { de: "Basis", en: "Basic" },
+  "teams.immediate": { de: "Sofort", en: "Immediate" },
+  "teams.priority": { de: "Priorit\u00e4t", en: "Priority" },
+  "teams.mode": { de: "Modus", en: "Mode" },
+  "teams.duplicateProtection": { de: "Duplikatschutz", en: "Duplicate protection" },
+  "teams.yes": { de: "Ja", en: "Yes" },
+  "teams.no": { de: "Nein", en: "No" },
+  "teams.eventDescription": { de: "Welche ODIN-Events l\u00f6sen Teams-Nachrichten aus? Jedes Event kann einzeln aktiviert/deaktiviert und konfiguriert werden.", en: "Which ODIN events trigger Teams messages? Each event can be enabled, disabled, and configured separately." },
+
+  /* ── Weekplan ── */
+  "weekplan.title": { de: "Wochenplanung – KW", en: "Week planning – CW" },
+  "weekplan.today": { de: "Heute", en: "Today" },
+  "weekplan.showActiveOnly": { de: "Nur aktive anzeigen", en: "Show active only" },
+  "weekplan.editOn": { de: "Bearbeiten: an", en: "Editing: on" },
+  "weekplan.edit": { de: "Bearbeiten", en: "Edit" },
+  "weekplan.saveFailed": { de: "Speichern fehlgeschlagen", en: "Save failed" },
+  "weekplan.roleHint": { de: "Rollen werden per Rechtsklick vergeben. Mit Shift + Klick kannst du mehrere Tage für dieselbe Person markieren und die Rolle gesammelt setzen oder entfernen.", en: "Roles are assigned via right-click. Use Shift + Click to select multiple days for the same person and assign or remove roles in bulk." },
+  "weekplan.changeShift": { de: "Schicht ändern", en: "Change shift" },
+  "weekplan.selectShift": { de: "Schicht wählen", en: "Select shift" },
+  "weekplan.empty": { de: "(leer)", en: "(empty)" },
+  "weekplan.apply": { de: "Übernehmen", en: "Apply" },
+  "weekplan.roleFor": { de: "Rolle für", en: "Role for" },
+  "weekplan.roleForDays": { de: "Tage", en: "days" },
+  "weekplan.removeRole": { de: "Rolle entfernen", en: "Remove role" },
+  "weekplan.removeRoles": { de: "Rollen entfernen", en: "Remove roles" },
+  "weekplan.loading": { de: "Lade Wochenplan …", en: "Loading week plan…" },
+  "weekplan.highlightHint": { de: "Klicken um Zeile hervorzuheben (ESC zum Aufheben)", en: "Click to highlight row (ESC to clear)" },
+  "weekplan.holiday": { de: "Feiertag", en: "Holiday" },
+  "weekplan.daySelected": { de: "Tag ausgewählt", en: "day selected" },
+  "weekplan.daysSelected": { de: "Tage ausgewählt", en: "days selected" },
+
+  /* ── Handover ── */
+  "handover.title": { de: "Schichtübergabe & Aufgabenverwaltung", en: "Shift handover & task management" },
+  "handover.subtitle": { de: "Schichtübergabe & Aufgabenverwaltung", en: "Shift handover & task management" },
+  "handover.newTask": { de: "Neue Aufgabe", en: "New task" },
+  "handover.hideCompleted": { de: "Erledigte ausblenden", en: "Hide completed" },
+  "handover.showCompleted": { de: "Erledigte anzeigen", en: "Show completed" },
+  "handover.statusDone": { de: "Erledigt", en: "Done" },
+  "handover.statusInProgress": { de: "In Bearbeitung", en: "In progress" },
+  "handover.statusOpen": { de: "Offen", en: "Open" },
+
+  /* ── Handover Form ── */
+  "handover.formTitle": { de: "Neues Handover", en: "New handover" },
+  "handover.ticketNumber": { de: "Ticketnummer", en: "Ticket number" },
+  "handover.customerName": { de: "Kundenname", en: "Customer name" },
+  "handover.area": { de: "Bereich", en: "Area" },
+  "handover.type": { de: "Typ", en: "Type" },
+  "handover.priority": { de: "Priorität", en: "Priority" },
+  "handover.commitTime": { de: "Commit-Zeitpunkt", en: "Commit time" },
+  "handover.description": { de: "Beschreibung", en: "Description" },
+  "handover.selectFiles": { de: "Dateien auswählen", en: "Select files" },
+  "handover.filesSelected": { de: "Datei(en) ausgewählt", en: "file(s) selected" },
+  "handover.clearSelection": { de: "Auswahl löschen", en: "Clear selection" },
+  "handover.requiredFields": { de: "Bitte alle Pflichtfelder ausfüllen.", en: "Please fill in all required fields." },
+
+  /* ── Shift Context Menu ── */
+  "shiftContext.employee": { de: "Mitarbeiter", en: "Employee" },
+  "shiftContext.daySelected": { de: "Tag ausgewählt", en: "day selected" },
+  "shiftContext.daysSelected": { de: "Tage ausgewählt", en: "days selected" },
+  "shiftContext.early1": { de: "Früh 1 (E1)", en: "Early 1 (E1)" },
+  "shiftContext.early2": { de: "Früh 2 (E2)", en: "Early 2 (E2)" },
+  "shiftContext.late1": { de: "Spät 1 (L1)", en: "Late 1 (L1)" },
+  "shiftContext.late2": { de: "Spät 2 (L2)", en: "Late 2 (L2)" },
+  "shiftContext.night": { de: "Nacht (N)", en: "Night (N)" },
+  "shiftContext.absence": { de: "ABWESENHEIT", en: "ABSENCE" },
+  "shiftContext.vacation": { de: "Urlaub (U)", en: "Vacation (U)" },
+  "shiftContext.sick": { de: "Krank (K)", en: "Sick (K)" },
+  "shiftContext.training": { de: "Training (T)", en: "Training (T)" },
+  "shiftContext.offsite": { de: "Offsite (O)", en: "Offsite (O)" },
+  "shiftContext.clearDelete": { de: "Frei / Löschen", en: "Free / Clear" },
+  "shiftContext.competencies": { de: "Kompetenzen", en: "Competencies" },
+  "shiftContext.changeHistory": { de: "Änderungshistorie", en: "Change history" },
+  "shiftContext.manageRules": { de: "Regeln verwalten", en: "Manage rules" },
+
+  /* ── Shiftplan extras ── */
+  "shiftplan.warningsTooltip": { de: "Warnungen – Links: rote Markierungen, Rechts: Details", en: "Warnings – left: red markers, right: details" },
+  "shiftplan.warningsOn": { de: "Warnungen: an", en: "Warnings: on" },
+  "shiftplan.warnings": { de: "Warnungen", en: "Warnings" },
+  "shiftplan.wellbeing": { de: "Wellbeing", en: "Wellbeing" },
+  "shiftplan.hiddenOn": { de: "Ausgebl.", en: "Hidden" },
+  "shiftplan.hidden": { de: "Ausgebl.", en: "Hidden" },
+
+  /* ── Handover List / Item ── */
+  "handover.completedHandovers": { de: "Erledigte Übergaben", en: "Completed handovers" },
+  "handover.latestHandovers": { de: "Letzte Übergaben", en: "Latest handovers" },
+  "handover.syncing": { de: "Wird synchronisiert …", en: "Syncing…" },
+  "handover.alreadyTaken": { de: "Bereits von anderem Nutzer übernommen", en: "Already taken over by another user" },
+  "handover.takeOver": { de: "Übernehmen", en: "Take over" },
+  "handover.done": { de: "Erledigt", en: "Done" },
+
+  /* ── CreateTaskModal ── */
+  "handover.createTask": { de: "Neue Aufgabe erstellen", en: "Create new task" },
+  "handover.assignee": { de: "Mitarbeiter", en: "Assignee" },
+  "handover.loadingEllipsis": { de: "Laden…", en: "Loading…" },
+  "handover.pleaseSelect": { de: "Bitte wählen", en: "Please select" },
+  "handover.dueBy": { de: "Fällig bis", en: "Due by" },
+  "handover.recurrence": { de: "Wiederholung", en: "Recurrence" },
+  "handover.recurrenceNone": { de: "Keine", en: "None" },
+  "handover.recurrenceDaily": { de: "Täglich", en: "Daily" },
+  "handover.recurrenceWeekly": { de: "Wöchentlich", en: "Weekly" },
+  "handover.recurrenceMonthly": { de: "Monatlich", en: "Monthly" },
+  "handover.whatToDo": { de: "Was ist zu tun?", en: "What needs to be done?" },
+  "handover.create": { de: "Erstellen", en: "Create" },
+
+  /* ── ConstraintDialog ── */
+  "constraints.title": { de: "Regeln verwalten", en: "Manage rules" },
+  "constraints.noNight": { de: "Keine Nachtschichten", en: "No night shifts" },
+  "constraints.earlyOnly": { de: "Nur Frühschichten (E1/E2)", en: "Early shifts only (E1/E2)" },
+  "constraints.maxWeekends": { de: "Max. Wochenenden", en: "Max. weekends" },
+
+  /* ── ExportMenu ── */
+  "export.options": { de: "Export Optionen", en: "Export options" },
+  "export.menu": { de: "Export Menü", en: "Export menu" },
+  "export.shiftplanXlsx": { de: "Schichtplan (XLSX)", en: "Shift plan (XLSX)" },
+  "export.changeLog": { de: "Änderungen (Change Log)", en: "Changes (Change log)" },
+  "export.noChanges": { de: "Noch keine Änderungen aufgezeichnet", en: "No changes recorded yet" },
+
+  /* ── HistoryDialog ── */
+  "history.title": { de: "Änderungshistorie", en: "Change history" },
+  "history.date": { de: "Datum", en: "Date" },
+  "history.old": { de: "Alt", en: "Old" },
+  "history.new": { de: "Neu", en: "New" },
+  "history.changedBy": { de: "Geändert von", en: "Changed by" },
+  "history.timestamp": { de: "Zeitpunkt", en: "Timestamp" },
+  "history.loading": { de: "Lade…", en: "Loading…" },
+  "history.noChanges": { de: "Keine Änderungen gefunden.", en: "No changes found." },
+  "history.deleted": { de: "Gelöscht", en: "Deleted" },
+
+  /* ── ShiftStatsPanel ── */
+  "stats.hide": { de: "Statistik (Ausblenden)", en: "Statistics (Hide)" },
+  "stats.show": { de: "Statistik (Anzeigen)", en: "Statistics (Show)" },
+  "stats.nightShifts": { de: "Nachtschichten", en: "Night shifts" },
+  "stats.weekendShifts": { de: "Wochenendschichten", en: "Weekend shifts" },
+  "stats.conflicts": { de: "Konflikte", en: "Conflicts" },
+
+  /* ── CompetencyModal ── */
+  "competency.title": { de: "Kompetenzen", en: "Competencies" },
+  "competency.basic": { de: "Grundkenntnisse", en: "Basic" },
+  "competency.advanced": { de: "Fortgeschritten", en: "Advanced" },
+  "competency.expert": { de: "Experte", en: "Expert" },
+  "competency.noCompetencies": { de: "Keine Kompetenzen hinterlegt", en: "No competencies recorded" },
+  "competency.newCompetency": { de: "Neue Kompetenz", en: "New competency" },
+  "competency.skillPlaceholder": { de: "Fähigkeit (z.B. Cisco Catalyst, Oracle DB…)", en: "Skill (e.g. Cisco Catalyst, Oracle DB…)" },
+  "competency.level": { de: "Niveau", en: "Level" },
+  "competency.notesPlaceholder": { de: "Notizen (optional)", en: "Notes (optional)" },
+  "competency.add": { de: "Hinzufügen", en: "Add" },
+  "competency.addCompetency": { de: "Kompetenz hinzufügen", en: "Add competency" },
 };
+
+/* ─────────────────────────────────────────────────────────────────────── */
+/*  CONTEXT & PROVIDER                                                     */
+/* ─────────────────────────────────────────────────────────────────────── */
 
 const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
 
 function isLanguageCode(value: unknown): value is LanguageCode {
-  return LANGUAGE_OPTIONS.some((option) => option.code === value);
+  return value === "de" || value === "en";
 }
 
 function getStoredLanguage(): LanguageCode {
   if (typeof window === "undefined") return DEFAULT_LANGUAGE;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   return isLanguageCode(stored) ? stored : DEFAULT_LANGUAGE;
-}
-
-function getLanguageDirection(language: LanguageCode): "ltr" | "rtl" {
-  return LANGUAGE_OPTIONS.find((option) => option.code === language)?.dir || "ltr";
 }
 
 export function getLanguageLocale(language: LanguageCode): string {
@@ -722,7 +1911,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.lang = language;
-    document.documentElement.dir = getLanguageDirection(language);
+    document.documentElement.dir = "ltr";
     window.localStorage.setItem(STORAGE_KEY, language);
   }, [language]);
 
@@ -757,7 +1946,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const t = useCallback((key: TranslationKey) => {
-    return TRANSLATIONS[key]?.[language] || TRANSLATIONS[key]?.[DEFAULT_LANGUAGE] || key;
+    return TRANSLATIONS[key]?.[language] || TRANSLATIONS[key]?.de || key;
   }, [language]);
 
   const value = useMemo<LanguageContextValue>(() => ({
@@ -765,7 +1954,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     languages: LANGUAGE_OPTIONS,
     setLanguage,
     t,
-    direction: getLanguageDirection(language),
+    direction: "ltr",
   }), [language, setLanguage, t]);
 
   return (

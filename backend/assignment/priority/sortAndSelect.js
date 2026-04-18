@@ -213,23 +213,12 @@ export async function selectWorker(candidates, ticket, settings, workerTicketsMa
       // For debugging
       _groupingReason: grouping.reason,
       _purityReason: purity.reason,
-      maxTicketsReached: Number(runtimeRules.maxTicketsPerWorker || 0) > 0 && currentTickets.length >= Number(runtimeRules.maxTicketsPerWorker || 0),
     };
   });
 
-  // Respect hard caps before applying softer tie-breakers.
-  const withinTicketCap = scored.filter((entry) => !entry.maxTicketsReached);
-  if (Number(runtimeRules.maxTicketsPerWorker || 0) > 0 && withinTicketCap.length === 0) {
-    return {
-      worker: null,
-      reason: `All eligible candidates reached the configured ticket cap (${runtimeRules.maxTicketsPerWorker})`,
-      tieBreaker: 'max-tickets-per-worker',
-    };
-  }
-
   // Remove candidates blocked by system grouping (e.g., SH max 3)
-  const unblocked = withinTicketCap.filter(s => !s.groupingBlocked);
-  const sortPool = unblocked.length > 0 ? unblocked : withinTicketCap;
+  const unblocked = scored.filter(s => !s.groupingBlocked);
+  const sortPool = unblocked.length > 0 ? unblocked : scored;
 
   // Sort by tie-breaking criteria
   sortPool.sort((a, b) => {

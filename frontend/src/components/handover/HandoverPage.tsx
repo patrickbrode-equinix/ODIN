@@ -17,6 +17,7 @@ import { useHandoverStore } from "../../store/handoverStore";
 import { CreateTaskModal } from "./CreateTaskModal";
 import { Plus, FileText } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
+import { useLanguage } from "../../context/LanguageContext";
 
 
 /* ------------------------------------------------ */
@@ -48,6 +49,7 @@ function isOptimistic(id: number) {
 export function HandoverPage() {
   const { user } = useAuth();
   const currentUser = user?.displayName || "";
+  const { t } = useLanguage();
 
   /* ------------------------------------------------ */
   /* STORE SELECTORS                                 */
@@ -144,17 +146,17 @@ export function HandoverPage() {
       {/* TOP HEADER */}
       <EnterpriseHeader
         title="HANDOVER"
-        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Schichtübergabe & Aufgabenverwaltung</span>}
+        subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t("handover.subtitle")}</span>}
         icon={<FileText className="w-5 h-5 text-indigo-400" />}
         rightContent={
           <div className="flex gap-2">
             <Button onClick={() => setIsTaskModalOpen(true)} size="sm" className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-sm border-transparent">
               <Plus className="w-3.5 h-3.5 mr-1" />
-              Neue Aufgabe
+              {t("handover.newTask")}
             </Button>
 
             <Button variant={showCompleted ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showCompleted ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`} onClick={() => setShowCompleted((p) => !p)}>
-              {showCompleted ? "Erledigte ausblenden" : "Erledigte anzeigen"}
+              {showCompleted ? t("handover.hideCompleted") : t("handover.showCompleted")}
             </Button>
           </div>
         }

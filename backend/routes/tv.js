@@ -15,6 +15,7 @@
 
 import express from "express";
 import { query } from "../db.js";
+import { getVerificationStatusMap } from "../services/shiftVerification.js";
 
 const router = express.Router();
 
@@ -153,6 +154,10 @@ router.get("/schedules/today", async (_req, res) => {
     const late  = [];
     const night = [];
 
+    // Load verification status map (non-blocking)
+    let verifyMap = new Map();
+    try { verifyMap = await getVerificationStatusMap(today); } catch { /* non-fatal for TV */ }
+
     for (const row of result.rows) {
       const code = row.shift_code;
       const info = TV_SHIFT_TYPES[code];
@@ -160,7 +165,8 @@ router.get("/schedules/today", async (_req, res) => {
 
       // "Nachname, Vorname" → "Nachname Vorname"
       const name = String(row.employee_name ?? "").replace(",", "").trim();
-      const entry = { name, shift: code, time: info.time, info };
+      const vStatus = verifyMap.get(row.employee_name)?.status || verifyMap.get(name)?.status || null;
+      const entry = { name, shift: code, time: info.time, info, verificationStatus: vStatus };
 
       if (code === "E1" || code === "E2") early.push(entry);
       else if (code === "L1" || code === "L2") late.push(entry);
@@ -361,6 +367,13 @@ function mapTicketTypeCode(type) {
   return 'OTHER';
 }
 
+function formatModeLabel(mode) {
+  if (mode === 'live') return 'Live';
+  if (mode === 'shadow') return 'Shadow';
+  if (mode === 'dry-run') return 'Dry-Run';
+  return String(mode || 'Unbekannt');
+}
+
 /**
  * Build TV-friendly decision steps from the rule_path array.
  */
@@ -477,12 +490,50 @@ function buildFinalReasons(selectionReason, tieBreaker) {
   return reasons;
 }
 
+function groupCandidateReasons(excludedCandidates = []) {
+  const grouped = new Map();
+
+  for (const entry of excludedCandidates || []) {
+    const key = `${entry.id}:${entry.name || ''}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        employeeId: entry.id,
+        employeeName: entry.name,
+        shiftLabel: entry.shiftCode || null,
+        roles: [entry.weekplanRole || entry.role].filter(Boolean),
+        reasons: [],
+        rules: [],
+      });
+    }
+
+    const current = grouped.get(key);
+    if (entry.reason && !current.reasons.includes(entry.reason)) current.reasons.push(entry.reason);
+    if (entry.rule && !current.rules.includes(entry.rule)) current.rules.push(entry.rule);
+    const roleLabel = entry.weekplanRole || entry.role;
+    if (roleLabel && !current.roles.includes(roleLabel)) current.roles.push(roleLabel);
+  }
+
+  return Array.from(grouped.values());
+}
+
 router.get("/assignment-trace", async (_req, res) => {
   try {
+    const { rows: automationRows } = await query(
+      `SELECT key, value FROM assignment_settings WHERE key IN ('assignment.enabled', 'assignment.mode')`
+    );
+    const automationMap = Object.fromEntries(automationRows.map((row) => [row.key, row.value]));
+    const automationEnabled = automationMap['assignment.enabled'] === 'true';
+    const activeMode = automationMap['assignment.mode'] || null;
+
+    if (!automationEnabled) {
+      return res.json({ available: false, trace: null });
+    }
+
     // Get the most recent assigned decision that is still backed by an active queue ticket.
     const decisionRes = await query(`
       SELECT d.*,
              r.started_at AS run_started_at,
+             r.mode AS run_mode,
              r.status AS run_status,
              q.id AS live_queue_id
       FROM assignment_ticket_decisions d
@@ -496,9 +547,10 @@ router.get("/assignment-trace", async (_req, res) => {
        )
       WHERE d.result = 'assigned'
         AND r.status = 'completed'
+        AND ($1::text IS NULL OR r.mode = $1)
       ORDER BY d.decided_at DESC
       LIMIT 25
-    `);
+    `, [activeMode]);
 
     const liveDecision = decisionRes.rows.find((row) => row.live_queue_id != null) || null;
 
@@ -549,6 +601,8 @@ router.get("/assignment-trace", async (_req, res) => {
       revisedCommitDate: normalizedTicket.dueAt || null,
       priorityLabel,
       priority: ticketPriority,
+      status: d.ticket_status || normalizedTicket.status || '',
+      mode: d.run_mode || activeMode || null,
     };
 
     // Build classification
@@ -565,8 +619,9 @@ router.get("/assignment-trace", async (_req, res) => {
 
     // Build candidate pool
     const excludedMap = new Map();
-    for (const excl of excludedCandidates) {
-      excludedMap.set(excl.id, excl);
+    const groupedExcludedCandidates = groupCandidateReasons(excludedCandidates);
+    for (const excl of groupedExcludedCandidates) {
+      excludedMap.set(excl.employeeId, excl);
     }
     const remainingSet = new Set(remainingCandidates.map(c => c.id));
 
@@ -601,7 +656,9 @@ router.get("/assignment-trace", async (_req, res) => {
       const excl = excludedMap.get(c.id);
       const isRemaining = remainingSet.has(c.id);
       const isSelected = c.id === d.assigned_worker_id;
-      const stateInfo = excl ? buildCandidateState(excl) : { state: isRemaining ? 'eligible' : 'checked', reason: isRemaining ? 'Verfügbar und regelkonform' : 'Geprüft' };
+      const stateInfo = excl
+        ? buildCandidateState({ rule: excl.rules[0], reason: excl.reasons[0] })
+        : { state: isRemaining ? 'eligible' : 'checked', reason: isRemaining ? 'Verfügbar und regelkonform' : 'Geprüft' };
       const nameLower = (c.name || '').toLowerCase();
       const shiftCode = workerShifts.get(nameLower) || null;
 
@@ -609,10 +666,10 @@ router.get("/assignment-trace", async (_req, res) => {
         employeeId: c.id,
         employeeName: c.name,
         shiftLabel: shiftCode || null,
-        roles: [],
+        roles: excl?.roles || [c.weekplanRole || c.role].filter(Boolean),
         currentLoad: workerWorkloads.get(c.id) || 0,
         state: isSelected ? 'selected' : stateInfo.state,
-        reason: isSelected ? 'Ausgewählt durch ODIN-Logik' : stateInfo.reason,
+        reason: isSelected ? 'Ausgewählt durch ODIN-Logik' : (excl?.reasons?.join(' | ') || stateInfo.reason),
       };
     });
 
@@ -636,6 +693,8 @@ router.get("/assignment-trace", async (_req, res) => {
       candidatePool,
       selectedCandidate,
       finalReasons,
+      mode: d.run_mode || activeMode || null,
+      modeLabel: formatModeLabel(d.run_mode || activeMode),
       decidedAt: d.decided_at,
       runId: d.run_id,
     };

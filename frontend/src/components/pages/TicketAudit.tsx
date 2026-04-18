@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Shield, Users, FileWarning, ClipboardList, Info, Calendar } from "lucide-react";
 import { api } from "../../api/api";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, EnterpriseKpiCard } from "../layout/EnterpriseLayout";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -46,19 +47,20 @@ interface ActivityRow {
 /* RANGE LABELS                                     */
 /* ------------------------------------------------ */
 
-const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
-  { key: "day", label: "Heute" },
-  { key: "week", label: "Woche" },
-  { key: "month", label: "Monat" },
-  { key: "year", label: "Jahr" },
-  { key: "custom", label: "Zeitraum" },
-];
-
 /* ------------------------------------------------ */
 /* COMPONENT                                        */
 /* ------------------------------------------------ */
 
 export default function TicketAudit() {
+  const { language, t } = useLanguage();
+  const locale = language === "de" ? "de-DE" : "en-US";
+  const rangeOptions: { key: RangeKey; label: string }[] = [
+    { key: "day", label: t("ticketAudit.today") },
+    { key: "week", label: t("ticketAudit.week") },
+    { key: "month", label: t("ticketAudit.month") },
+    { key: "year", label: t("ticketAudit.year") },
+    { key: "custom", label: t("ticketAudit.customRange") },
+  ];
   const [range, setRange] = useState<RangeKey>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -101,10 +103,10 @@ export default function TicketAudit() {
 
   /* ---- Format helpers ---- */
   const fmtDate = (v: string | null) =>
-    v ? new Date(v).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–";
+    v ? new Date(v).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" }) : "–";
 
   const fmtDateTime = (v: string | null) =>
-    v ? new Date(v).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
+    v ? new Date(v).toLocaleString(locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
 
   /* ------------------------------------------------ */
   /* RENDER                                           */
@@ -117,7 +119,7 @@ export default function TicketAudit() {
         title="TICKET-AUDIT"
         subtitle={
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Administratives Auswertungs-Dashboard – Ticketaktivität & manuelle Übernahmen
+            {t("ticketAudit.subtitle")}
           </span>
         }
         icon={<Shield className="w-5 h-5 text-indigo-400" />}
@@ -125,7 +127,7 @@ export default function TicketAudit() {
           <div className="flex items-center gap-2">
             {/* Range selection */}
             <div className="flex items-center gap-1 bg-white/5 rounded-lg border border-white/10 p-0.5">
-              {RANGE_OPTIONS.map((opt) => (
+              {rangeOptions.map((opt) => (
                 <button
                   key={opt.key}
                   onClick={() => setRange(opt.key)}
@@ -223,7 +225,7 @@ export default function TicketAudit() {
 
           {/* Zeitraum-Info */}
           <div className="text-[11px] text-muted-foreground px-1">
-            Zeitraum: {fmtDate(summary.from)} – {fmtDate(summary.to)}
+            {t('ticketAudit.rangeLabel')}: {fmtDate(summary.from)} - {fmtDate(summary.to)}
           </div>
 
           {/* ============================================ */}
@@ -232,31 +234,31 @@ export default function TicketAudit() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-3">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <FileWarning className="w-4 h-4 text-amber-400" />
-              Manuelle Ticketübernahmen ohne ODIN-Zuweisung
+              {t('ticketAudit.manualTakeoversTitle')}
             </div>
 
             {manualRows.length === 0 ? (
               <p className="text-xs text-muted-foreground py-4">
-                Keine manuellen Übernahmen ohne Zuweisung im gewählten Zeitraum.
+                {t('ticketAudit.noManualTakeovers')}
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-[11px] text-muted-foreground uppercase tracking-wider border-b border-white/10">
-                      <th className="text-left py-2 pr-4 font-semibold">Mitarbeiter</th>
-                      <th className="text-right py-2 px-3 font-semibold">Ohne Zuweisung</th>
-                      <th className="text-right py-2 px-3 font-semibold">Gesamt</th>
-                      <th className="text-right py-2 px-3 font-semibold">Anteil</th>
-                      <th className="text-left py-2 px-3 font-semibold">Letzte Übernahme</th>
-                      <th className="text-left py-2 pl-3 font-semibold">Tickettypen</th>
+                      <th className="text-left py-2 pr-4 font-semibold">{t('ticketAudit.employee')}</th>
+                      <th className="text-right py-2 px-3 font-semibold">{t('ticketAudit.withoutAssignment')}</th>
+                      <th className="text-right py-2 px-3 font-semibold">{t('ticketAudit.total')}</th>
+                      <th className="text-right py-2 px-3 font-semibold">{t('ticketAudit.share')}</th>
+                      <th className="text-left py-2 px-3 font-semibold">{t('ticketAudit.lastTakeover')}</th>
+                      <th className="text-left py-2 pl-3 font-semibold">{t('ticketAudit.ticketTypes')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {manualRows.map((row) => (
                       <tr
                         key={row.worker}
-                        className="border-b border-white/5 hover:bg-white/[0.02] transition"
+                        className="border-b border-white/5 hover:bg-white/2 transition"
                       >
                         <td className="py-2.5 pr-4 font-medium text-foreground/90">{row.worker}</td>
                         <td className="py-2.5 px-3 text-right font-mono text-amber-400">{row.count}</td>
@@ -289,12 +291,12 @@ export default function TicketAudit() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-3">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <ClipboardList className="w-4 h-4 text-indigo-400" />
-              Bearbeitungsstatistik je Mitarbeiter
+              {t('ticketAudit.processingStatsTitle')}
             </div>
 
             {activityRows.length === 0 ? (
               <p className="text-xs text-muted-foreground py-4">
-                Keine Ticketaktivität im gewählten Zeitraum.
+                {t('ticketAudit.noActivity')}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -302,20 +304,20 @@ export default function TicketAudit() {
                   <thead>
                     <tr className="text-[11px] text-muted-foreground uppercase tracking-wider border-b border-white/10">
                       <th className="text-left py-2 pr-4 font-semibold">#</th>
-                      <th className="text-left py-2 pr-4 font-semibold">Mitarbeiter</th>
-                      <th className="text-right py-2 px-3 font-semibold">Gesamt</th>
+                      <th className="text-left py-2 pr-4 font-semibold">{t('ticketAudit.employee')}</th>
+                      <th className="text-right py-2 px-3 font-semibold">{t('ticketAudit.total')}</th>
                       <th className="text-right py-2 px-3 font-semibold">SH</th>
                       <th className="text-right py-2 px-3 font-semibold">TT</th>
                       <th className="text-right py-2 px-3 font-semibold">CC</th>
-                      <th className="text-right py-2 px-3 font-semibold">Geschlossen</th>
-                      <th className="text-right py-2 pl-3 font-semibold">Abschlussquote</th>
+                      <th className="text-right py-2 px-3 font-semibold">{t('ticketAudit.closed')}</th>
+                      <th className="text-right py-2 pl-3 font-semibold">{t('ticketAudit.closeRate')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activityRows.map((row, idx) => (
                       <tr
                         key={row.worker}
-                        className="border-b border-white/5 hover:bg-white/[0.02] transition"
+                        className="border-b border-white/5 hover:bg-white/2 transition"
                       >
                         <td className="py-2.5 pr-4 text-muted-foreground font-mono text-xs">{idx + 1}</td>
                         <td className="py-2.5 pr-4 font-medium text-foreground/90">{row.worker}</td>
@@ -341,24 +343,20 @@ export default function TicketAudit() {
           <EnterpriseCard noPadding={false} className="flex flex-col gap-2">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
               <Info className="w-4 h-4 text-blue-400" />
-              Definitionen & Berechnungsgrundlagen
+              {t("ticketAudit.definitionsTitle")}
             </div>
             <div className="text-[11px] text-muted-foreground leading-relaxed space-y-2">
               <p>
-                <strong className="text-foreground/70">Manuelle Übernahme ohne Zuweisung:</strong>{" "}
-                Ein Ticket, für das ein Mitarbeiter als Owner eingetragen ist, aber keine
-                ODIN-Zuweisungsentscheidung mit dem Ergebnis „assigned" existiert.
-                Dies bedeutet, dass die Übernahme außerhalb des automatischen Zuweisungsprozesses erfolgt ist.
+                <strong className="text-foreground/70">{t("ticketAudit.manualTakeoverDefLabel")}</strong>{" "}
+                {t("ticketAudit.manualTakeoverDefDesc")}
               </p>
               <p>
-                <strong className="text-foreground/70">Bearbeitetes Ticket:</strong>{" "}
-                Ein Ticket, das einem Mitarbeiter als Owner zugeordnet ist und im gewählten Zeitraum aktiv war.
-                Die Zählung erfolgt auf Basis des Owner-Feldes in den Queue-Daten.
+                <strong className="text-foreground/70">{t("ticketAudit.processedTicketDefLabel")}</strong>{" "}
+                {t("ticketAudit.processedTicketDefDesc")}
               </p>
               <p>
-                <strong className="text-foreground/70">Abschlussquote:</strong>{" "}
-                Anteil der Tickets mit gesetztem Abschlussdatum (closed_at) an der Gesamtzahl
-                der dem Mitarbeiter zugeordneten Tickets.
+                <strong className="text-foreground/70">{t("ticketAudit.closeRateDefLabel")}</strong>{" "}
+                {t("ticketAudit.closeRateDefDesc")}
               </p>
             </div>
           </EnterpriseCard>

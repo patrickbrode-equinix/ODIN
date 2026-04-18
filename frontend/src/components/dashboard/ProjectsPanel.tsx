@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/api";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { getUserDisplayName } from "../../utils/userDisplay";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -78,6 +79,7 @@ function CreateProjectForm({
   onCancel: () => void;
   defaultCreator: string;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [responsible, setResponsible] = useState("");
   const [expectedDone, setExpectedDone] = useState("");
@@ -113,33 +115,33 @@ function CreateProjectForm({
     >
       <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
         <FolderKanban className="w-4 h-4 text-blue-400" />
-        Neues Projekt erstellen
+        {t("projects.createNewProject")}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label className="text-xs text-slate-400">Projektname *</Label>
+          <Label className="text-xs text-slate-400">{t("projects.projectNameLabel")}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Projektname"
+            placeholder={t("projects.projectNamePlaceholder")}
             required
             className="h-8 text-sm"
           />
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs text-slate-400">Verantwortlich</Label>
+          <Label className="text-xs text-slate-400">{t("projects.responsibleLabel")}</Label>
           <Input
             value={responsible}
             onChange={(e) => setResponsible(e.target.value)}
-            placeholder="Name oder Team"
+            placeholder={t("projects.responsiblePlaceholder")}
             className="h-8 text-sm"
           />
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs text-slate-400">Geplantes Enddatum</Label>
+          <Label className="text-xs text-slate-400">{t("projects.endDateLabel")}</Label>
           <Input
             type="date"
             value={expectedDone}
@@ -149,7 +151,7 @@ function CreateProjectForm({
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs text-slate-400">Fortschritt: {progress}%</Label>
+          <Label className="text-xs text-slate-400">{t("projects.progressLabel")}: {progress}%</Label>
           <input
             type="range"
             min={0}
@@ -163,11 +165,11 @@ function CreateProjectForm({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs text-slate-400">Beschreibung</Label>
+        <Label className="text-xs text-slate-400">{t("projects.descriptionLabel")}</Label>
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Optionale Beschreibung..."
+          placeholder={t("projects.descriptionPlaceholder")}
           rows={2}
           className="text-sm resize-none"
         />
@@ -181,10 +183,10 @@ function CreateProjectForm({
           onClick={onCancel}
           className="text-slate-400 hover:text-white"
         >
-          Abbrechen
+          {t("common.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-          {saving ? "Speichern..." : "Projekt erstellen"}
+          {saving ? t("common.saving") : t("projects.createProjectButton")}
         </Button>
       </div>
     </form>
@@ -204,6 +206,8 @@ function ProjectCard({
   onUpdated: (p: Project) => void;
   onDeleted: (id: number) => void;
 }) {
+  const { language, t } = useLanguage();
+  const locale = language === "de" ? "de-DE" : "en-US";
   const [editing, setEditing] = useState(false);
   const [progress, setProgress] = useState(project.progress);
   const [saving, setSaving] = useState(false);
@@ -222,7 +226,7 @@ function ProjectCard({
   };
 
   const handleComplete = async () => {
-    if (!window.confirm("Projekt als abgeschlossen markieren?")) return;
+    if (!window.confirm(t("projects.markCompletedConfirm"))) return;
     try {
       const { data } = await api.patch(`/projects/${project.id}`, { progress: 100, status: "completed" });
       onUpdated(data);
@@ -230,7 +234,7 @@ function ProjectCard({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Projekt "${project.name}" wirklich löschen?`)) return;
+    if (!window.confirm(language === "de" ? `Projekt "${project.name}" wirklich löschen?` : `Delete project "${project.name}"?`)) return;
     try {
       await api.delete(`/projects/${project.id}`);
       onDeleted(project.id);
@@ -255,7 +259,7 @@ function ProjectCard({
             <h3 className="font-semibold text-slate-200 text-[14px]">{project.name}</h3>
             {project.status === "completed" && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                Abgeschlossen
+                {t("projects.completedBadge")}
               </span>
             )}
           </div>
@@ -270,15 +274,15 @@ function ProjectCard({
             {project.expected_done && (
               <span className={`flex items-center gap-1 text-[12px] ${daysColor}`}>
                 <Calendar className="w-3 h-3" />
-                {new Date(project.expected_done).toLocaleDateString("de-DE")}
+                {new Date(project.expected_done).toLocaleDateString(locale)}
                 {daysLeft !== null && (
                   <span className="ml-1 text-[11px]">
-                    ({daysLeft < 0 ? `${Math.abs(daysLeft)}d überfällig` : daysLeft === 0 ? "heute" : `${daysLeft}d`})
+                    ({daysLeft < 0 ? `${Math.abs(daysLeft)}d ${t("projects.overdue")}` : daysLeft === 0 ? t("projects.today") : `${daysLeft}d`})
                   </span>
                 )}
               </span>
             )}
-            <span className="text-[12px] text-slate-500">von {project.creator}</span>
+            <span className="text-[12px] text-slate-500">{project.creator}</span>
           </div>
 
           {project.description && (
@@ -286,12 +290,12 @@ function ProjectCard({
           )}
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {project.status !== "completed" && (
             <button
               onClick={handleComplete}
               className="p-1.5 rounded-lg hover:bg-green-500/20 text-slate-500 hover:text-green-400 transition"
-              title="Als abgeschlossen markieren"
+              title={t("projects.markCompletedConfirm")}
             >
               <Check className="w-3.5 h-3.5" />
             </button>
@@ -299,14 +303,14 @@ function ProjectCard({
           <button
             onClick={() => setEditing((v) => !v)}
             className="p-1.5 rounded-lg hover:bg-blue-500/20 text-slate-500 hover:text-blue-400 transition"
-            title="Fortschritt bearbeiten"
+            title={t("projects.progressLabel")}
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleDelete}
             className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition"
-            title="Löschen"
+            title={t("common.cancel")}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -316,7 +320,7 @@ function ProjectCard({
       {/* PROGRESS */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-slate-500">Fortschritt</span>
+          <span className="text-slate-500">{t("projects.progressLabel")}</span>
           <span className="font-bold text-slate-300">{editing ? progress : project.progress}%</span>
         </div>
         <ProgressBar progress={editing ? progress : project.progress} />
@@ -361,6 +365,7 @@ function ProjectCard({
 /* ---------------------------------------------------- */
 
 export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -395,7 +400,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
     setProjects((prev) => prev.filter((x) => x.id !== id));
   };
 
-  const displayName = getUserDisplayName(user) || "Unbekannt";
+  const displayName = getUserDisplayName(user) || "Unknown";
 
   const active = projects.filter((p) => p.status === "active");
   const completed = projects.filter((p) => p.status === "completed");
@@ -403,7 +408,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
-        Lade Projekte...
+        {t("projects.loadingLabel")}
       </div>
     );
   }
@@ -419,7 +424,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
             className="gap-2 h-8 text-xs"
           >
             <Plus className="w-3.5 h-3.5" />
-            Neues Projekt
+            {t("projects.newProjectButton")}
           </Button>
         </div>
       )}
@@ -437,7 +442,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
         <div className="space-y-2">
           {!compact && (
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Aktiv ({active.length})
+              {t("projects.activeSection")} ({active.length})
             </h3>
           )}
           {active.map((p) => (
@@ -455,7 +460,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
       {!compact && completed.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Abgeschlossen ({completed.length})
+            {t("projects.completedSection")} ({completed.length})
           </h3>
           {completed.map((p) => (
             <ProjectCard
@@ -471,9 +476,9 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
       {active.length === 0 && completed.length === 0 && !showCreate && (
         <div className="flex flex-col items-center justify-center py-12 text-slate-500 gap-3">
           <FolderKanban className="w-12 h-12 opacity-20" />
-          <p className="text-sm">Noch keine Projekte vorhanden.</p>
+          <p className="text-sm">{t("projects.noProjects")}</p>
           <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
-            Erstes Projekt erstellen
+            {t("projects.createFirstButton")}
           </Button>
         </div>
       )}
@@ -483,6 +488,7 @@ export function ProjectsPanel({ compact = false }: { compact?: boolean }) {
 
 /* Compact card for TV dashboard */
 export function ProjectCardCompact({ project }: { project: Project }) {
+  const { t } = useLanguage();
   const daysLeft = project.expected_done
     ? Math.ceil((new Date(project.expected_done).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
@@ -491,7 +497,7 @@ export function ProjectCardCompact({ project }: { project: Project }) {
     <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-[13px] text-slate-200 truncate">{project.name}</span>
-        <span className="text-[11px] font-bold text-blue-400 flex-shrink-0">{project.progress}%</span>
+        <span className="text-[11px] font-bold text-blue-400 shrink-0">{project.progress}%</span>
       </div>
       {project.responsible && (
         <p className="text-[11px] text-slate-400 truncate">{project.responsible}</p>
@@ -499,7 +505,7 @@ export function ProjectCardCompact({ project }: { project: Project }) {
       <ProgressBar progress={project.progress} mini />
       {daysLeft !== null && (
         <p className={`text-[11px] ${daysLeft < 0 ? "text-red-400" : "text-slate-500"}`}>
-          {daysLeft < 0 ? `${Math.abs(daysLeft)}d überfällig` : daysLeft === 0 ? "Heute fällig" : `${daysLeft}d verbleibend`}
+          {daysLeft < 0 ? `${Math.abs(daysLeft)}d ${t("projects.overdue")}` : daysLeft === 0 ? t("projects.today") : `${daysLeft}d`}
         </p>
       )}
     </div>

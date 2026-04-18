@@ -23,6 +23,7 @@ import { AlertTriangle, Moon, Sun, CalendarX } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { RamadanMeta, SunTime } from "../../api/ramadan"; // [NEW]
 import { useCommitStore } from "../../store/commitStore";
+import { useLanguage } from "../../context/LanguageContext";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
 interface ShiftplanTableProps {
@@ -106,9 +107,9 @@ function isoWeek(date: Date) {
   return { weekNo, weekYear: d.getUTCFullYear() };
 }
 
-function weekdayAbbrev(date: Date) {
-  // de-DE short weekday can contain a dot ("Mo.") – normalize to "Mo"
-  const raw = new Intl.DateTimeFormat("de-DE", { weekday: "short" }).format(date);
+function weekdayAbbrev(date: Date, locale: string) {
+  // Short weekday abbreviations can contain a trailing dot in some locales.
+  const raw = new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
   return raw.replace(".", "");
 }
 
@@ -154,6 +155,9 @@ export function ShiftplanTable({
   const tableRef = useRef<HTMLTableElement | null>(null);
   const [selectedRow, setSelectedRow] = useState<string | null>(null);
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const isGerman = language === "de";
+  const locale = isGerman ? "de-DE" : "en-GB";
 
   // Helper
   const getMetric = (name: string) => wellbeingMetrics.find(m => m.employee_name === name);
@@ -170,8 +174,8 @@ export function ShiftplanTable({
         if (time > maxTime) maxTime = time;
       }
     }
-    return maxTime > 0 ? new Date(maxTime).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
-  }, [tickets]);
+    return maxTime > 0 ? new Date(maxTime).toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+  }, [locale, tickets]);
 
   // Ramadan Helper
   const isRamadanDate = (day: number) => {
@@ -322,7 +326,7 @@ export function ShiftplanTable({
                   className="sticky left-0 bg-[#0f111a] border-r border-white/5 p-3 text-left min-w-[220px] z-50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
                   rowSpan={2}
                 >
-                  Mitarbeiter
+                  {isGerman ? "Mitarbeiter" : "Employee"}
                 </th>
                 <th className="sticky bg-[#0f111a] border-r border-white/5 p-2 w-8" rowSpan={2}>
                   <span className="sr-only">Stats</span>
@@ -340,8 +344,8 @@ export function ShiftplanTable({
                 {/* 2027+ Header Logic */}
                 {year >= 2027 && (
                   <>
-                    <th className="sticky right-[100px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>Soll</th>
-                    <th className="sticky right-[50px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>Ist</th>
+                    <th className="sticky right-[100px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Soll" : "Plan"}</th>
+                    <th className="sticky right-[50px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Ist" : "Actual"}</th>
                     <th className="sticky right-0 bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>Diff</th>
                   </>
                 )}
@@ -368,9 +372,9 @@ export function ShiftplanTable({
                   });
 
                   const titleParts: string[] = [];
-                  titleParts.push(`${weekdayAbbrev(d)} ${day}.${pad2(monthIndex1)}.${year}`);
-                  if (holidayName) titleParts.push(`Feiertag: ${holidayName}`);
-                  if (hasWarning) titleParts.push(`Unterbesetzung: ${(Array.isArray(dayWarnings) ? dayWarnings : []).map((w) => w.label).join(" | ")}`);
+                  titleParts.push(`${weekdayAbbrev(d, locale)} ${day}.${pad2(monthIndex1)}.${year}`);
+                  if (holidayName) titleParts.push(`${isGerman ? "Feiertag" : "Holiday"}: ${holidayName}`);
+                  if (hasWarning) titleParts.push(`${isGerman ? "Unterbesetzung" : "Understaffing"}: ${(Array.isArray(dayWarnings) ? dayWarnings : []).map((w) => w.label).join(" | ")}`);
 
                   // [NEW] Staffing Status Indicator
                   const dateStr = dateKey(year, monthIndex1, day);
@@ -391,7 +395,7 @@ export function ShiftplanTable({
                   const thContent = (
                     <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
                       <div className={`text-[10px] font-bold tracking-widest uppercase ${isWeekend ? 'text-indigo-300/80' : 'text-muted-foreground'}`}>
-                        {weekdayAbbrev(d)}
+                        {weekdayAbbrev(d, locale)}
                       </div>
 
                       {/* [NEW] Ramadan Tooltip Trigger */}
@@ -411,7 +415,7 @@ export function ShiftplanTable({
                               <TooltipContent side="bottom" className="text-xs bg-[#0f111a]/95 backdrop-blur text-white border-white/10 p-2 shadow-xl z-50 text-left">
                                 {/* ... existing content ... */}
                                 <div className="font-bold mb-1 text-purple-400 flex items-center gap-2 border-b border-white/10 pb-1">
-                                  <Moon size={10} /> {d.toLocaleDateString("de-DE", { month: 'short', day: 'numeric' })}
+                                  <Moon size={10} /> {d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}
                                 </div>
                                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px]">
                                   <span className="text-muted-foreground">Fajr:</span> <span className="text-right font-mono text-purple-200">{getSunData(day)?.fajr || "-"}</span>
@@ -523,28 +527,18 @@ export function ShiftplanTable({
                               <EyeOff size={14} />
                             </button>
                           </div>
-
-                          {/* [NEW] Skills Overlay */}
-                          {showSkillsOverlay && employeeSkills?.has(name) && (
-                            <div className="flex items-center gap-1 mt-1">
-                              {employeeSkills.get(name)?.can_sh && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-blue-500/10 text-blue-400 border-blue-500/20">SH</Badge>}
-                              {employeeSkills.get(name)?.can_tt && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-400 border-purple-500/20">TT</Badge>}
-                              {employeeSkills.get(name)?.can_cc && <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-green-500/10 text-green-400 border-green-500/20">CC</Badge>}
-                            </div>
-                          )}
-
                           {/* [NEW] Wellbeing Badges & Score Ampel */}
                           {getMetric(name) && wellbeingConfig && (
                             <div className="flex items-center gap-1.5 mt-1 test-[9px] font-mono leading-none text-muted-foreground/60">
                               {/* Compact Stats */}
                               <div className="flex gap-1.5">
-                                <span title="Nachtschichten">N:{getMetric(name)!.night_count}</span>
+                                <span title={isGerman ? "Nachtschichten" : "Night shifts"}>N:{getMetric(name)!.night_count}</span>
                                 <span className="opacity-20 text-white/50">|</span>
-                                <span title="Wochenenden">WE:{getMetric(name)!.weekend_count}</span>
+                                <span title={isGerman ? "Wochenenden" : "Weekends"}>WE:{getMetric(name)!.weekend_count}</span>
                                 <span className="opacity-20 text-white/50">|</span>
-                                <span title="Frühschichten">E:{getMetric(name)!.early_count ?? 0}</span>
+                                <span title={isGerman ? "Frühschichten" : "Early shifts"}>E:{getMetric(name)!.early_count ?? 0}</span>
                                 <span className="opacity-20 text-white/50">|</span>
-                                <span title="Spätschichten">L:{getMetric(name)!.late_count ?? 0}</span>
+                                <span title={isGerman ? "Spätschichten" : "Late shifts"}>L:{getMetric(name)!.late_count ?? 0}</span>
                               </div>
                             </div>
                           )}
@@ -552,8 +546,8 @@ export function ShiftplanTable({
                           {/* 2027 Hours */}
                           {employeeHours && (
                             <div className="text-[10px] text-muted-foreground font-normal mt-1 grid grid-cols-2 gap-x-2">
-                              <span>Soll: {employeeHours.get(name)?.soll ?? "—"}h</span>
-                              <span>Ist: {employeeHours.get(name)?.ist ?? "—"}h</span>
+                              <span>{isGerman ? "Soll" : "Plan"}: {employeeHours.get(name)?.soll ?? "—"}h</span>
+                              <span>{isGerman ? "Ist" : "Actual"}: {employeeHours.get(name)?.ist ?? "—"}h</span>
                             </div>
                           )}
                         </div>
@@ -565,7 +559,7 @@ export function ShiftplanTable({
                           e.stopPropagation();
                           setExpandedEmp(prev => prev === name ? null : name);
                         }}
-                        title="Jahresstatistik anzeigen"
+                        title={isGerman ? "Jahresstatistik anzeigen" : "Show yearly statistics"}
                       >
                         {expandedEmp === name ? <ChevronDown size={14} className="mx-auto" /> : <ChevronRight size={14} className="mx-auto" />}
                       </td>

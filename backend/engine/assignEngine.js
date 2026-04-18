@@ -7,6 +7,7 @@ import db from "../db.js";
 import { prioritizeTickets } from "./prioritize.js";
 import { filterCandidates, rankCandidates, findDispatcher } from "./filterCandidates.js";
 import { DECISION_TYPE, DEFAULT_CONFIG, HANDOVER_TYPE } from "./constants.js";
+import { loadUnifiedLegacyEngineConfig } from "../services/assignmentConfigStore.js";
 
 /* ------------------------------------------------ */
 /* CONFIG LOADER                                    */
@@ -18,19 +19,7 @@ import { DECISION_TYPE, DEFAULT_CONFIG, HANDOVER_TYPE } from "./constants.js";
  */
 export async function loadConfig() {
   try {
-    const res = await db.query(`SELECT key, value FROM assignment_config`);
-    const cfg = { ...DEFAULT_CONFIG };
-    for (const row of res.rows) {
-      const val = row.value;
-      // JSONB values are already parsed; unwrap scalar strings
-      cfg[row.key] = typeof val === "string" ? val.replace(/^"|"$/g, "") : val;
-    }
-    // Type coerce numerics
-    cfg.stale_threshold_minutes = Number(cfg.stale_threshold_minutes) || 10;
-    cfg.max_tickets_per_person_sh = Number(cfg.max_tickets_per_person_sh) || 3;
-    cfg.similar_remaining_hours_threshold = Number(cfg.similar_remaining_hours_threshold) || 6;
-    cfg.enabled = cfg.enabled === true || cfg.enabled === "true";
-    return cfg;
+    return await loadUnifiedLegacyEngineConfig();
   } catch (err) {
     console.error("[ENGINE] Failed to load config, using defaults:", err.message);
     return { ...DEFAULT_CONFIG };
@@ -150,7 +139,12 @@ function mapShiftCode(code) {
 /* ------------------------------------------------ */
 
 async function loadManualExclusions() {
-  const res = await db.query(`SELECT system_name FROM manual_exclusions`);
+  const res = await db.query(`
+    SELECT system_name
+    FROM assignment_exclusion_list
+    WHERE active = true
+    ORDER BY system_name
+  `);
   return new Set(res.rows.map((r) => r.system_name));
 }
 

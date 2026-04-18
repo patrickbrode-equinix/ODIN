@@ -11,6 +11,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExportDialog } from "./ExportDialog";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface ExportMenuProps {
     currentYear: number;
@@ -21,6 +22,7 @@ interface ExportMenuProps {
 }
 
 export function ExportMenu({ currentYear, currentMonth, loading, changelogExists }: ExportMenuProps) {
+    const { t } = useLanguage();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [exportType, setExportType] = useState<"SHIFTPLAN" | "CHANGES" | null>(null);
 
@@ -38,29 +40,29 @@ export function ExportMenu({ currentYear, currentMonth, loading, changelogExists
                         size="sm"
                         className="h-8 pl-2 pr-2"
                         disabled={loading}
-                        title="Export Menü"
+                        title={t("export.menu")}
                     >
                         <Download className="w-4 h-4" />
                         <span className="ml-1 hidden xl:inline">Export</span>
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Export Optionen</DropdownMenuLabel>
+                    <DropdownMenuLabel>{t("export.options")}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem onClick={() => openDialog("SHIFTPLAN")}>
-                        Schichtplan (XLSX)
+                        {t("export.shiftplanXlsx")}
                     </DropdownMenuItem>
 
                     {changelogExists && (
                         <DropdownMenuItem onClick={() => openDialog("CHANGES")}>
-                            Änderungen (Change Log)
+                            {t("export.changeLog")}
                         </DropdownMenuItem>
                     )}
 
                     {!changelogExists && (
-                        <DropdownMenuItem disabled className="opacity-40 cursor-not-allowed" title="Noch keine Änderungen aufgezeichnet">
-                            Änderungen (Change Log)
+                        <DropdownMenuItem disabled className="opacity-40 cursor-not-allowed" title={t("export.noChanges")}>
+                            {t("export.changeLog")}
                         </DropdownMenuItem>
                     )}
 

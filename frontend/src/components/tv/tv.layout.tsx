@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
+import { TVAssignmentHeroSlide } from "./TVAssignmentHeroSlide";
 import type { DashboardInfoEntry } from "../../api/dashboard";
 import type { TvAssignmentTrace, TvAssignmentTraceResponse } from "./tv.assignment.types";
 import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera } from "lucide-react";
@@ -59,6 +60,7 @@ const ALL_SLIDES = [
   { id: "handover",   title: "Handover",                     icon: ArrowRightLeft },
   { id: "projects",   title: "Projekte",                     icon: FolderKanban  },
   { id: "events",     title: "Events",                       icon: Camera        },
+  { id: "assignment", title: "ODIN Assignment Logic",        icon: CheckCircle2  },
 ] as const;
 
 type SlideId = typeof ALL_SLIDES[number]["id"];
@@ -134,18 +136,20 @@ function AssignmentHeaderBanner({ trace }: { trace: TvAssignmentTrace }) {
   const decidedAt = trace.decidedAt
     ? new Date(trace.decidedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : null;
+  const meta = [trace.ticket.status, trace.ticket.priorityLabel, trace.ticket.remainingLabel].filter(Boolean).join(" • ");
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 max-w-full">
       <span className="shrink-0 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
-        ODIN Live
+        ODIN {trace.modeLabel || 'Trace'}
       </span>
       <div className="min-w-0 text-right">
         <div className="text-xs font-semibold text-cyan-100 truncate">
           {ticketLabel} → {trace.selectedCandidate?.employeeName || "Keine Zuweisung"}
         </div>
         <div className="text-[11px] text-cyan-100/70 truncate">
-          {trace.ticket.activity || trace.ticket.systemName || "Live-Zuweisung"}
+          {trace.ticket.activity || trace.ticket.systemName || `${trace.modeLabel || 'ODIN'}-Zuweisung`}
+          {meta ? ` • ${meta}` : ""}
           {trace.finalReasons?.length ? ` • ${trace.finalReasons.slice(0, 2).join(" • ")}` : ""}
           {decidedAt ? ` • ${decidedAt}` : ""}
         </div>
@@ -845,15 +849,17 @@ export function TvLayout({
   const activeSlides = useMemo(() => {
     const activeProjects = projects.filter(p => String(p.status ?? "").toLowerCase() !== "completed");
     return ALL_SLIDES.filter(s => {
+      if (slideConfigMap[s.id]?.enabled === false) return false;
       if (s.id === "shifts")     return true;
       if (s.id === "info")       return infoEntries.length > 0;
       if (s.id === "72h")        return next72hTickets.length > 0;
       if (s.id === "handover")   return handoverCount > 0;
       if (s.id === "projects")   return activeProjects.length > 0;
       if (s.id === "events")     return eventImages.length > 0;
+      if (s.id === "assignment") return Boolean(automationStatus?.enabled && assignmentTrace);
       return true;
     });
-  }, [infoEntries, next72hTickets, handoverCount, projects, eventImages]);
+  }, [assignmentTrace, automationStatus?.enabled, eventImages.length, handoverCount, infoEntries.length, next72hTickets.length, projects, slideConfigMap]);
 
   /* Keep ref in sync for stale-closure-safe auto-rotate */
   useEffect(() => {
@@ -978,6 +984,11 @@ export function TvLayout({
 
         {/* Events */}
         {currentSlideId === "events" && <EventsSlide images={eventImages} />}
+
+        {/* ODIN Assignment Logic */}
+        {currentSlideId === "assignment" && assignmentTrace && (
+          <TVAssignmentHeroSlide trace={assignmentTrace} />
+        )}
       </div>
 
       {/* SLIDE NAVIGATION */}

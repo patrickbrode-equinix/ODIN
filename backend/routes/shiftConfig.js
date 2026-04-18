@@ -27,12 +27,31 @@ router.get('/definitions', async (_req, res) => {
 
 router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, applicable_days } = req.body;
+    const { name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, applicable_days } = req.body;
     const id = parseInt(req.params.id);
     const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
+    const normalizedStartDayOffset = Number.isInteger(Number(start_day_offset)) ? Number(start_day_offset) : 0;
+    const normalizedEndDayOffset = Number.isInteger(Number(end_day_offset)) ? Number(end_day_offset) : 0;
     const { rows } = await pool.query(
-      `UPDATE shift_definitions SET name=$2, short_name=$3, shift_type=$4, start_time=$5, end_time=$6, duration_hours=$7, min_staff=$8, max_staff=$9, color_hex=$10, is_active=$11, sort_order=$12, applicable_days=$13::jsonb, updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [id, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, JSON.stringify(normalizedApplicableDays)]
+      `UPDATE shift_definitions
+       SET name=$2,
+           short_name=$3,
+           shift_type=$4,
+           start_time=$5,
+           end_time=$6,
+           start_day_offset=$7,
+           end_day_offset=$8,
+           duration_hours=$9,
+           min_staff=$10,
+           max_staff=$11,
+           color_hex=$12,
+           is_active=$13,
+           sort_order=$14,
+           applicable_days=$15::jsonb,
+           updated_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+      [id, name, short_name, shift_type, start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, JSON.stringify(normalizedApplicableDays)]
     );
     if (!rows.length) return res.status(404).json({ ok: false, error: 'Definition nicht gefunden' });
     res.json({ ok: true, definition: rows[0] });
@@ -43,12 +62,19 @@ router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), 
 
 router.post('/definitions', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days } = req.body;
+    const { code, name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days } = req.body;
     if (!code || !name) return res.status(400).json({ ok: false, error: 'Code und Name erforderlich' });
     const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
+    const normalizedStartDayOffset = Number.isInteger(Number(start_day_offset)) ? Number(start_day_offset) : 0;
+    const normalizedEndDayOffset = Number.isInteger(Number(end_day_offset)) ? Number(end_day_offset) : 0;
     const { rows } = await pool.query(
-      `INSERT INTO shift_definitions (code, name, short_name, shift_type, start_time, end_time, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *`,
-      [code, name, short_name || code, shift_type || 'early', start_time, end_time, duration_hours || 8, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0, JSON.stringify(normalizedApplicableDays)]
+      `INSERT INTO shift_definitions (
+         code, name, short_name, shift_type, start_time, end_time,
+         start_day_offset, end_day_offset, duration_hours, min_staff,
+         max_staff, color_hex, sort_order, applicable_days
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+       RETURNING *`,
+      [code, name, short_name || code, shift_type || 'early', start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours || 8, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0, JSON.stringify(normalizedApplicableDays)]
     );
     res.json({ ok: true, definition: rows[0] });
   } catch (err) {
@@ -283,37 +309,155 @@ router.put('/employee-preferences', async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: 'Nicht autorisiert' });
-    const { preferred_shifts, unwanted_shifts, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes } = req.body;
+    const { preferred_shifts, unwanted_shifts, preferred_holidays, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes } = req.body;
 
     // Validate arrays
     const validateArray = (v) => Array.isArray(v) ? v : [];
+    const normalizeStringArray = (v) => [...new Set(validateArray(v).map((entry) => String(entry || '').trim()).filter(Boolean))];
+    const normalizedAvoidColleagues = normalizeStringArray(avoid_colleagues);
+
+    const { rows: userRows } = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE id = $1`,
+      [userId]
+    );
+    const ownName = userRows[0]
+      ? `${userRows[0].last_name}, ${userRows[0].first_name}`.trim()
+      : null;
+
+    if (ownName && normalizedAvoidColleagues.includes(ownName)) {
+      return res.status(400).json({ ok: false, error: 'Selbstauswahl ist nicht erlaubt' });
+    }
+
+    const { rows: preferredColleagueRows } = await pool.query(
+      `SELECT preferred_employee_name FROM preferred_colleagues WHERE user_id = $1`,
+      [userId]
+    );
+    const preferredColleagues = preferredColleagueRows
+      .map((row) => String(row.preferred_employee_name || '').trim())
+      .filter(Boolean);
+    const preferredSet = new Set(preferredColleagues);
+    const overlap = normalizedAvoidColleagues.filter((name) => preferredSet.has(name));
+    if (overlap.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: `Folgende Mitarbeiter sind bereits als Wunschkollegen ausgewählt: ${overlap.join(', ')}`,
+      });
+    }
 
     const { rows } = await pool.query(
-      `INSERT INTO employee_preferences (user_id, preferred_shifts, unwanted_shifts, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes, updated_at)
-       VALUES ($1, $2::jsonb, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, NOW())
+      `INSERT INTO employee_preferences (user_id, preferred_shifts, unwanted_shifts, preferred_holidays, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes, updated_at)
+       VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          preferred_shifts = $2::jsonb,
          unwanted_shifts = $3::jsonb,
-         max_nights_per_month = $4,
-         preferred_days = $5::jsonb,
-         blocked_days = $6::jsonb,
-         avoid_colleagues = $7::jsonb,
-         workload_preference = $8,
-         notes = $9,
+         preferred_holidays = $4::jsonb,
+         max_nights_per_month = $5,
+         preferred_days = $6::jsonb,
+         blocked_days = $7::jsonb,
+         avoid_colleagues = $8::jsonb,
+         workload_preference = $9,
+         notes = $10,
          updated_at = NOW()
        RETURNING *`,
       [
         userId,
         JSON.stringify(validateArray(preferred_shifts)),
         JSON.stringify(validateArray(unwanted_shifts)),
+        JSON.stringify(validateArray(preferred_holidays)),
         max_nights_per_month || null,
         JSON.stringify(validateArray(preferred_days)),
         JSON.stringify(validateArray(blocked_days)),
-        JSON.stringify(validateArray(avoid_colleagues)),
+        JSON.stringify(normalizedAvoidColleagues),
         workload_preference || 'normal',
         notes || null,
       ]
     );
+    res.json({ ok: true, preferences: rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ------------------------------------------------ */
+/* TICKET PREFERENCES                               */
+/* ------------------------------------------------ */
+
+router.get('/ticket-preferences', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: 'Nicht autorisiert' });
+    const { rows } = await pool.query('SELECT * FROM ticket_preferences WHERE user_id=$1', [userId]);
+    res.json({ ok: true, preferences: rows[0]?.preferences || null });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/ticket-preferences/all', requirePageAccess('shiftplan_control', 'write'), async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT tp.*, u.first_name, u.last_name, u.email
+       FROM ticket_preferences tp JOIN users u ON u.id = tp.user_id
+       ORDER BY u.last_name, u.first_name`
+    );
+    res.json({ ok: true, preferences: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.put('/ticket-preferences', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: 'Nicht autorisiert' });
+
+    // Validate and sanitise
+    const prefs = req.body;
+    if (!prefs || typeof prefs !== 'object') {
+      return res.status(400).json({ ok: false, error: 'Ungültige Daten' });
+    }
+
+    const VALID_WILLINGNESS = ['always', 'preferred', 'neutral', 'avoid', 'never'];
+    const VALID_CONFIDENCE  = ['beginner', 'basic', 'intermediate', 'advanced', 'expert'];
+    const VALID_INTEREST    = ['none', 'low', 'medium', 'high'];
+    const VALID_CATEGORIES  = ['smart_hands', 'cross_connect', 'trouble_ticket', 'deinstall', 'scheduled', 'flexible'];
+    const VALID_WORKLOAD    = ['default', 'reduced', 'extended'];
+    const VALID_INTENSITY   = ['low', 'normal', 'high'];
+    const VALID_STABILITY   = ['stable', 'balanced', 'variety'];
+
+    const validated = {
+      preferred_category:            VALID_CATEGORIES.includes(prefs.preferred_category) ? prefs.preferred_category : '',
+      secondary_category:            VALID_CATEGORIES.includes(prefs.secondary_category) ? prefs.secondary_category : '',
+      avoid_categories:              Array.isArray(prefs.avoid_categories) ? prefs.avoid_categories.filter(c => VALID_CATEGORIES.includes(c)) : [],
+      urgent_tt_willingness:         VALID_WILLINGNESS.includes(prefs.urgent_tt_willingness) ? prefs.urgent_tt_willingness : 'neutral',
+      scheduled_work_willingness:    VALID_WILLINGNESS.includes(prefs.scheduled_work_willingness) ? prefs.scheduled_work_willingness : 'neutral',
+      category_switch_willingness:   VALID_WILLINGNESS.includes(prefs.category_switch_willingness) ? prefs.category_switch_willingness : 'neutral',
+      prefer_grouped_work:           !!prefs.prefer_grouped_work,
+      prefer_variety_during_shift:   !!prefs.prefer_variety_during_shift,
+      skill_confidence:              typeof prefs.skill_confidence === 'object' && prefs.skill_confidence
+                                       ? Object.fromEntries(Object.entries(prefs.skill_confidence).filter(([k, v]) => VALID_CATEGORIES.includes(k) && VALID_CONFIDENCE.includes(v)))
+                                       : {},
+      training_interest:             typeof prefs.training_interest === 'object' && prefs.training_interest
+                                       ? Object.fromEntries(Object.entries(prefs.training_interest).filter(([k, v]) => VALID_CATEGORIES.includes(k) && VALID_INTEREST.includes(v)))
+                                       : {},
+      can_mentor:                    Array.isArray(prefs.can_mentor) ? prefs.can_mentor.filter(c => VALID_CATEGORIES.includes(c)) : [],
+      needs_mentoring:               Array.isArray(prefs.needs_mentoring) ? prefs.needs_mentoring.filter(c => VALID_CATEGORIES.includes(c)) : [],
+      weekly_workload:               VALID_WORKLOAD.includes(prefs.weekly_workload) ? prefs.weekly_workload : 'default',
+      overtime_willingness:          VALID_WILLINGNESS.includes(prefs.overtime_willingness) ? prefs.overtime_willingness : 'neutral',
+      last_minute_willingness:       VALID_WILLINGNESS.includes(prefs.last_minute_willingness) ? prefs.last_minute_willingness : 'neutral',
+      absence_cover_willingness:     VALID_WILLINGNESS.includes(prefs.absence_cover_willingness) ? prefs.absence_cover_willingness : 'neutral',
+      preferred_intensity:           VALID_INTENSITY.includes(prefs.preferred_intensity) ? prefs.preferred_intensity : 'normal',
+      stability_vs_variety:          VALID_STABILITY.includes(prefs.stability_vs_variety) ? prefs.stability_vs_variety : 'balanced',
+    };
+
+    const { rows } = await pool.query(
+      `INSERT INTO ticket_preferences (user_id, preferences, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET preferences = $2, updated_at = NOW()
+       RETURNING *`,
+      [userId, JSON.stringify(validated)]
+    );
+
     res.json({ ok: true, preferences: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

@@ -20,7 +20,8 @@
     "http://localhost:8000/*",
     "http://fr2lxcops01.corp.equinix.com/*",
     "http://fr2lxcops01.corp.equinix.com:8080/*",
-    "http://fr2lxcops01.corp.equinix.com:8001/*"
+    "http://fr2lxcops01.corp.equinix.com:8001/*",
+    "https://eqx-portal.corp.equinix.com/*"
   ],
   "options_page": "options.html",
   "background": {

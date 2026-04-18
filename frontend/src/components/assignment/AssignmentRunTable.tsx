@@ -2,11 +2,11 @@
 /* ODIN-Logik — Run Table                           */
 /* ================================================ */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { AssignmentApi } from '../../api/assignment';
 import type { AssignmentRun } from '../../types/assignment';
-import { ChevronDown, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertCircle, Loader2, Clock3, PlayCircle, UserRound, ShieldAlert } from 'lucide-react';
 import { InfoTooltip } from '../ui/InfoTooltip';
 
 /* ---- German failure reason mapping ---- */
@@ -58,6 +58,40 @@ function Badge({ text, className }: { text: string; className: string }) {
       {text}
     </span>
   );
+}
+
+function formatRunTimestamp(value: string | null | undefined) {
+  if (!value) return '–';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '–';
+  return date.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatRunDuration(startedAt: string, finishedAt: string | null) {
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return '–';
+
+  const durationMs = end - start;
+  const totalMinutes = Math.round(durationMs / 60000);
+  if (totalMinutes < 1) return '< 1 min';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
+function prettifySummaryKey(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 interface Props {
@@ -163,6 +197,10 @@ export function AssignmentRunTable({ runs }: Props) {
     }
   };
 
+  const selectOnly = async (run: AssignmentRun) => {
+    await selectRun(run.id);
+  };
+
   if (runs.length === 0) {
     return (
       <div className="text-center text-sm text-muted-foreground py-8">
@@ -213,11 +251,10 @@ export function AssignmentRunTable({ runs }: Props) {
             const isSelected = selectedRun?.id === run.id;
             const report = reportsByRun[run.id];
             return (
-              <>
+              <Fragment key={run.id}>
                 <tr
-                  key={run.id}
                   className={`border-b border-border/20 cursor-pointer transition ${isSelected ? 'bg-blue-500/10' : 'hover:bg-accent/30'}`}
-                  onClick={() => toggleRun(run)}
+                  onClick={() => selectOnly(run)}
                 >
                   <td className="px-3 py-2 font-mono text-xs">#{run.id}</td>
                   <td className="px-3 py-2"><Badge text={run.mode} className={mb.className} /></td>
@@ -259,7 +296,22 @@ export function AssignmentRunTable({ runs }: Props) {
                     {run.triggered_by || '–'}
                   </td>
                   <td className="px-3 py-2">
-                    {isExpanded ? <ChevronDown className="w-4 h-4 text-blue-400" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void toggleRun(run);
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                        isExpanded
+                          ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+                          : 'border-border/30 bg-background/40 text-muted-foreground hover:border-blue-500/30 hover:text-foreground'
+                      }`}
+                      aria-expanded={isExpanded}
+                    >
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      {isExpanded ? 'Details verbergen' : 'Details anzeigen'}
+                    </button>
                   </td>
                 </tr>
                 {isExpanded && (
@@ -271,14 +323,54 @@ export function AssignmentRunTable({ runs }: Props) {
                         </div>
                       ) : report ? (
                         <div className="space-y-4">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-lg border border-border/20 bg-background/40 p-3">
+                              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                <PlayCircle className="h-3.5 w-3.5" />
+                                Start
+                              </div>
+                              <div className="mt-1 text-sm text-foreground">{formatRunTimestamp(run.started_at)}</div>
+                            </div>
+                            <div className="rounded-lg border border-border/20 bg-background/40 p-3">
+                              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                Dauer
+                              </div>
+                              <div className="mt-1 text-sm text-foreground">{formatRunDuration(run.started_at, run.finished_at)}</div>
+                              <div className="text-[11px] text-muted-foreground">Fertig: {formatRunTimestamp(run.finished_at)}</div>
+                            </div>
+                            <div className="rounded-lg border border-border/20 bg-background/40 p-3">
+                              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                <UserRound className="h-3.5 w-3.5" />
+                                Ausgelöst von
+                              </div>
+                              <div className="mt-1 text-sm text-foreground">{run.triggered_by || '–'}</div>
+                            </div>
+                            <div className="rounded-lg border border-border/20 bg-background/40 p-3">
+                              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                <ShieldAlert className="h-3.5 w-3.5" />
+                                Fehlerpfad
+                              </div>
+                              <div className="mt-1 text-sm text-foreground">{run.failure_step || '–'}</div>
+                              <div className="text-[11px] text-muted-foreground">Kategorie: {run.error_category || '–'}</div>
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                             {Object.entries(report.summary || {}).map(([key, value]) => (
                               <div key={key} className="rounded-lg border border-border/20 bg-background/40 p-3 text-center">
                                 <div className="text-lg font-bold text-foreground">{String(value)}</div>
-                                <div className="text-[10px] uppercase text-muted-foreground">{key}</div>
+                                <div className="text-[10px] uppercase text-muted-foreground">{prettifySummaryKey(key)}</div>
                               </div>
                             ))}
                           </div>
+
+                          {run.failure_reason && (
+                            <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                              <div className="text-xs font-semibold text-red-300">Run-Fehler</div>
+                              <div className="mt-1 text-sm text-red-100">{run.failure_reason}</div>
+                            </div>
+                          )}
 
                           {report.validation && (
                             <div className={`rounded-lg border p-3 ${report.validation.warning ? 'border-amber-500/30 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'}`}>
@@ -322,7 +414,7 @@ export function AssignmentRunTable({ runs }: Props) {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </tbody>

@@ -4,9 +4,15 @@
 // ==============================
 
 const DEFAULT_BASE_URL = "http://fr2lxcops01.corp.equinix.com:8001";
+const DEFAULT_JARVIS_URL = "https://jarvis-emea.equinix.com/";
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 5;
 const STORAGE_KEY_URL  = "odin_base_url";
 const STORAGE_KEY_KEY  = "odin_ingest_key";
 const STORAGE_KEY_QUEUES = "odin_enabled_queues";
+const STORAGE_KEY_TARGET_URL = "odin_jarvis_target_url";
+const STORAGE_KEY_REFRESH_INTERVAL = "odin_refresh_interval_minutes";
+const STORAGE_KEY_KEEP_AWAKE = "odin_keep_awake_enabled";
+const STORAGE_KEY_STATUS = "odin_crawler_status";
 
 const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
 
@@ -19,21 +25,60 @@ function setStatus(msg, isError = false) {
   if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 3500);
 }
 
-function refreshDisplay(url, key) {
+function refreshDisplay(url, key, targetUrl, refreshInterval, keepAwakeEnabled) {
   const u = url || DEFAULT_BASE_URL + " (default)";
   const k = key ? `●●●●●●●● (set, ${key.length} chars)` : "(using default — CHANGE_ME)";
-  $("currentDisplay").textContent = `URL: ${u}   |   Key: ${k}`;
+  const target = targetUrl || DEFAULT_JARVIS_URL;
+  const refreshInfo = Number(refreshInterval) > 0 ? `${Number(refreshInterval)} min` : "disabled";
+  $("currentDisplay").textContent = `URL: ${u}   |   Key: ${k}   |   Jarvis: ${target}   |   Refresh: ${refreshInfo}   |   Keep awake: ${keepAwakeEnabled ? "on" : "off"}`;
+}
+
+function renderCrawlerStatus(status) {
+  const el = $("crawlerStatus");
+  if (!el) return;
+  if (!status || typeof status !== "object" || Object.keys(status).length === 0) {
+    el.textContent = "Noch kein Laufstatus vorhanden.";
+    return;
+  }
+
+  const lines = [
+    `Updated: ${status.updatedAt || "-"}`,
+    `Tabs: ${status.jarvisTabCount ?? "-"} | Active tab: ${status.activeCrawlerTabId ?? "-"}`,
+    `Continuous: ${status.continuousMode ? "on" : "off"} | Run active: ${status.runActive ? "yes" : "no"}`,
+    `Last refresh: ${status.lastRefreshAt || "-"} (${status.lastRefreshReason || "n/a"})`,
+    `Last upload: ${status.lastUploadAt || "-"} (${status.lastUploadStatus || "n/a"})`,
+    `Last run: ${status.lastRunOutcome || "-"} | Duration: ${status.lastRunDurationMs ? `${Math.round(status.lastRunDurationMs / 1000)}s` : "-"}`,
+    `Keep awake: ${status.keepAwakeActive ? "active" : "inactive"} (${status.keepAwakeConfigured === false ? "disabled in settings" : status.keepAwakeReason || "n/a"})`,
+    `Last error: ${status.lastError || "-"}`,
+  ];
+
+  el.textContent = lines.join("\n");
 }
 
 async function loadStoredValues() {
-  const stored = await chrome.storage.local.get([STORAGE_KEY_URL, STORAGE_KEY_KEY, STORAGE_KEY_QUEUES]);
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEY_URL,
+    STORAGE_KEY_KEY,
+    STORAGE_KEY_QUEUES,
+    STORAGE_KEY_TARGET_URL,
+    STORAGE_KEY_REFRESH_INTERVAL,
+    STORAGE_KEY_KEEP_AWAKE,
+    STORAGE_KEY_STATUS,
+  ]);
   const url = stored[STORAGE_KEY_URL] || "";
   const key = stored[STORAGE_KEY_KEY] || "";
   const enabledQueues = stored[STORAGE_KEY_QUEUES] || ALL_QUEUE_IDS;
+  const targetUrl = stored[STORAGE_KEY_TARGET_URL] || DEFAULT_JARVIS_URL;
+  const refreshInterval = stored[STORAGE_KEY_REFRESH_INTERVAL] ?? DEFAULT_REFRESH_INTERVAL_MINUTES;
+  const keepAwakeEnabled = stored[STORAGE_KEY_KEEP_AWAKE] !== false;
 
   $("baseUrl").value = url;
   $("ingestKey").value = key;
-  refreshDisplay(url, key);
+  $("jarvisTargetUrl").value = targetUrl;
+  $("refreshInterval").value = String(refreshInterval);
+  $("keepAwakeEnabled").checked = keepAwakeEnabled;
+  refreshDisplay(url, key, targetUrl, refreshInterval, keepAwakeEnabled);
+  renderCrawlerStatus(stored[STORAGE_KEY_STATUS]);
 
   // Set queue checkboxes
   for (const qid of ALL_QUEUE_IDS) {
@@ -45,6 +90,9 @@ async function loadStoredValues() {
 async function save() {
   const rawUrl = $("baseUrl").value.trim().replace(/\/$/, "");
   const key    = $("ingestKey").value.trim();
+  const targetUrl = $("jarvisTargetUrl").value.trim() || DEFAULT_JARVIS_URL;
+  const refreshInterval = Number($("refreshInterval").value || DEFAULT_REFRESH_INTERVAL_MINUTES);
+  const keepAwakeEnabled = $("keepAwakeEnabled").checked;
 
   if (rawUrl) {
     try {
@@ -53,6 +101,18 @@ async function save() {
       setStatus("❌ Invalid URL — must start with http:// or https://", true);
       return;
     }
+  }
+
+  try {
+    new URL(targetUrl);
+  } catch {
+    setStatus("❌ Invalid Jarvis URL — must start with http:// or https://", true);
+    return;
+  }
+
+  if (!Number.isFinite(refreshInterval) || refreshInterval < 0) {
+    setStatus("❌ Refresh interval must be 0 or greater.", true);
+    return;
   }
 
   // Collect enabled queues from checkboxes
@@ -87,28 +147,41 @@ async function save() {
 
   // Always save queue selection
   toSave[STORAGE_KEY_QUEUES] = enabledQueues;
+  toSave[STORAGE_KEY_TARGET_URL] = targetUrl;
+  toSave[STORAGE_KEY_REFRESH_INTERVAL] = refreshInterval;
+  toSave[STORAGE_KEY_KEEP_AWAKE] = keepAwakeEnabled;
 
   if (Object.keys(toSave).length > 0) {
     await chrome.storage.local.set(toSave);
   }
 
-  refreshDisplay(rawUrl, key);
+  refreshDisplay(rawUrl, key, targetUrl, refreshInterval, keepAwakeEnabled);
   const queueInfo = enabledQueues.length === ALL_QUEUE_IDS.length
     ? "all queues"
     : enabledQueues.join(", ") || "none";
-  setStatus(`✅ Saved! Active queues: ${queueInfo}`);
+  setStatus(`✅ Saved! Active queues: ${queueInfo}; refresh=${refreshInterval === 0 ? "off" : `${refreshInterval} min`}`);
 }
 
 async function resetDefaults() {
-  await chrome.storage.local.remove([STORAGE_KEY_URL, STORAGE_KEY_KEY, STORAGE_KEY_QUEUES]);
+  await chrome.storage.local.remove([
+    STORAGE_KEY_URL,
+    STORAGE_KEY_KEY,
+    STORAGE_KEY_QUEUES,
+    STORAGE_KEY_TARGET_URL,
+    STORAGE_KEY_REFRESH_INTERVAL,
+    STORAGE_KEY_KEEP_AWAKE,
+  ]);
   $("baseUrl").value = "";
   $("ingestKey").value = "";
+  $("jarvisTargetUrl").value = DEFAULT_JARVIS_URL;
+  $("refreshInterval").value = String(DEFAULT_REFRESH_INTERVAL_MINUTES);
+  $("keepAwakeEnabled").checked = true;
   for (const qid of ALL_QUEUE_IDS) {
     const cb = $("q_" + qid);
     if (cb) cb.checked = true;
   }
-  refreshDisplay("", "");
-  setStatus("↩ Reset to defaults (localhost:8001 / CHANGE_ME / all queues)");
+  refreshDisplay("", "", DEFAULT_JARVIS_URL, DEFAULT_REFRESH_INTERVAL_MINUTES, true);
+  setStatus("↩ Reset to defaults (backend default / all queues / refresh 5 min / keep awake on)");
 }
 
 // Quick preset buttons
@@ -120,6 +193,13 @@ document.querySelectorAll(".quick-btn").forEach((btn) => {
 
 $("saveBtn").addEventListener("click", save);
 $("resetBtn").addEventListener("click", resetDefaults);
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (changes[STORAGE_KEY_STATUS]) {
+    renderCrawlerStatus(changes[STORAGE_KEY_STATUS].newValue);
+  }
+});
 
 // Load on page open
 loadStoredValues();

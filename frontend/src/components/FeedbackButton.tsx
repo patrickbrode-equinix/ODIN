@@ -1,7 +1,7 @@
 /* ------------------------------------------------ */
 /* FEEDBACK BUTTON – HEADER-INTEGRATED              */
 /* Modal: Typ, Titel, Beschreibung, Screenshot      */
-/* Sendet E-Mail über /api/feedback                  */
+/* Speichert Feedback direkt in ODIN                 */
 /* ------------------------------------------------ */
 
 import { useState, useRef } from "react";
@@ -13,7 +13,6 @@ import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { api } from "../api/api";
 import { useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 
 type FeedbackType = "Bug" | "Verbesserung";
 
@@ -28,7 +27,6 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
-  const { user } = useAuth();
 
   const reset = () => {
     setType("Bug");
@@ -66,14 +64,14 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      setResult({ success: true, message: res.data?.message || "Feedback wurde gesendet." });
+      setResult({ success: true, message: res.data?.message || "Feedback wurde gespeichert." });
       // Reset form after success
       setTimeout(() => {
         setOpen(false);
         reset();
       }, 2000);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || "Feedback konnte nicht gesendet werden.";
+      const msg = err?.response?.data?.error || "Feedback konnte nicht gespeichert werden.";
       setResult({ success: false, message: msg });
     } finally {
       setSending(false);
@@ -87,7 +85,7 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
         <button
           onClick={() => { setOpen(true); setResult(null); }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
-          title="Feedback senden"
+          title="Feedback erfassen"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           <span className="hidden xl:inline">Feedback</span>
@@ -96,7 +94,7 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
         <button
           onClick={() => { setOpen(true); setResult(null); }}
           className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-lg shadow-indigo-500/25 transition-all hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-105 active:scale-100"
-          title="Feedback senden"
+          title="Feedback erfassen"
         >
           <MessageSquare className="w-4 h-4" />
           <span>Feedback</span>
@@ -109,11 +107,15 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-indigo-400" />
-              Feedback senden
+              Feedback erfassen
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-white/10 bg-white/3 p-3 text-sm text-muted-foreground">
+              Dein Hinweis wird direkt in ODIN gespeichert und kann im Admin-Bereich ohne separaten Mailversand geprueft werden.
+            </div>
+
             {/* Typ-Auswahl */}
             <div className="space-y-2">
               <Label>Typ</Label>
@@ -163,7 +165,7 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
               <Label htmlFor="fb-desc">Beschreibung *</Label>
               <Textarea
                 id="fb-desc"
-                placeholder="Was ist passiert? Was haben Sie erwartet?"
+                placeholder="Was ist passiert, was sollte passieren und welche Auswirkung hat es?"
                 value={description}
                 onChange={(e) => { setDescription(e.target.value); if (errors.description) setErrors(prev => ({ ...prev, description: "" })); }}
                 rows={4}
@@ -229,10 +231,10 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
               {sending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Sende...
+                  Speichere...
                 </>
               ) : (
-                "Feedback senden"
+                "Feedback speichern"
               )}
             </Button>
           </DialogFooter>

@@ -168,7 +168,8 @@
     autocomplete="off" spellcheck="false" />
   <p class="field-hint">
     Local dev: <code>http://localhost:8001</code> &nbsp;|&nbsp;
-    VM (Portainer): <code>http://fr2lxcops01.corp.equinix.com:8080</code>
+    VM (Portainer): <code>http://fr2lxcops01.corp.equinix.com:8080</code> &nbsp;|&nbsp;
+    Portal: <code>https://eqx-portal.corp.equinix.com</code>
   </p>
 
   <div class="quick-btns">
@@ -176,6 +177,7 @@
     <button class="quick-btn" data-url="http://localhost:5055">localhost:5055</button>
     <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com:8080">VM :8080</button>
     <button class="quick-btn" data-url="http://fr2lxcops01.corp.equinix.com">VM (no port)</button>
+    <button class="quick-btn" data-url="https://eqx-portal.corp.equinix.com">Portal</button>
   </div>
 
   <label>Enabled Queues</label>
@@ -188,6 +190,26 @@
   <p class="field-hint">
     Uncheck a queue to skip it during crawling. Useful for temporarily disabling problematic queues (e.g. Deinstalls).
   </p>
+
+  <label for="jarvisTargetUrl">Jarvis Ziel-URL</label>
+  <input type="url" id="jarvisTargetUrl"
+    placeholder="https://jarvis-emea.equinix.com/"
+    autocomplete="off" spellcheck="false" />
+  <p class="field-hint">
+    Wird verwendet, wenn kein Jarvis-Tab mehr offen ist. Hier kann direkt die produktive Queue-Seite hinterlegt werden.
+  </p>
+
+  <label for="refreshInterval">Automatischer Refresh (Minuten)</label>
+  <input type="text" id="refreshInterval"
+    placeholder="5"
+    autocomplete="off" spellcheck="false" />
+  <p class="field-hint">
+    <code>0</code> deaktiviert den periodischen Reload. Nach jedem Reload wird der Crawler automatisch neu gestartet.
+  </p>
+
+  <label class="cb-label" style="margin-bottom: 18px;">
+    <input type="checkbox" id="keepAwakeEnabled" checked /> Bildschirm aktiv halten, solange ein Jarvis-Tab offen ist
+  </label>
 
   <label for="ingestKey">Ingest Key (X-OES-INGEST-KEY)</label>
   <input type="password" id="ingestKey"
@@ -208,6 +230,11 @@
 
   <div class="current-label">Current saved values:</div>
   <div class="current-value" id="currentDisplay">loading…</div>
+
+  <hr />
+
+  <div class="current-label">Crawler status:</div>
+  <pre class="current-value" id="crawlerStatus">loading…</pre>
 
   <script src="options.js"></script>
 </body>

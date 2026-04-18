@@ -18,6 +18,7 @@ import {
 } from "../ui/select";
 
 import { IBX_OPTIONS } from "./userOptions";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -56,6 +57,26 @@ const FALLBACK_DEPARTMENT = { value: "other", label: "Other Team" };
 /* ------------------------------------------------ */
 
 export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
+  const { t } = useLanguage();
+  const copy = {
+    createFailed: t("addUser.createFailed"),
+    title: t("addUser.title"),
+    subtitle: t("addUser.subtitle"),
+    note: t("addUser.note"),
+    firstName: t("addUser.firstName"),
+    lastName: t("addUser.lastName"),
+    email: t("addUser.email"),
+    initialPassword: t("addUser.initialPassword"),
+    initialPasswordPlaceholder: t("addUser.passwordPlaceholder"),
+    location: t("addUser.location"),
+    locationPlaceholder: t("addUser.locationPlaceholder"),
+    department: t("addUser.department"),
+    departmentPlaceholder: t("addUser.departmentPlaceholder"),
+    role: t("addUser.role"),
+    cancel: t("common.cancel"),
+    saving: t("common.saving"),
+    submit: t("addUser.submit"),
+  };
   /* ------------------------------------------------ */
   /* STATE                                           */
   /* ------------------------------------------------ */
@@ -167,7 +188,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
-          "User konnte nicht angelegt werden"
+          copy.createFailed
       );
     } finally {
       setLoading(false);
@@ -185,10 +206,13 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
       <Card className="w-full max-w-lg border border-border/50 bg-background/90 backdrop-blur-xl shadow-2xl">
         <CardHeader className="space-y-2">
           <CardTitle className="text-2xl font-bold">
-            User anlegen
+            {copy.title}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Startpasswort wird beim Anlegen gesetzt und beim ersten Login zwingend zur Aenderung markiert
+            {copy.subtitle}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {copy.note}
           </p>
         </CardHeader>
 
@@ -197,7 +221,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             {/* NAME */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Vorname</Label>
+                <Label>{copy.firstName}</Label>
                 <Input
                   value={form.firstName}
                   onChange={(e) =>
@@ -208,7 +232,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>Nachname</Label>
+                <Label>{copy.lastName}</Label>
                 <Input
                   value={form.lastName}
                   onChange={(e) =>
@@ -221,7 +245,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
 
             {/* EMAIL */}
             <div className="space-y-2">
-              <Label>E-Mail</Label>
+              <Label>{copy.email}</Label>
               <Input
                 value={form.email}
                 onChange={(e) =>
@@ -232,7 +256,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             </div>
 
             <div className="space-y-2">
-              <Label>Startpasswort</Label>
+              <Label>{copy.initialPassword}</Label>
               <Input
                 type="password"
                 value={form.initialPassword}
@@ -240,13 +264,13 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                   setForm({ ...form, initialPassword: e.target.value })
                 }
                 disabled={loading}
-                placeholder="Initiales Passwort fuer den ersten Login"
+                placeholder={copy.initialPasswordPlaceholder}
               />
             </div>
 
             {/* IBX */}
             <div className="space-y-2">
-              <Label>Standort (IBX)</Label>
+              <Label>{copy.location}</Label>
               <Select
                 value={form.ibx}
                 onValueChange={(v) =>
@@ -255,7 +279,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                 disabled={loading}
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Standort auswählen" />
+                  <SelectValue placeholder={copy.locationPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {IBX_OPTIONS.map((ibx) => (
@@ -269,7 +293,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
 
             {/* DEPARTMENT */}
             <div className="space-y-2">
-              <Label>Abteilung</Label>
+              <Label>{copy.department}</Label>
               <Select
                 value={form.department}
                 onValueChange={(v) =>
@@ -278,7 +302,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                 disabled={loading}
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Abteilung auswählen" />
+                  <SelectValue placeholder={copy.departmentPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {(deptOptions.length ? deptOptions : [FALLBACK_DEPARTMENT]).map((opt) => (
@@ -291,7 +315,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             </div>
 
             <div className="space-y-2">
-              <Label>Rolle</Label>
+              <Label>{copy.role}</Label>
               <Select
                 value={form.role}
                 onValueChange={(v) =>
@@ -320,14 +344,14 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                 onClick={onClose}
                 disabled={loading}
               >
-                Abbrechen
+                {copy.cancel}
               </Button>
 
               <Button
                 type="submit"
                 disabled={loading || !canSubmit}
               >
-                {loading ? "Speichern…" : "User anlegen"}
+                {loading ? copy.saving : copy.submit}
               </Button>
             </div>
           </form>
