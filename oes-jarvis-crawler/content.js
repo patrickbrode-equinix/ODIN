@@ -14,6 +14,10 @@ let OES_NEXT_RUN_TIMER = null;
 // Canonical queue identifiers (must match options.js ALL_QUEUE_IDS)
 const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
 const CONTINUOUS_LOOP_DELAY_MS = 5000;
+const POPUP_SCAN_INTERVAL_MS = 2000;
+
+let OES_POPUP_CLEANER_TIMER = null;
+let OES_POPUP_DISMISS_ACTIVE = false;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -186,6 +190,8 @@ function startContinuousMode(reason = "manual") {
     return;
   }
 
+  startPopupJanitor();
+
   if (!OES_CONTINUOUS_MODE) {
     OES_CONTINUOUS_MODE = true;
     notifyLoopState(true, reason);
@@ -193,6 +199,7 @@ function startContinuousMode(reason = "manual") {
   }
 
   clearNextRunTimer();
+  void dismissObstructivePopups(`continuous_start:${reason}`, { maxPasses: 1 });
   void runContinuousCycle(reason);
 }
 
@@ -202,6 +209,245 @@ function stopContinuousMode(reason = "stopped") {
   clearNextRunTimer();
   notifyLoopState(false, reason);
   log(`[Loop] Continuous mode disabled (${reason})`);
+}
+
+function getElementLabel(element) {
+  if (!element) return "";
+
+  return [
+    element.getAttribute("aria-label") || "",
+    element.getAttribute("title") || "",
+    element.innerText || "",
+    element.textContent || "",
+  ]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getElementClassName(element) {
+  if (!element) return "";
+
+  const className = typeof element.className === "string"
+    ? element.className
+    : element.getAttribute("class") || "";
+
+  return String(className).toLowerCase();
+}
+
+function isElementVisible(element) {
+  if (!(element instanceof Element)) return false;
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return false;
+
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+    return false;
+  }
+
+  return element.getClientRects().length > 0;
+}
+
+function getElementZIndex(element) {
+  const raw = window.getComputedStyle(element).zIndex || "";
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function isLikelyBlockingPopup(element) {
+  if (!isElementVisible(element)) return false;
+
+  const rect = element.getBoundingClientRect();
+  const style = window.getComputedStyle(element);
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const containsViewportCenter =
+    rect.left <= centerX &&
+    rect.right >= centerX &&
+    rect.top <= centerY &&
+    rect.bottom >= centerY;
+  const dialogSemantics =
+    element.getAttribute("role") === "dialog" ||
+    element.getAttribute("aria-modal") === "true";
+  const overlayLike =
+    ["fixed", "absolute", "sticky"].includes(style.position) ||
+    getElementZIndex(element) >= 50;
+  const largeEnough =
+    rect.width >= Math.min(window.innerWidth * 0.25, 320) ||
+    rect.height >= Math.min(window.innerHeight * 0.18, 180);
+
+  return containsViewportCenter && (dialogSemantics || (overlayLike && largeEnough)) && style.pointerEvents !== "none";
+}
+
+function getBlockingPopupRoots() {
+  const selectors = [
+    "[role='dialog']",
+    "[aria-modal='true']",
+    ".modal",
+    ".modal-dialog",
+    ".popup",
+    ".popup-window",
+    ".mx-dialog",
+    ".mx-window",
+    ".mendix-dialog",
+    "[class*='modal']",
+    "[class*='popup']",
+    "[class*='dialog']",
+  ];
+
+  const roots = [];
+  for (const element of document.querySelectorAll(selectors.join(","))) {
+    if (!isLikelyBlockingPopup(element)) continue;
+    if (roots.some((root) => root.contains(element))) continue;
+
+    for (let index = roots.length - 1; index >= 0; index--) {
+      if (element.contains(roots[index])) {
+        roots.splice(index, 1);
+      }
+    }
+
+    roots.push(element);
+  }
+
+  return roots.sort((left, right) => {
+    const zIndexDelta = getElementZIndex(right) - getElementZIndex(left);
+    if (zIndexDelta !== 0) return zIndexDelta;
+
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    return (rightRect.width * rightRect.height) - (leftRect.width * leftRect.height);
+  });
+}
+
+function scorePopupCloseControl(element) {
+  const label = getElementLabel(element);
+  const className = getElementClassName(element);
+  const rect = element.getBoundingClientRect();
+  let score = 0;
+
+  if (/close|schlie/.test(label)) score += 6;
+  if (/dismiss|cancel|abbrechen/.test(label)) score += 4;
+  if (label === "x" || label === "×") score += 5;
+  if (/btn-close|dialog-close|modal-close|close-icon/.test(className)) score += 3;
+  if (rect.top < window.innerHeight * 0.45 && rect.left > window.innerWidth * 0.5) score += 1;
+
+  return score;
+}
+
+function getPopupCloseControls(root) {
+  const controls = Array.from(
+    root.querySelectorAll("button, [role='button'], [aria-label], [title], .close, .btn-close")
+  );
+
+  return controls
+    .filter((element) => {
+      if (!isElementVisible(element)) return false;
+
+      const label = getElementLabel(element);
+      const className = getElementClassName(element);
+      return (
+        label === "x" ||
+        label === "×" ||
+        /close|dismiss|cancel|schlie|abbrechen/.test(label) ||
+        /close|dismiss|cancel|btn-close|dialog-close|modal-close/.test(className)
+      );
+    })
+    .sort((left, right) => scorePopupCloseControl(right) - scorePopupCloseControl(left));
+}
+
+function getSafeAcknowledgeControl(root) {
+  const buttons = Array.from(root.querySelectorAll("button, [role='button']")).filter(isElementVisible);
+  if (buttons.length !== 1) return null;
+
+  const label = getElementLabel(buttons[0]);
+  if (/^(ok|okay|alles klar|got it)$/.test(label)) {
+    return buttons[0];
+  }
+
+  return null;
+}
+
+function dispatchEscapeKey() {
+  const eventOptions = { key: "Escape", bubbles: true, cancelable: true };
+  const activeTarget = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
+
+  activeTarget.dispatchEvent(new KeyboardEvent("keydown", eventOptions));
+  activeTarget.dispatchEvent(new KeyboardEvent("keyup", eventOptions));
+  document.dispatchEvent(new KeyboardEvent("keydown", eventOptions));
+  document.dispatchEvent(new KeyboardEvent("keyup", eventOptions));
+}
+
+async function dismissPopupRoot(root, reason) {
+  const controls = getPopupCloseControls(root);
+  const safeAcknowledge = controls.length === 0 ? getSafeAcknowledgeControl(root) : null;
+  const candidates = safeAcknowledge ? [safeAcknowledge] : controls;
+
+  for (const control of candidates) {
+    const label = getElementLabel(control).slice(0, 80) || control.tagName;
+    log(`[Popup] Closing popup via "${label}" (${reason})`);
+    control.click();
+    await sleep(180);
+    if (!root.isConnected || !isLikelyBlockingPopup(root)) {
+      return true;
+    }
+  }
+
+  dispatchEscapeKey();
+  await sleep(180);
+  return !root.isConnected || !isLikelyBlockingPopup(root);
+}
+
+async function dismissObstructivePopups(reason = "unknown", options = {}) {
+  const maxPasses = Math.max(1, Number(options.maxPasses) || 1);
+  if (OES_POPUP_DISMISS_ACTIVE) return 0;
+
+  OES_POPUP_DISMISS_ACTIVE = true;
+  try {
+    let totalDismissed = 0;
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const roots = getBlockingPopupRoots();
+      if (roots.length === 0) break;
+
+      let dismissedThisPass = 0;
+      for (const root of roots) {
+        if (await dismissPopupRoot(root, reason)) {
+          dismissedThisPass++;
+          totalDismissed++;
+        }
+      }
+
+      if (dismissedThisPass === 0) break;
+    }
+
+    if (totalDismissed > 0) {
+      log(`[Popup] Dismissed ${totalDismissed} popup(s) (${reason})`);
+    }
+
+    return totalDismissed;
+  } catch (e) {
+    warn(`[Popup] Failed to dismiss popup(s) during ${reason}:`, e?.message || e);
+    return 0;
+  } finally {
+    OES_POPUP_DISMISS_ACTIVE = false;
+  }
+}
+
+function startPopupJanitor() {
+  if (!isJarvisHost() || OES_POPUP_CLEANER_TIMER) return;
+
+  OES_POPUP_CLEANER_TIMER = setInterval(() => {
+    void dismissObstructivePopups("popup_janitor", { maxPasses: 1 });
+  }, POPUP_SCAN_INTERVAL_MS);
+}
+
+function stopPopupJanitor() {
+  if (!OES_POPUP_CLEANER_TIMER) return;
+
+  clearInterval(OES_POPUP_CLEANER_TIMER);
+  OES_POPUP_CLEANER_TIMER = null;
 }
 
 /**
@@ -258,7 +504,14 @@ function getCellValue(cell) {
  */
 async function waitForAgGridRoot(timeoutMs = 30000) {
   const start = Date.now();
+  let lastPopupSweepAt = 0;
+
   while (Date.now() - start < timeoutMs) {
+    if (Date.now() - lastPopupSweepAt >= 1000) {
+      lastPopupSweepAt = Date.now();
+      await dismissObstructivePopups("wait_for_ag_grid", { maxPasses: 1 });
+    }
+
     const root = document.querySelector(".ag-root") || document.querySelector(".ag-root-wrapper");
     if (root) {
       // Additionally wait for loading overlays to disappear
@@ -283,7 +536,14 @@ async function getAgGridRootAsync() {
  */
 async function waitForRowsRendered(timeoutMs = 15000) {
   const start = Date.now();
+  let lastPopupSweepAt = 0;
+
   while (Date.now() - start < timeoutMs) {
+    if (Date.now() - lastPopupSweepAt >= 1000) {
+      lastPopupSweepAt = Date.now();
+      await dismissObstructivePopups("wait_for_rows", { maxPasses: 1 });
+    }
+
     const rows = document.querySelectorAll(".ag-center-cols-container .ag-row");
     if (rows.length > 0) {
       log(`[Wait] ${rows.length} rows rendered after ${Date.now() - start}ms`);
@@ -303,7 +563,14 @@ async function waitForDomStable(checkIntervalMs = 200, requiredStableChecks = 4,
   const start = Date.now();
   let lastCount = -1;
   let stableHits = 0;
+  let lastPopupSweepAt = 0;
+
   while (Date.now() - start < timeoutMs) {
+    if (Date.now() - lastPopupSweepAt >= 1000) {
+      lastPopupSweepAt = Date.now();
+      await dismissObstructivePopups("wait_for_dom_stable", { maxPasses: 1 });
+    }
+
     const rows = document.querySelectorAll(".ag-center-cols-container .ag-row");
     const count = rows.length;
     if (count === lastCount && count >= 0) {
@@ -508,6 +775,10 @@ async function collectAllRowsByScrolling({ keyColId }) {
       break;
     }
 
+    if (i % 10 === 0) {
+      await dismissObstructivePopups(`scroll_collect:${keyColId}`, { maxPasses: 1 });
+    }
+
     // 2-pass horizontal scroll: left=0 captures key column, left=max captures Owner/Sched. Start
     if (hViewport) hViewport.scrollLeft = 0;
     await sleep(50);
@@ -645,6 +916,8 @@ async function collectWithFallbackKeys(primaryKey, fallbackKeys = []) {
  * Click queue card by title and wait a bit + ensure grid is ready.
  */
 async function openQueueByCardTitle(title) {
+  await dismissObstructivePopups(`before_open_queue:${title}`, { maxPasses: 2 });
+
   const cards = Array.from(document.querySelectorAll(".card-ticket"));
   const card = cards.find((c) => (c.innerText || "").includes(title));
   if (!card) {
@@ -660,6 +933,7 @@ async function openQueueByCardTitle(title) {
 
   // Allow navigation/render — increased from 550ms
   await sleep(800);
+  await dismissObstructivePopups(`after_open_queue:${title}`, { maxPasses: 2 });
 
   // Ensure grid exists before scraping — increased timeout
   log(`[Nav] Waiting for ag-grid root after clicking "${title}"...`);
@@ -710,6 +984,7 @@ function isCompleteRun(expectedCount, actualCount) {
  */
 async function navigateToDeinstalls() {
   log("[Deinstall] Navigating to Deinstalls section...");
+  await dismissObstructivePopups("before_deinstall_nav", { maxPasses: 2 });
 
   // Strategy 1: buttons, links, tabs with "Deinstall" text
   const clickableSelectors = [
@@ -728,6 +1003,7 @@ async function navigateToDeinstalls() {
         `"${(match.innerText || "").trim().substring(0, 60)}"`);
       match.click();
       await sleep(1500);
+      await dismissObstructivePopups("after_deinstall_nav", { maxPasses: 2 });
       try { await waitForAgGridRoot(30000); } catch (e) {
         warn("[Deinstall] ag-grid not found after nav click:", e?.message);
         return false;
@@ -749,6 +1025,7 @@ async function navigateToDeinstalls() {
     log("[Deinstall] Found nav element via broad search:", match2.tagName, match2.className);
     match2.click();
     await sleep(1500);
+    await dismissObstructivePopups("after_deinstall_nav_broad", { maxPasses: 2 });
     try { await waitForAgGridRoot(30000); } catch (e) {
       warn("[Deinstall] ag-grid not found after nav click:", e?.message);
       return false;
@@ -1144,6 +1421,8 @@ async function scrapeAllQueuesAndUpload() {
   const runStartTime = Date.now();
   notifyScrapeActivity(true, "scrape_all_queues");
   try {
+    await dismissObstructivePopups("scrape_run_start", { maxPasses: 2 });
+
     // ── Step 0: Read enabled queues configuration ──
     const enabledQueues = await getEnabledQueues();
     log("========================================");
@@ -1386,9 +1665,12 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 
 window.addEventListener("beforeunload", () => {
+  stopPopupJanitor();
   stopContinuousMode("beforeunload");
 });
 
 if (isJarvisHost()) {
+  startPopupJanitor();
+  void dismissObstructivePopups("content_bootstrap", { maxPasses: 2 });
   startContinuousMode("content_bootstrap");
 }

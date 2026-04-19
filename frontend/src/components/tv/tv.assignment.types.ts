@@ -56,6 +56,24 @@ export interface TvSelectedCandidate {
   currentLoad: number;
 }
 
+export interface TvStrategyStep {
+  key: string;
+  label: string;
+  active: boolean;
+}
+
+export interface TvStrategy {
+  label: string;
+  tieBreaker: string;
+  steps: TvStrategyStep[];
+}
+
+export interface TvCandidateStats {
+  total: number;
+  eligible: number;
+  excluded: number;
+}
+
 export interface TvAssignmentTrace {
   ticket: TvAssignmentTicket;
   classification: TvAssignmentClassification;
@@ -67,6 +85,9 @@ export interface TvAssignmentTrace {
   modeLabel?: string;
   decidedAt: string;
   runId: number;
+  strategy?: TvStrategy;
+  candidateStats?: TvCandidateStats;
+  ticketPoolSize?: number;
 }
 
 export interface TvAssignmentTraceResponse {

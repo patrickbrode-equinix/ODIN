@@ -14,10 +14,12 @@ import type { TvLayoutProps } from "./tv.types";
 import { TvShiftplan } from "./tv.shiftplan";
 import { TVHandoverMirror } from "./TVHandoverMirror";
 import { TVAssignmentHeroSlide } from "./TVAssignmentHeroSlide";
+import { TVPollsSlide } from "./TVPollsSlide";
 import type { DashboardInfoEntry } from "../../api/dashboard";
 import type { TvAssignmentTrace, TvAssignmentTraceResponse } from "./tv.assignment.types";
-import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, ArrowRightLeft, Users, AlertTriangle, Megaphone, FolderKanban, CheckCircle2, Calendar, User, Camera, Vote, TrendingUp, TrendingDown } from "lucide-react";
 import { api } from "../../api/api";
+import { fetchEqixQuote, type MarketQuote } from "../../api/market";
 import { getRemainingMs, getColorTier, tierClasses, tierGlow, formatRemainingTime } from "../../utils/ticketColors";
 import { formatDate, formatTime } from "../../utils/dateFormat";
 
@@ -57,6 +59,7 @@ const ALL_SLIDES = [
   { id: "handover",   title: "Handover",                     icon: ArrowRightLeft },
   { id: "projects",   title: "Projekte",                     icon: FolderKanban  },
   { id: "events",     title: "Events",                       icon: Camera        },
+  { id: "polls",      title: "Umfragen",                     icon: Vote          },
   { id: "assignment", title: "ODIN Assignment Logic",        icon: CheckCircle2  },
 ] as const;
 
@@ -127,6 +130,57 @@ function buildShiftTiming(now: Date): { label: string; color: string }[] {
 /* ------------------------------------------------ */
 interface TeamsStatus { configured: boolean; active: boolean; sentToday: number }
 interface AutomationStatus { enabled: boolean; mode: string }
+
+/* ------------------------------------------------ */
+/* TV STOCK BADGE (Equinix Aktienkurs)              */
+/* ------------------------------------------------ */
+
+function TvStockBadge() {
+  const [quote, setQuote] = useState<MarketQuote | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const q = await fetchEqixQuote();
+        if (alive) setQuote(q);
+      } catch { /* silent */ }
+    };
+    load();
+    const iv = setInterval(load, 300_000); // 5 min
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
+  const available = quote?.available === true && Number.isFinite(quote?.price);
+  const positive = (quote?.changePercent ?? 0) >= 0;
+  const priceStr = available
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: quote?.currency || "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(quote!.price!)
+    : "--";
+  const deltaStr = available && Number.isFinite(quote?.changePercent)
+    ? `${positive ? "+" : ""}${quote!.changePercent!.toFixed(2)}%`
+    : null;
+
+  return (
+    <div
+      className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 shrink-0"
+      title={available ? `Equinix-Aktie · ${quote?.stale ? "zwischengespeichert" : "live"}` : "Equinix-Aktie nicht verfügbar"}
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${
+        available
+          ? quote?.stale ? "bg-amber-400" : positive ? "bg-emerald-400" : "bg-rose-400"
+          : "bg-slate-500"
+      }`} />
+      <span className="text-sm font-black tracking-wider text-cyan-200">EQIX</span>
+      <span className="text-sm font-semibold text-slate-100 tabular-nums">{priceStr}</span>
+      {available && deltaStr && (
+        <span className={`flex items-center gap-0.5 text-sm font-bold tabular-nums ${positive ? "text-emerald-300" : "text-rose-300"}`}>
+          {positive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+          {deltaStr}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function AssignmentHeaderBanner({ trace }: { trace: TvAssignmentTrace }) {
   const ticketLabel = trace.ticket.externalId || trace.ticket.id || "Unbekannt";
@@ -264,14 +318,17 @@ function SlideHeader({ now, title, icon: Icon, crawlerLastUpdate, shiftplanLastU
         )}
       </div>
 
-      <div className="flex items-center gap-3 text-lg text-muted-foreground shrink-0">
-        <span className="text-slate-300">{formatDate(now)}</span>
-        <span
-          className="font-mono font-black text-2xl"
-          style={{ color: "#00d8ff", textShadow: "0 0 8px rgba(0,216,255,0.5)" }}
-        >
-          {formatTime(now)}
-        </span>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <div className="flex items-center gap-3 text-lg text-muted-foreground">
+          <span className="text-slate-300">{formatDate(now)}</span>
+          <span
+            className="font-mono font-black text-2xl"
+            style={{ color: "#00d8ff", textShadow: "0 0 8px rgba(0,216,255,0.5)" }}
+          >
+            {formatTime(now)}
+          </span>
+        </div>
+        <TvStockBadge />
       </div>
     </div>
   );
@@ -573,6 +630,7 @@ export function TvLayout({
   const [projects,      setProjects]      = useState<TvProject[]>([]);
   const [handoverCount, setHandoverCount] = useState(0);
   const [eventImages,   setEventImages]   = useState<EventImage[]>([]);
+  const [tvPolls,       setTvPolls]       = useState<any[]>([]);
   const [assignmentTrace, setAssignmentTrace] = useState<TvAssignmentTrace | null>(null);
   const [crawlerLastUpdate, setCrawlerLastUpdate] = useState<string | null>(null);
   const [shiftplanLastUpload, setShiftplanLastUpload] = useState<string | null>(null);
@@ -637,6 +695,17 @@ export function TvLayout({
       fetch("/api/tv/events/images")
         .then(r => r.ok ? r.json() : [])
         .then(data => setEventImages(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* Polls – for Umfragen slide */
+  useEffect(() => {
+    const load = () =>
+      api.get("/tv/polls")
+        .then(res => setTvPolls(Array.isArray(res.data) ? res.data : []))
         .catch(() => {});
     load();
     const id = setInterval(load, 60_000);
@@ -853,10 +922,11 @@ export function TvLayout({
       if (s.id === "handover")   return handoverCount > 0;
       if (s.id === "projects")   return activeProjects.length > 0;
       if (s.id === "events")     return eventImages.length > 0;
+      if (s.id === "polls")      return tvPolls.length > 0;
       if (s.id === "assignment") return Boolean(automationStatus?.enabled && assignmentTrace);
       return true;
     });
-  }, [assignmentTrace, automationStatus?.enabled, eventImages.length, handoverCount, infoEntries.length, next72hTickets.length, projects, slideConfigMap]);
+  }, [assignmentTrace, automationStatus?.enabled, eventImages.length, handoverCount, infoEntries.length, next72hTickets.length, projects, slideConfigMap, tvPolls.length]);
 
   /* Keep ref in sync for stale-closure-safe auto-rotate */
   useEffect(() => {
@@ -981,6 +1051,11 @@ export function TvLayout({
 
         {/* Events */}
         {currentSlideId === "events" && <EventsSlide images={eventImages} />}
+
+        {/* Umfragen / Polls */}
+        {currentSlideId === "polls" && (
+          <TVPollsSlide />
+        )}
 
         {/* ODIN Assignment Logic */}
         {currentSlideId === "assignment" && assignmentTrace && (

@@ -21,12 +21,16 @@ import {
   Settings2,
   Sliders,
   Star,
+  Timer,
   Trash2,
   UserX,
   Users,
 } from 'lucide-react';
 import { EmployeeSkills, fetchSkills, updateSkills } from '../../api/coverage';
+import type { TranslationKey } from '../../context/LanguageContext';
 import { useLanguage } from '../../context/LanguageContext';
+
+/* ── locale helpers ── */
 
 function getWeekdayOptions(isGerman: boolean) {
   return [
@@ -46,6 +50,8 @@ function getShiftDayOffsetOptions(isGerman: boolean) {
     { value: 1, label: isGerman ? 'Folgetag' : 'Next day' },
   ] as const;
 }
+
+/* ── interfaces ── */
 
 interface ShiftDefinition {
   id: number;
@@ -131,9 +137,26 @@ interface AdvancedPlanningSettings {
   weekendMinDispatchers: number;
 }
 
+interface DbsConfig {
+  enabled: boolean;
+  rhythmWeeks: number;
+  referenceDate: string;
+  weekdays: number[];
+  shiftCode: string;
+  requiredStaff: number;
+  defaultMonthlyTarget: number;
+}
+
+interface OvertimeConfig {
+  maxOvertimeHours: number;
+  overtimeMode: 'show' | 'warn' | 'hard';
+}
+
 interface SkillMatrixProfile extends EmployeeSkills {
   rated_skills: Record<string, number>;
 }
+
+/* ── defaults & constants ── */
 
 const DEFAULT_SKILL_CATALOG = [
   'Cross Connect',
@@ -165,6 +188,23 @@ const DEFAULT_ADVANCED_SETTINGS: AdvancedPlanningSettings = {
   weekendMinDispatchers: 1,
 };
 
+const DEFAULT_DBS_CONFIG: DbsConfig = {
+  enabled: true,
+  rhythmWeeks: 2,
+  referenceDate: '',
+  weekdays: [1, 2, 3, 4, 5],
+  shiftCode: 'DBS',
+  requiredStaff: 1,
+  defaultMonthlyTarget: 4,
+};
+
+const DEFAULT_OVERTIME_CONFIG: OvertimeConfig = {
+  maxOvertimeHours: 0,
+  overtimeMode: 'show',
+};
+
+/* ── parsers / normalizers ── */
+
 function parseBooleanSetting(value: unknown, fallback: boolean) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') {
@@ -193,6 +233,33 @@ function extractAdvancedPlanningSettings(settings: Record<string, string>): Adva
     weekendVolumeEnabled: parseBooleanSetting(settings['shiftplan.weekend_volume_enabled'], DEFAULT_ADVANCED_SETTINGS.weekendVolumeEnabled),
     weekendBufferPercent: parseNumberSetting(settings['shiftplan.weekend_buffer_percent'], DEFAULT_ADVANCED_SETTINGS.weekendBufferPercent),
     weekendMinDispatchers: parseNumberSetting(settings['shiftplan.weekend_min_dispatchers'], DEFAULT_ADVANCED_SETTINGS.weekendMinDispatchers),
+  };
+}
+
+function extractDbsConfig(settings: Record<string, string>): DbsConfig {
+  let weekdays = DEFAULT_DBS_CONFIG.weekdays;
+  const raw = settings['shiftplan.dbs_weekdays'];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) weekdays = parsed.filter((d: number) => d >= 0 && d <= 6);
+    } catch { /* keep default */ }
+  }
+  return {
+    enabled: parseBooleanSetting(settings['shiftplan.dbs_enabled'], DEFAULT_DBS_CONFIG.enabled),
+    rhythmWeeks: parseNumberSetting(settings['shiftplan.dbs_rhythm_weeks'], DEFAULT_DBS_CONFIG.rhythmWeeks),
+    referenceDate: settings['shiftplan.dbs_reference_date'] ?? DEFAULT_DBS_CONFIG.referenceDate,
+    weekdays,
+    shiftCode: settings['shiftplan.dbs_shift_code'] || DEFAULT_DBS_CONFIG.shiftCode,
+    requiredStaff: parseNumberSetting(settings['shiftplan.dbs_required_staff'], DEFAULT_DBS_CONFIG.requiredStaff),
+    defaultMonthlyTarget: parseNumberSetting(settings['shiftplan.dbs_default_monthly_target'], DEFAULT_DBS_CONFIG.defaultMonthlyTarget),
+  };
+}
+
+function extractOvertimeConfig(settings: Record<string, string>): OvertimeConfig {
+  return {
+    maxOvertimeHours: parseNumberSetting(settings['shiftplan.max_overtime_hours'], DEFAULT_OVERTIME_CONFIG.maxOvertimeHours),
+    overtimeMode: (settings['shiftplan.overtime_mode'] as OvertimeConfig['overtimeMode']) || DEFAULT_OVERTIME_CONFIG.overtimeMode,
   };
 }
 
@@ -281,7 +348,9 @@ function formatShiftSpanPreview(definition: ShiftDefinition, shiftDayOffsetOptio
   return `${startLabel} ${definition.start_time || '—'} ${isGerman ? 'bis' : 'to'} ${endLabel} ${definition.end_time || '—'}`;
 }
 
-function HelpTooltip({ text }: { text: string }) {
+/* ── reusable sub-components ── */
+
+function HelpTooltip({ textKey, t }: { textKey: TranslationKey; t: (key: TranslationKey) => string }) {
   const [show, setShow] = useState(false);
 
   return (
@@ -292,16 +361,38 @@ function HelpTooltip({ text }: { text: string }) {
         onMouseLeave={() => setShow(false)}
         onClick={() => setShow((value) => !value)}
         className="text-muted-foreground hover:text-blue-400 transition"
-        aria-label="Hilfe"
+        aria-label="Help"
       >
         <HelpCircle className="w-3.5 h-3.5" />
       </button>
       {show ? (
-        <div className="absolute left-6 top-0 z-50 w-64 rounded-lg border border-blue-500/30 bg-[#0a0f1e]/95 p-3 text-xs leading-relaxed text-muted-foreground shadow-xl">
-          {text}
+        <div className="absolute left-6 top-0 z-50 w-72 rounded-lg border border-blue-500/30 bg-[#0a0f1e]/95 p-3 text-xs leading-relaxed text-muted-foreground shadow-xl">
+          {t(textKey)}
         </div>
       ) : null}
     </span>
+  );
+}
+
+function SectionHelp({ textKey, t }: { textKey: TranslationKey; t: (key: TranslationKey) => string }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onClick={(e) => { e.stopPropagation(); setShow((v) => !v); }}
+      className="relative text-muted-foreground hover:text-blue-400 transition"
+      aria-label="Help"
+    >
+      <HelpCircle className="w-4 h-4" />
+      {show ? (
+        <div className="absolute left-6 top-0 z-50 w-80 rounded-lg border border-blue-500/30 bg-[#0a0f1e]/95 p-3 text-xs leading-relaxed text-left font-normal normal-case tracking-normal text-muted-foreground shadow-xl">
+          {t(textKey)}
+        </div>
+      ) : null}
+    </button>
   );
 }
 
@@ -310,11 +401,15 @@ function Section({
   icon: Icon,
   children,
   defaultOpen = true,
+  helpKey,
+  t,
 }: {
   title: string;
   icon: React.ElementType;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  helpKey?: TranslationKey;
+  t?: (key: TranslationKey) => string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -329,7 +424,10 @@ function Section({
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300">
             <Icon className="h-4 w-4" />
           </div>
-          <div className="text-sm font-semibold text-slate-100">{title}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-slate-100">{title}</div>
+            {helpKey && t ? <SectionHelp textKey={helpKey} t={t} /> : null}
+          </div>
         </div>
         {open ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
       </button>
@@ -337,6 +435,8 @@ function Section({
     </section>
   );
 }
+
+/* ── main panel ── */
 
 export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: boolean }) {
   const { language, t } = useLanguage();
@@ -350,6 +450,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const [exclusions, setExclusions] = useState<ShiftplanExclusion[]>([]);
   const [employees, setEmployees] = useState<string[]>([]);
   const [dbsPool, setDbsPool] = useState<SpecialPoolEntry[]>([]);
+  const [dbsConfig, setDbsConfig] = useState<DbsConfig>(DEFAULT_DBS_CONFIG);
+  const [overtimeConfig, setOvertimeConfig] = useState<OvertimeConfig>(DEFAULT_OVERTIME_CONFIG);
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedPlanningSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [skillsEnabled, setSkillsEnabled] = useState(false);
   const [skillCatalog, setSkillCatalog] = useState<string[]>([...DEFAULT_SKILL_CATALOG]);
@@ -365,6 +467,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     setToast({ msg, type });
     window.setTimeout(() => setToast(null), 3000);
   }, []);
+
+  /* ── data loading ── */
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -402,6 +506,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       setExclusions((exclRes.data.exclusions || []).filter((entry: ShiftplanExclusion) => entry.is_active));
       setEmployees(loadedEmployees);
       setDbsPool(poolRes.data.assignments || []);
+      setDbsConfig(extractDbsConfig(appSettingsRes.data || {}));
+      setOvertimeConfig(extractOvertimeConfig(appSettingsRes.data || {}));
       setAdvancedSettings(extractAdvancedPlanningSettings(appSettingsRes.data || {}));
       setSkillsEnabled(parseBooleanSetting(appSettingsRes.data?.['shiftplan.skills_enabled'], false));
       setSkillCatalog(configuredSkillCatalog);
@@ -417,6 +523,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     void loadAll();
   }, [loadAll]);
 
+  /* ── save handlers ── */
+
   const saveDefinition = async (definition: ShiftDefinition) => {
     setSaving(`def-${definition.id}`);
     try {
@@ -424,9 +532,9 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         ...definition,
         applicable_days: normalizeApplicableDays(definition.applicable_days),
       });
-      showToast(`Schicht "${definition.name}" gespeichert`);
+      showToast(t("shiftAdmin.toastDefSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -437,9 +545,13 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     setSaving('rotation');
     try {
       await api.put('/shift-config/rotation-rules', rotation);
-      showToast('Rotationsregeln gespeichert');
+      await api.put('/app-settings', {
+        'shiftplan.max_overtime_hours': overtimeConfig.maxOvertimeHours,
+        'shiftplan.overtime_mode': overtimeConfig.overtimeMode,
+      });
+      showToast(t("shiftAdmin.toastRotationSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -450,9 +562,9 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     setSaving('fairness');
     try {
       await api.put('/shift-config/fairness-rules', fairness);
-      showToast('Fairnessregeln gespeichert');
+      showToast(t("shiftAdmin.toastFairnessSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -463,9 +575,9 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     setSaving('planconfig');
     try {
       await api.put('/shift-config/planning-config', planConfig);
-      showToast('Planungskonfiguration gespeichert');
+      showToast(t("shiftAdmin.toastPlanSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -488,9 +600,29 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         'shiftplan.weekend_buffer_percent': advancedSettings.weekendBufferPercent,
         'shiftplan.weekend_min_dispatchers': advancedSettings.weekendMinDispatchers,
       });
-      showToast('Autopilot- und Leitstandseinstellungen gespeichert');
+      showToast(t("shiftAdmin.toastAdvancedSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveDbsConfig = async () => {
+    setSaving('dbs-config');
+    try {
+      await api.put('/app-settings', {
+        'shiftplan.dbs_enabled': dbsConfig.enabled,
+        'shiftplan.dbs_rhythm_weeks': dbsConfig.rhythmWeeks,
+        'shiftplan.dbs_reference_date': dbsConfig.referenceDate,
+        'shiftplan.dbs_weekdays': JSON.stringify(dbsConfig.weekdays),
+        'shiftplan.dbs_shift_code': dbsConfig.shiftCode,
+        'shiftplan.dbs_required_staff': dbsConfig.requiredStaff,
+        'shiftplan.dbs_default_monthly_target': dbsConfig.defaultMonthlyTarget,
+      });
+      showToast(t("shiftAdmin.toastDbsConfigSaved"));
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -506,9 +638,9 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       }));
       const { data } = await api.put('/shift-config/special-pools/DBS', { assignments: payload });
       setDbsPool(data.assignments || []);
-      showToast('DBS-Pool gespeichert');
+      showToast(t("shiftAdmin.toastDbsPoolSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
@@ -519,22 +651,24 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     try {
       await api.post('/shift-config/exclusions', { employee_name: newExclusionName.trim(), reason: 'admin_override' });
       setNewExclusionName('');
-      showToast('Mitarbeiter von Schichtplanung ausgeschlossen');
+      showToast(t("shiftAdmin.toastExclAdded"));
       await loadAll();
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     }
   };
 
   const removeExclusion = async (id: number) => {
     try {
       await api.delete(`/shift-config/exclusions/${id}`);
-      showToast('Ausschluss aufgehoben');
+      showToast(t("shiftAdmin.toastExclRemoved"));
       await loadAll();
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     }
   };
+
+  /* ── field updaters ── */
 
   const updateDef = (id: number, field: keyof ShiftDefinition, value: unknown) => {
     setDefinitions((current) => current.map((definition) => definition.id === id ? { ...definition, [field]: value } : definition));
@@ -551,13 +685,22 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     }));
   };
 
+  const toggleDbsWeekday = (day: number) => {
+    setDbsConfig((current) => {
+      const nextDays = current.weekdays.includes(day)
+        ? current.weekdays.filter((d) => d !== day)
+        : [...current.weekdays, day];
+      return { ...current, weekdays: nextDays.length ? nextDays : current.weekdays };
+    });
+  };
+
   const addDbsEmployee = () => {
     const employeeName = newDbsEmployee.trim();
     if (!employeeName || dbsPool.some((entry) => entry.employee_name === employeeName)) return;
     setDbsPool((current) => [...current, {
       shift_code: 'DBS',
       employee_name: employeeName,
-      monthly_max_assignments: 4,
+      monthly_max_assignments: dbsConfig.defaultMonthlyTarget,
       sort_order: current.length,
       is_active: true,
     }]);
@@ -577,7 +720,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     if (!skillName) return;
 
     if (skillCatalog.some((entry) => entry.toLowerCase() === skillName.toLowerCase())) {
-      showToast('Skill existiert bereits', 'err');
+      showToast(t("shiftAdmin.toastSkillExists"), 'err');
       return;
     }
 
@@ -622,13 +765,15 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         rated_skills: profile.rated_skills,
       })));
 
-      showToast('Skill-Matrix gespeichert');
+      showToast(t("shiftAdmin.toastSkillSaved"));
     } catch (error: any) {
-      showToast(error?.response?.data?.error || 'Fehler', 'err');
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
     } finally {
       setSaving('');
     }
   };
+
+  /* ── loading state ── */
 
   if (loading) {
     const loader = (
@@ -642,6 +787,19 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
     return <EnterprisePageShell style={{ maxWidth: 'none' }}>{loader}</EnterprisePageShell>;
   }
 
+  /* ── shift type options (translated) ── */
+  const shiftTypeOptions = [
+    { value: 'early', label: t("shiftAdmin.typeEarly") },
+    { value: 'late', label: t("shiftAdmin.typeLate") },
+    { value: 'night', label: t("shiftAdmin.typeNight") },
+    { value: 'special', label: t("shiftAdmin.typeSpecial") },
+  ];
+
+  /* ── shift code options for DBS ── */
+  const shiftCodeOptions = definitions.filter((d) => d.is_active).map((d) => ({ value: d.code, label: `${d.code} – ${d.name}` }));
+
+  /* ── render ── */
+
   const content = (
     <div className="space-y-4">
       {toast ? (
@@ -651,30 +809,30 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         </div>
       ) : null}
 
+      {/* ── Overview cards ── */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-3xl border border-sky-400/20 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-sky-200/70">Schichtdesign</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-sky-200/70">{t("shiftAdmin.cardDefinitions")}</div>
           <div className="mt-3 text-3xl font-semibold">{definitions.filter((definition) => definition.is_active).length}</div>
-          <div className="mt-2 text-sm text-slate-300">Aktive Definitionen, inklusive Wochenend-Varianten und DBS.</div>
+          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardDefinitionsDesc")}</div>
         </div>
         <div className="rounded-3xl border border-fuchsia-400/20 bg-[radial-gradient(circle_at_top_left,rgba(217,70,239,0.16),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-fuchsia-200/70">DBS-Pool</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-fuchsia-200/70">{t("shiftAdmin.cardDbsPool")}</div>
           <div className="mt-3 text-3xl font-semibold">{dbsPool.length}</div>
-          <div className="mt-2 text-sm text-slate-300">Fest hinterlegte Mitarbeiter mit individuellem Monatslimit.</div>
+          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardDbsPoolDesc")}</div>
         </div>
         <div className="rounded-3xl border border-amber-400/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-amber-200/70">Ausschlüsse</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-amber-200/70">{t("shiftAdmin.cardExclusions")}</div>
           <div className="mt-3 text-3xl font-semibold">{exclusions.length}</div>
-          <div className="mt-2 text-sm text-slate-300">Mitarbeiter, die derzeit nicht in automatische Entwürfe einfließen.</div>
+          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardExclusionsDesc")}</div>
         </div>
       </div>
 
-      <Section title="Schichtdefinitionen" icon={Clock}>
+      {/* ── Shift definitions ── */}
+      <Section title={t("shiftAdmin.sectionDefinitions")} icon={Clock} helpKey="shiftAdmin.helpSectionDefinitions" t={t}>
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/10 px-4 py-3 text-sm text-slate-200">
           <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-          <div>
-            Die Wochentage steuern jetzt direkt, an welchen Tagen eine Schicht von der Engine gebaut wird. Fur Nachtschichten kann zusatzlich exakt festgelegt werden, ob Beginn und Ende am Plan-Tag oder erst am Folgetag liegen.
-          </div>
+          <div>{t("shiftAdmin.sectionDefinitionsInfo")}</div>
         </div>
 
         <div className="space-y-4">
@@ -685,49 +843,46 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
               <div key={definition.id} className="rounded-3xl border border-white/10 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(2,6,23,0.2)]">
                 <div className="grid gap-3 xl:grid-cols-12">
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Code</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defCode")}</label>
                     <input value={definition.code} disabled className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-200" />
                   </div>
                   <div className="xl:col-span-3">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Name</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defName")}</label>
                     <input value={definition.name} onChange={(event) => updateDef(definition.id, 'name', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400/50" />
                   </div>
                   <div className="xl:col-span-2">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Typ</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defType")}</label>
                     <select value={definition.shift_type} onChange={(event) => updateDef(definition.id, 'shift_type', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50">
-                      <option value="early">Früh</option>
-                      <option value="late">Spät</option>
-                      <option value="night">Nacht</option>
-                      <option value="special">Sonder</option>
+                      {shiftTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
                   </div>
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Von</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defFrom")}</label>
                     <input type="time" value={definition.start_time || ''} onChange={(event) => updateDef(definition.id, 'start_time', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Bis</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defTo")}</label>
                     <input type="time" value={definition.end_time || ''} onChange={(event) => updateDef(definition.id, 'end_time', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Stunden</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defHours")}</label>
                     <input type="number" min="0" step="0.5" value={definition.duration_hours} onChange={(event) => updateDef(definition.id, 'duration_hours', Number.parseFloat(event.target.value) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Min</label>
+                    <label className="mb-1 flex items-center text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defMin")} <HelpTooltip textKey="shiftAdmin.helpDefMinMax" t={t} /></label>
                     <input type="number" min="0" value={definition.min_staff} onChange={(event) => updateDef(definition.id, 'min_staff', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-1">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Max</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defMax")}</label>
                     <input type="number" min="0" value={definition.max_staff} onChange={(event) => updateDef(definition.id, 'max_staff', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-2">
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Farbe und Status</label>
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defColorStatus")}</label>
                     <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2">
                       <input type="color" value={definition.color_hex} onChange={(event) => updateDef(definition.id, 'color_hex', event.target.value)} className="h-8 w-10 cursor-pointer rounded border-none bg-transparent" />
                       <label className="flex items-center gap-2 text-xs text-slate-300">
                         <input type="checkbox" checked={definition.is_active} onChange={(event) => updateDef(definition.id, 'is_active', event.target.checked)} className="rounded border-white/20 bg-slate-950" />
-                        Aktiv
+                        {t("shiftAdmin.defActive")}
                       </label>
                     </div>
                   </div>
@@ -736,7 +891,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                 {definition.shift_type === 'night' ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
                     <div>
-                      <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Starttag</label>
+                      <label className="mb-1 flex items-center text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defStartDay")} <HelpTooltip textKey="shiftAdmin.helpDefDayOffset" t={t} /></label>
                       <select value={normalizeShiftDayOffset(definition.start_day_offset)} onChange={(event) => updateDef(definition.id, 'start_day_offset', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50">
                         {shiftDayOffsetOptions.map((option) => (
                           <option key={`start-${option.value}`} value={option.value}>{option.label}</option>
@@ -744,7 +899,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Endtag</label>
+                      <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defEndDay")}</label>
                       <select value={normalizeShiftDayOffset(definition.end_day_offset, 1)} onChange={(event) => updateDef(definition.id, 'end_day_offset', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50">
                         {shiftDayOffsetOptions.map((option) => (
                           <option key={`end-${option.value}`} value={option.value}>{option.label}</option>
@@ -752,7 +907,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                       </select>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-200">
-                      <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-slate-400">Zeitfenster</div>
+                      <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defTimeWindow")}</div>
                       <div>{formatShiftSpanPreview(definition, shiftDayOffsetOptions, isGerman)}</div>
                     </div>
                   </div>
@@ -761,8 +916,8 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                 <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
                   <div>
                     <div className="mb-2 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                      Planung pro Wochentag
-                      <HelpTooltip text="Nur an aktivierten Tagen wird die Schicht in die Tages-Slots aufgenommen. Damit lassen sich reine Samstag- oder Sa/So-Positionen direkt über die Definition steuern." />
+                      {t("shiftAdmin.defWeekdayPlanning")}
+                      <HelpTooltip textKey="shiftAdmin.helpDefWeekdays" t={t} />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {weekdayOptions.map((option) => {
@@ -784,7 +939,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
 
                   <button onClick={() => void saveDefinition(definition)} disabled={saving === `def-${definition.id}`} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
                     <Save className="h-4 w-4" />
-                    {saving === `def-${definition.id}` ? 'Speichert...' : 'Schicht speichern'}
+                    {saving === `def-${definition.id}` ? t("shiftAdmin.defSaving") : t("shiftAdmin.defSave")}
                   </button>
                 </div>
               </div>
@@ -793,38 +948,142 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         </div>
       </Section>
 
-      <Section title="DBS-Pool und Monatslimits" icon={Users}>
+      {/* ── DBS Configuration ── */}
+      <Section title={t("shiftAdmin.sectionDbs")} icon={Users} helpKey="shiftAdmin.helpSectionDbs" t={t}>
         <div className="mb-4 rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 px-4 py-3 text-sm text-slate-200">
-          DBS wird mit fester Mitarbeitergruppe geplant. Hinterlegte Mitarbeiter werden für DBS vor anderen Schichten berücksichtigt und jeweils nur bis zu ihrem Monatslimit verwendet.
+          {t("shiftAdmin.sectionDbsInfo")}
+        </div>
+
+        {/* DBS disabled hint */}
+        {!dbsConfig.enabled ? (
+          <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {t("shiftAdmin.dbsDisabledHint")}
+          </div>
+        ) : null}
+
+        {/* DBS global config */}
+        <div className="mb-6 space-y-4 rounded-2xl border border-white/10 bg-slate-900/45 p-4">
+          {/* Row 1: Enabled toggle */}
+          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={dbsConfig.enabled} onChange={(event) => setDbsConfig({ ...dbsConfig, enabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            <span className="flex items-center">
+              {t("shiftAdmin.dbsEnabled")}
+              <HelpTooltip textKey="shiftAdmin.helpDbsEnabled" t={t} />
+            </span>
+          </label>
+
+          {/* Row 2: Rhythm, Reference date, Required staff */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <label className="flex items-center text-xs text-slate-400">
+                {t("shiftAdmin.dbsRhythm")}
+                <HelpTooltip textKey="shiftAdmin.helpDbsRhythm" t={t} />
+              </label>
+              <input type="number" min="1" max="8" value={dbsConfig.rhythmWeeks} onChange={(event) => setDbsConfig({ ...dbsConfig, rhythmWeeks: Math.max(1, Number.parseInt(event.target.value, 10) || 1) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs text-slate-400">
+                {t("shiftAdmin.dbsReferenceDate")}
+                <HelpTooltip textKey="shiftAdmin.helpDbsReferenceDate" t={t} />
+              </label>
+              <input type="date" value={dbsConfig.referenceDate} onChange={(event) => setDbsConfig({ ...dbsConfig, referenceDate: event.target.value })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs text-slate-400">
+                {t("shiftAdmin.dbsRequiredStaff")}
+                <HelpTooltip textKey="shiftAdmin.helpDbsRequiredStaff" t={t} />
+              </label>
+              <input type="number" min="0" max="10" value={dbsConfig.requiredStaff} onChange={(event) => setDbsConfig({ ...dbsConfig, requiredStaff: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            </div>
+          </div>
+
+          {/* Row 3: Shift code, Default monthly target */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="flex items-center text-xs text-slate-400">
+                {t("shiftAdmin.dbsShiftCode")}
+                <HelpTooltip textKey="shiftAdmin.helpDbsShiftCode" t={t} />
+              </label>
+              <select value={dbsConfig.shiftCode} onChange={(event) => setDbsConfig({ ...dbsConfig, shiftCode: event.target.value })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                {shiftCodeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center text-xs text-slate-400">
+                {t("shiftAdmin.dbsDefaultTarget")}
+                <HelpTooltip textKey="shiftAdmin.helpDbsDefaultTarget" t={t} />
+              </label>
+              <input type="number" min="0" max="31" value={dbsConfig.defaultMonthlyTarget} onChange={(event) => setDbsConfig({ ...dbsConfig, defaultMonthlyTarget: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            </div>
+          </div>
+
+          {/* Row 4: DBS weekdays */}
+          <div>
+            <div className="mb-2 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+              {t("shiftAdmin.dbsWeekdays")}
+              <HelpTooltip textKey="shiftAdmin.helpDbsWeekdays" t={t} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {weekdayOptions.map((option) => {
+                const active = dbsConfig.weekdays.includes(option.value);
+                return (
+                  <button
+                    key={`dbs-wd-${option.value}`}
+                    type="button"
+                    onClick={() => toggleDbsWeekday(option.value)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${active ? 'bg-fuchsia-400/20 text-fuchsia-200 ring-1 ring-fuchsia-300/30' : 'bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10 hover:text-slate-200'}`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Save DBS config */}
+          <div className="flex justify-end">
+            <button onClick={saveDbsConfig} disabled={saving === 'dbs-config'} className="inline-flex items-center gap-2 rounded-2xl bg-fuchsia-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-fuchsia-300 disabled:opacity-50">
+              <Save className="h-4 w-4" />
+              {saving === 'dbs-config' ? t("shiftAdmin.dbsSavingConfig") : t("shiftAdmin.dbsSaveConfig")}
+            </button>
+          </div>
+        </div>
+
+        {/* DBS employee pool */}
+        <div className="mb-3 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+          {t("shiftAdmin.dbsPool")}
         </div>
 
         <div className="mb-4 flex flex-col gap-3 xl:flex-row">
           <select value={newDbsEmployee} onChange={(event) => setNewDbsEmployee(event.target.value)} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
-            <option value="">Mitarbeiter für DBS auswählen...</option>
+            <option value="">{t("shiftAdmin.dbsSelectEmployee")}</option>
             {employees.filter((employee) => !dbsPool.some((entry) => entry.employee_name === employee)).map((employee) => <option key={employee} value={employee}>{employee}</option>)}
           </select>
           <button onClick={addDbsEmployee} disabled={!newDbsEmployee} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/30 bg-fuchsia-400/15 px-4 py-2 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-400/25 disabled:opacity-50">
             <Plus className="h-4 w-4" />
-            Mitarbeiter hinzufügen
+            {t("shiftAdmin.dbsAddEmployee")}
           </button>
         </div>
 
         <div className="space-y-3">
           {dbsPool.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">Noch kein DBS-Pool hinterlegt.</div>
+            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">{t("shiftAdmin.dbsEmptyPool")}</div>
           ) : dbsPool.map((entry) => (
             <div key={entry.employee_name} className="grid gap-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4 xl:grid-cols-[minmax(0,1fr)_220px_auto] xl:items-end">
               <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">Mitarbeiter</label>
+                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{isGerman ? 'Mitarbeiter' : 'Employee'}</label>
                 <div className="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">{entry.employee_name}</div>
               </div>
               <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">DBS-Tage pro Monat</label>
+                <label className="mb-1 flex items-center text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  {t("shiftAdmin.dbsMonthlyDays")}
+                  <HelpTooltip textKey="shiftAdmin.helpDbsMonthlyDays" t={t} />
+                </label>
                 <input type="number" min="0" value={entry.monthly_max_assignments} onChange={(event) => updateDbsPoolEntry(entry.employee_name, 'monthly_max_assignments', Number.parseInt(event.target.value, 10) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
               </div>
               <button onClick={() => removeDbsEmployee(entry.employee_name)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/20">
                 <Trash2 className="h-4 w-4" />
-                Entfernen
+                {t("shiftAdmin.dbsRemove")}
               </button>
             </div>
           ))}
@@ -833,47 +1092,321 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         <div className="mt-4 flex justify-end">
           <button onClick={saveDbsPool} disabled={saving === 'dbs-pool'} className="inline-flex items-center gap-2 rounded-2xl bg-fuchsia-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-fuchsia-300 disabled:opacity-50">
             <Save className="h-4 w-4" />
-            {saving === 'dbs-pool' ? 'Speichert...' : 'DBS-Pool speichern'}
+            {saving === 'dbs-pool' ? t("shiftAdmin.dbsSavingPool") : t("shiftAdmin.dbsSavePool")}
           </button>
         </div>
       </Section>
 
-      <Section title="Skills und Kompetenzmatrix" icon={Star} defaultOpen={false}>
+      {/* ── Rotation rules & overtime ── */}
+      <Section title={t("shiftAdmin.sectionRotation")} icon={RotateCcw} helpKey="shiftAdmin.helpSectionRotation" t={t}>
+        {rotation ? (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMaxConsecutiveSame")} <HelpTooltip textKey="shiftAdmin.helpRotMaxConsecutiveSame" t={t} /></label>
+                <input type="number" min="1" max="30" value={rotation.max_consecutive_same} onChange={(event) => setRotation({ ...rotation, max_consecutive_same: Number.parseInt(event.target.value, 10) || 1 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMaxConsecutiveWorkdays")} <HelpTooltip textKey="shiftAdmin.helpRotMaxConsecutiveWorkdays" t={t} /></label>
+                <input type="number" min="1" max="30" value={rotation.max_consecutive_workdays} onChange={(event) => setRotation({ ...rotation, max_consecutive_workdays: Number.parseInt(event.target.value, 10) || 1 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMinFreeAfterStreak")} <HelpTooltip textKey="shiftAdmin.helpRotMinFreeAfterStreak" t={t} /></label>
+                <input type="number" min="0" max="7" value={rotation.min_free_after_streak} onChange={(event) => setRotation({ ...rotation, min_free_after_streak: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMinRestHours")} <HelpTooltip textKey="shiftAdmin.helpRotMinRestHours" t={t} /></label>
+                <input type="number" min="8" max="24" value={rotation.min_hours_between_shifts} onChange={(event) => setRotation({ ...rotation, min_hours_between_shifts: Number.parseInt(event.target.value, 10) || 11 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMaxNightsMonth")} <HelpTooltip textKey="shiftAdmin.helpRotMaxNightsMonth" t={t} /></label>
+                <input type="number" min="0" max="31" value={rotation.max_nights_per_month} onChange={(event) => setRotation({ ...rotation, max_nights_per_month: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotMaxWeekendsMonth")} <HelpTooltip textKey="shiftAdmin.helpRotMaxWeekendsMonth" t={t} /></label>
+                <input type="number" min="0" max="10" value={rotation.max_weekends_per_month} onChange={(event) => setRotation({ ...rotation, max_weekends_per_month: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotFreeDaysAfterNight")} <HelpTooltip textKey="shiftAdmin.helpRotFreeDaysAfterNight" t={t} /></label>
+                <input type="number" min="0" max="7" value={rotation.free_days_after_night} onChange={(event) => setRotation({ ...rotation, free_days_after_night: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotFreeDaysAfterWeekend")} <HelpTooltip textKey="shiftAdmin.helpRotFreeDaysAfterWeekend" t={t} /></label>
+                <input type="number" min="0" max="7" value={rotation.free_days_after_weekend} onChange={(event) => setRotation({ ...rotation, free_days_after_weekend: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={rotation.night_to_early_forbidden} onChange={(event) => setRotation({ ...rotation, night_to_early_forbidden: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span className="flex items-center">{t("shiftAdmin.rotNightToEarlyForbidden")} <HelpTooltip textKey="shiftAdmin.helpRotNightToEarlyForbidden" t={t} /></span>
+              </label>
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={rotation.late_to_early_forbidden} onChange={(event) => setRotation({ ...rotation, late_to_early_forbidden: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span className="flex items-center">{t("shiftAdmin.rotLateToEarlyForbidden")} <HelpTooltip textKey="shiftAdmin.helpRotLateToEarlyForbidden" t={t} /></span>
+              </label>
+            </div>
+
+            {/* ── Overtime sub-section ── */}
+            <div className="mt-2 rounded-2xl border border-amber-400/15 bg-amber-500/5 p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
+                <Timer className="h-4 w-4" />
+                {t("shiftAdmin.overtimeTitle")}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="flex items-center text-xs text-slate-400">
+                    {t("shiftAdmin.overtimeMax")}
+                    <HelpTooltip textKey="shiftAdmin.helpOvertimeMax" t={t} />
+                  </label>
+                  <input type="number" min="0" max="200" value={overtimeConfig.maxOvertimeHours} onChange={(event) => setOvertimeConfig({ ...overtimeConfig, maxOvertimeHours: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{t("shiftAdmin.overtimeHint")}</div>
+                </div>
+                <div>
+                  <label className="flex items-center text-xs text-slate-400">
+                    {t("shiftAdmin.overtimeMode")}
+                    <HelpTooltip textKey="shiftAdmin.helpOvertimeMode" t={t} />
+                  </label>
+                  <select value={overtimeConfig.overtimeMode} onChange={(event) => setOvertimeConfig({ ...overtimeConfig, overtimeMode: event.target.value as OvertimeConfig['overtimeMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                    <option value="show">{t("shiftAdmin.overtimeModeShow")}</option>
+                    <option value="warn">{t("shiftAdmin.overtimeModeWarn")}</option>
+                    <option value="hard">{t("shiftAdmin.overtimeModeHard")}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={saveRotation} disabled={saving === 'rotation'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+                <Save className="h-4 w-4" />
+                {saving === 'rotation' ? t("shiftAdmin.rotSaving") : t("shiftAdmin.rotSave")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Section>
+
+      {/* ── Fairness ── */}
+      <Section title={t("shiftAdmin.sectionFairness")} icon={Scale} helpKey="shiftAdmin.helpSectionFairness" t={t}>
+        {fairness ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-3">
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={fairness.balance_nights} onChange={(event) => setFairness({ ...fairness, balance_nights: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span className="flex items-center">{t("shiftAdmin.fairBalanceNights")} <HelpTooltip textKey="shiftAdmin.helpFairBalanceNights" t={t} /></span>
+              </label>
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={fairness.balance_weekends} onChange={(event) => setFairness({ ...fairness, balance_weekends: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span className="flex items-center">{t("shiftAdmin.fairBalanceWeekends")} <HelpTooltip textKey="shiftAdmin.helpFairBalanceWeekends" t={t} /></span>
+              </label>
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={fairness.balance_total_load} onChange={(event) => setFairness({ ...fairness, balance_total_load: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span className="flex items-center">{t("shiftAdmin.fairBalanceLoad")} <HelpTooltip textKey="shiftAdmin.helpFairBalanceLoad" t={t} /></span>
+              </label>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.fairMaxDeviation")} <HelpTooltip textKey="shiftAdmin.helpFairMaxDeviation" t={t} /></label>
+                <input type="number" min="5" max="100" value={fairness.max_deviation_percent} onChange={(event) => setFairness({ ...fairness, max_deviation_percent: Number.parseInt(event.target.value, 10) || 5 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.fairPriority")} <HelpTooltip textKey="shiftAdmin.helpFairPriority" t={t} /></label>
+                <select value={fairness.fairness_vs_preference} onChange={(event) => setFairness({ ...fairness, fairness_vs_preference: event.target.value })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                  <option value="fairness">{t("shiftAdmin.fairOptFairness")}</option>
+                  <option value="preference">{t("shiftAdmin.fairOptPreference")}</option>
+                  <option value="balanced">{t("shiftAdmin.fairOptBalanced")}</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={saveFairness} disabled={saving === 'fairness'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+                <Save className="h-4 w-4" />
+                {saving === 'fairness' ? t("shiftAdmin.fairSaving") : t("shiftAdmin.fairSave")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Section>
+
+      {/* ── Planning config ── */}
+      <Section title={t("shiftAdmin.sectionPlanning")} icon={Sliders} helpKey="shiftAdmin.helpSectionPlanning" t={t}>
+        {planConfig ? (
+          <div className="space-y-4">
+            <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+              <input type="checkbox" checked={planConfig.respect_employee_wishes} onChange={(event) => setPlanConfig({ ...planConfig, respect_employee_wishes: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+              <span className="flex items-center">{t("shiftAdmin.planRespectWishes")} <HelpTooltip textKey="shiftAdmin.helpPlanRespectWishes" t={t} /></span>
+            </label>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.planTargetHours")} <HelpTooltip textKey="shiftAdmin.helpPlanTargetHours" t={t} /></label>
+                <input type="number" min="0" step="0.5" value={planConfig.monthly_target_hours} onChange={(event) => setPlanConfig({ ...planConfig, monthly_target_hours: Number.parseFloat(event.target.value) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.planHardRules")} <HelpTooltip textKey="shiftAdmin.helpPlanHardRules" t={t} /></label>
+                <input type="range" min="0" max="100" value={planConfig.hard_rules_priority} onChange={(event) => setPlanConfig({ ...planConfig, hard_rules_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
+                <div className="mt-1 text-xs text-slate-400">{planConfig.hard_rules_priority}%</div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">{t("shiftAdmin.planSoftWishes")}</label>
+                <input type="range" min="0" max="100" value={planConfig.soft_wishes_priority} onChange={(event) => setPlanConfig({ ...planConfig, soft_wishes_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
+                <div className="mt-1 text-xs text-slate-400">{planConfig.soft_wishes_priority}%</div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">{t("shiftAdmin.planFairness")}</label>
+                <input type="range" min="0" max="100" value={planConfig.fairness_priority} onChange={(event) => setPlanConfig({ ...planConfig, fairness_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
+                <div className="mt-1 text-xs text-slate-400">{planConfig.fairness_priority}%</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+              {t("shiftAdmin.planAdminOverride")}: <span className="font-semibold text-slate-100">{planConfig.admin_override_priority}%</span>
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={savePlanConfig} disabled={saving === 'planconfig'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+                <Save className="h-4 w-4" />
+                {saving === 'planconfig' ? t("shiftAdmin.planSaving") : t("shiftAdmin.planSave")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Section>
+
+      {/* ── Issues / control panel ── */}
+      <Section title={t("shiftAdmin.sectionIssues")} icon={AlertTriangle} helpKey="shiftAdmin.helpSectionIssues" t={t}>
         <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-slate-200">
-          Hier kann eine detailierte Skill-Matrix pro Mitarbeiter gepflegt werden. Die neue Matrix ist optional aktivierbar und startet bewusst getrennt von den bestehenden SH-, TT- und CC-Coverage-Merkmalen.
+          {t("shiftAdmin.sectionIssuesInfo")}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issuePanelEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePanelEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.issuePanel")}
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issueAutoRefresh} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueAutoRefresh: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.issueAutoRefresh")}
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.issueShowSolutions} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueShowSolutions: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.issueShowSolutions")}
+          </label>
+        </div>
+
+        <div className="mt-4 max-w-sm">
+          <label className="text-xs text-slate-400">{t("shiftAdmin.issuePriorityMode")}</label>
+          <select value={advancedSettings.issuePriorityMode} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePriorityMode: event.target.value as AdvancedPlanningSettings['issuePriorityMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+            <option value="staffing_first">{t("shiftAdmin.issueModeStaffing")}</option>
+            <option value="balanced">{t("shiftAdmin.issueModeBalanced")}</option>
+            <option value="fairness_first">{t("shiftAdmin.issueModeFairness")}</option>
+          </select>
+        </div>
+      </Section>
+
+      {/* ── Illness / replacement ── */}
+      <Section title={t("shiftAdmin.sectionIllness")} icon={Settings2} helpKey="shiftAdmin.helpSectionIllness" t={t}>
+        <div className="mb-4 rounded-2xl border border-sky-400/15 bg-sky-500/10 px-4 py-3 text-sm text-slate-200">
+          {t("shiftAdmin.sectionIllnessInfo")}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.illnessAutoSwapEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessAutoSwapEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.illnessAutoSwap")}
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.illnessRequireSkillMatch} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessRequireSkillMatch: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.illnessSkillMatch")}
+          </label>
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200 lg:col-span-2">
+            <input type="checkbox" checked={advancedSettings.illnessProtectWorklifeBalance} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessProtectWorklifeBalance: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.illnessProtectWLB")}
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.illnessBuffer")} <HelpTooltip textKey="shiftAdmin.helpIllnessBuffer" t={t} /></label>
+            <input type="number" min="0" value={advancedSettings.illnessMinSourceBuffer} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinSourceBuffer: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">{t("shiftAdmin.illnessRestHours")}</label>
+            <input type="number" min="8" value={advancedSettings.illnessMinRestHours} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinRestHours: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Weekend planning ── */}
+      <Section title={t("shiftAdmin.sectionWeekend")} icon={CalendarDays} helpKey="shiftAdmin.helpSectionWeekend" t={t}>
+        <div className="mb-4 rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 px-4 py-3 text-sm text-slate-200">
+          {t("shiftAdmin.sectionWeekendInfo")}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+            <input type="checkbox" checked={advancedSettings.weekendVolumeEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendVolumeEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+            {t("shiftAdmin.weekendVolume")}
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.weekendBuffer")} <HelpTooltip textKey="shiftAdmin.helpWeekendBuffer" t={t} /></label>
+            <input type="number" min="0" max="100" value={advancedSettings.weekendBufferPercent} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendBufferPercent: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.weekendMinDispatchers")} <HelpTooltip textKey="shiftAdmin.helpWeekendMinDispatchers" t={t} /></label>
+            <input type="number" min="0" value={advancedSettings.weekendMinDispatchers} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendMinDispatchers: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+          </div>
+        </div>
+      </Section>
+
+      {/* Save button for advanced settings (issues + illness + weekend) */}
+      <div className="flex justify-end">
+        <button onClick={saveAdvancedSettings} disabled={saving === 'advanced'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
+          <Save className="h-4 w-4" />
+          {saving === 'advanced' ? t("shiftAdmin.advancedSaving") : t("shiftAdmin.advancedSave")}
+        </button>
+      </div>
+
+      {/* ── Skills & competency matrix ── */}
+      <Section title={t("shiftAdmin.sectionSkills")} icon={Star} defaultOpen={false} helpKey="shiftAdmin.helpSectionSkills" t={t}>
+        <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-slate-200">
+          {t("shiftAdmin.sectionSkillsInfo")}
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
             <input type="checkbox" checked={skillsEnabled} onChange={(event) => setSkillsEnabled(event.target.checked)} className="mt-0.5 rounded border-white/20 bg-slate-950" />
-            <span>
-              Skill-Matrix aktivieren
-              <HelpTooltip text="Wenn diese Option aktiv ist, wird die Skill-Matrix nicht nur angezeigt, sondern auch in der Schichtplanung als fachliches Bewertungskriterium verwendet. Im deaktivierten Zustand bleibt sie reine Stammdatenpflege ohne Einfluss auf die automatische Planung." />
+            <span className="flex items-center">
+              {t("shiftAdmin.skillsEnabled")}
+              <HelpTooltip textKey="shiftAdmin.helpSkillsEnabled" t={t} />
             </span>
           </label>
 
           <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
-            Mitarbeiter: <span className="font-semibold text-slate-100">{skillProfiles.length}</span><br />
-            Skills im Katalog: <span className="font-semibold text-slate-100">{skillCatalog.length}</span>
+            {t("shiftAdmin.skillsEmployeeCount")}: <span className="font-semibold text-slate-100">{skillProfiles.length}</span><br />
+            {t("shiftAdmin.skillsCatalogCount")}: <span className="font-semibold text-slate-100">{skillCatalog.length}</span>
           </div>
         </div>
 
         <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${skillsEnabled ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100' : 'border-slate-500/20 bg-slate-900/45 text-slate-300'}`}>
-          {skillsEnabled
-            ? 'Die Skill-Matrix ist aktiv. Bewertete und passende Skills fließen jetzt in die automatische Schichtplanung ein.'
-            : 'Die Skill-Matrix ist derzeit nur gepflegt, aber nicht aktiv. Solange der Schalter aus ist, beeinflussen diese Skills die automatische Schichtplanung nicht.'}
+          {skillsEnabled ? t("shiftAdmin.skillsActive") : t("shiftAdmin.skillsInactive")}
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/45 p-4">
           <div className="mb-3 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-            Skill-Katalog
-            <HelpTooltip text="Lege hier die Skill-Namen fest, die im Team bewertet werden sollen. Sterne bedeuten 1 bis 5 Kompetenzstufen. Ein erneuter Klick auf denselben Stern entfernt die Bewertung wieder." />
+            {t("shiftAdmin.skillCatalog")}
+            <HelpTooltip textKey="shiftAdmin.helpSkillCatalog" t={t} />
           </div>
           <div className="mb-3 flex flex-col gap-3 xl:flex-row">
-            <input value={newSkillName} onChange={(event) => setNewSkillName(event.target.value)} placeholder="Neuen Skill hinzufugen..." className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+            <input value={newSkillName} onChange={(event) => setNewSkillName(event.target.value)} placeholder={t("shiftAdmin.skillAddPlaceholder")} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
             <button onClick={addSkillToCatalog} disabled={!newSkillName.trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-400/15 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:opacity-50">
               <Plus className="h-4 w-4" />
-              Skill hinzufugen
+              {t("shiftAdmin.skillAdd")}
             </button>
           </div>
 
@@ -881,7 +1414,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
             {skillCatalog.map((skill) => (
               <span key={skill} className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-100">
                 {skill}
-                <button type="button" onClick={() => removeSkillFromCatalog(skill)} className="text-amber-200/80 transition hover:text-white" aria-label={`${skill} entfernen`}>
+                <button type="button" onClick={() => removeSkillFromCatalog(skill)} className="text-amber-200/80 transition hover:text-white" aria-label={`${skill} ${isGerman ? 'entfernen' : 'remove'}`}>
                   ×
                 </button>
               </span>
@@ -891,16 +1424,16 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
 
         <div className="mt-4 space-y-3">
           {skillProfiles.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">Keine Mitarbeiter fur die Skill-Matrix gefunden.</div>
+            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">{isGerman ? 'Keine Mitarbeiter für die Skill-Matrix gefunden.' : 'No employees found for the skill matrix.'}</div>
           ) : skillProfiles.map((profile) => (
             <div key={profile.employee_name} className="rounded-2xl border border-white/10 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(2,6,23,0.2)]">
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-100">{profile.employee_name}</div>
-                  <div className="text-xs text-slate-400">Bewerte die vorhandenen Skills mit 1 bis 5 Sternen. 0 bedeutet noch nicht bewertet.</div>
+                  <div className="text-xs text-slate-400">{t("shiftAdmin.skillRateInfo")}</div>
                 </div>
                 <div className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-xs text-slate-300">
-                  Bewertete Skills: {Object.keys(profile.rated_skills || {}).length}
+                  {t("shiftAdmin.skillRatedCount")}: {Object.keys(profile.rated_skills || {}).length}
                 </div>
               </div>
 
@@ -925,7 +1458,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                               type="button"
                               onClick={() => setSkillRating(profile.employee_name, skill, nextRating)}
                               className={`rounded-full p-1 transition ${active ? 'text-amber-300 hover:text-amber-200' : 'text-slate-600 hover:text-amber-200'}`}
-                              aria-label={`${skill} mit ${star} Sternen bewerten`}
+                              aria-label={`${skill} ${star} ${isGerman ? 'Sterne' : 'stars'}`}
                             >
                               <Star className={`h-4 w-4 ${active ? 'fill-current' : ''}`} />
                             </button>
@@ -943,275 +1476,37 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         <div className="mt-4 flex justify-end">
           <button onClick={saveSkillProfiles} disabled={saving === 'skills'} className="inline-flex items-center gap-2 rounded-2xl bg-amber-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-300 disabled:opacity-50">
             <Save className="h-4 w-4" />
-            {saving === 'skills' ? 'Speichert...' : 'Skill-Matrix speichern'}
+            {saving === 'skills' ? t("shiftAdmin.skillSaving") : t("shiftAdmin.skillSave")}
           </button>
         </div>
       </Section>
 
-      <Section title="Rotationsregeln" icon={RotateCcw}>
-        {rotation ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div>
-                <label className="text-xs text-slate-400">Max. gleiche Schichten hintereinander <HelpTooltip text="Wie viele Tage in Folge ein Mitarbeiter dieselbe Schichtart arbeiten darf." /></label>
-                <input type="number" min="1" max="30" value={rotation.max_consecutive_same} onChange={(event) => setRotation({ ...rotation, max_consecutive_same: Number.parseInt(event.target.value, 10) || 1 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Max. Arbeitstage in Folge</label>
-                <input type="number" min="1" max="30" value={rotation.max_consecutive_workdays} onChange={(event) => setRotation({ ...rotation, max_consecutive_workdays: Number.parseInt(event.target.value, 10) || 1 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Min. freie Tage nach Serie</label>
-                <input type="number" min="0" max="7" value={rotation.min_free_after_streak} onChange={(event) => setRotation({ ...rotation, min_free_after_streak: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Min. Ruhestunden</label>
-                <input type="number" min="8" max="24" value={rotation.min_hours_between_shifts} onChange={(event) => setRotation({ ...rotation, min_hours_between_shifts: Number.parseInt(event.target.value, 10) || 11 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Max. Nächte pro Monat</label>
-                <input type="number" min="0" max="31" value={rotation.max_nights_per_month} onChange={(event) => setRotation({ ...rotation, max_nights_per_month: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Max. Wochenenden pro Monat</label>
-                <input type="number" min="0" max="10" value={rotation.max_weekends_per_month} onChange={(event) => setRotation({ ...rotation, max_weekends_per_month: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Freie Tage nach Nacht</label>
-                <input type="number" min="0" max="7" value={rotation.free_days_after_night} onChange={(event) => setRotation({ ...rotation, free_days_after_night: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Freie Tage nach Wochenende</label>
-                <input type="number" min="0" max="7" value={rotation.free_days_after_weekend} onChange={(event) => setRotation({ ...rotation, free_days_after_weekend: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-2">
-              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-                <input type="checkbox" checked={rotation.night_to_early_forbidden} onChange={(event) => setRotation({ ...rotation, night_to_early_forbidden: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-                Nacht → Früh verboten
-              </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-                <input type="checkbox" checked={rotation.late_to_early_forbidden} onChange={(event) => setRotation({ ...rotation, late_to_early_forbidden: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-                Spät → Früh verboten
-              </label>
-            </div>
-
-            <div className="flex justify-end">
-              <button onClick={saveRotation} disabled={saving === 'rotation'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
-                <Save className="h-4 w-4" />
-                {saving === 'rotation' ? 'Speichert...' : 'Rotationsregeln speichern'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Section>
-
-      <Section title="Fairnessregeln" icon={Scale}>
-        {fairness ? (
-          <div className="space-y-4">
-            <div className="grid gap-3 lg:grid-cols-3">
-              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-                <input type="checkbox" checked={fairness.balance_nights} onChange={(event) => setFairness({ ...fairness, balance_nights: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-                Nachtschichten ausgleichen
-              </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-                <input type="checkbox" checked={fairness.balance_weekends} onChange={(event) => setFairness({ ...fairness, balance_weekends: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-                Wochenenden ausgleichen
-              </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-                <input type="checkbox" checked={fairness.balance_total_load} onChange={(event) => setFairness({ ...fairness, balance_total_load: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-                Gesamtbelastung ausgleichen
-              </label>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div>
-                <label className="text-xs text-slate-400">Max. Abweichung (%)</label>
-                <input type="number" min="5" max="100" value={fairness.max_deviation_percent} onChange={(event) => setFairness({ ...fairness, max_deviation_percent: Number.parseInt(event.target.value, 10) || 5 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Priorität</label>
-                <select value={fairness.fairness_vs_preference} onChange={(event) => setFairness({ ...fairness, fairness_vs_preference: event.target.value })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
-                  <option value="fairness">Fairness priorisieren</option>
-                  <option value="preference">Präferenzen priorisieren</option>
-                  <option value="balanced">Ausgewogen</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button onClick={saveFairness} disabled={saving === 'fairness'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
-                <Save className="h-4 w-4" />
-                {saving === 'fairness' ? 'Speichert...' : 'Fairnessregeln speichern'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Section>
-
-      <Section title="Planungsgewichtung" icon={Sliders}>
-        {planConfig ? (
-          <div className="space-y-4">
-            <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-              <input type="checkbox" checked={planConfig.respect_employee_wishes} onChange={(event) => setPlanConfig({ ...planConfig, respect_employee_wishes: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-              Mitarbeiterwünsche berücksichtigen
-            </label>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div>
-                <label className="text-xs text-slate-400">Monatliche Sollzeit</label>
-                <input type="number" min="0" step="0.5" value={planConfig.monthly_target_hours} onChange={(event) => setPlanConfig({ ...planConfig, monthly_target_hours: Number.parseFloat(event.target.value) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Harte Regeln (%)</label>
-                <input type="range" min="0" max="100" value={planConfig.hard_rules_priority} onChange={(event) => setPlanConfig({ ...planConfig, hard_rules_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
-                <div className="mt-1 text-xs text-slate-400">{planConfig.hard_rules_priority}%</div>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Wünsche (%)</label>
-                <input type="range" min="0" max="100" value={planConfig.soft_wishes_priority} onChange={(event) => setPlanConfig({ ...planConfig, soft_wishes_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
-                <div className="mt-1 text-xs text-slate-400">{planConfig.soft_wishes_priority}%</div>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Fairness (%)</label>
-                <input type="range" min="0" max="100" value={planConfig.fairness_priority} onChange={(event) => setPlanConfig({ ...planConfig, fairness_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
-                <div className="mt-1 text-xs text-slate-400">{planConfig.fairness_priority}%</div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-              Admin-Vorgaben Gewichtung: <span className="font-semibold text-slate-100">{planConfig.admin_override_priority}%</span>
-            </div>
-
-            <div className="flex justify-end">
-              <button onClick={savePlanConfig} disabled={saving === 'planconfig'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
-                <Save className="h-4 w-4" />
-                {saving === 'planconfig' ? 'Speichert...' : 'Planungskonfiguration speichern'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Section>
-
-      <Section title="Problemerkennung und Leitstand" icon={AlertTriangle}>
-        <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-slate-200">
-          Diese Einstellungen steuern die neue Problem- und Lösungsansicht im Schichtplan. Bestehende Mindestbesetzungsregeln bleiben die fachliche Grundlage, die Oberfläche priorisiert nur ihre Darstellung.
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.issuePanelEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePanelEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Problem-Panel im Schichtplan aktivieren
-          </label>
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.issueAutoRefresh} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueAutoRefresh: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Hinweise nach Berechnung automatisch aktualisieren
-          </label>
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.issueShowSolutions} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issueShowSolutions: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Lösungsvorschläge im Panel anzeigen
-          </label>
-        </div>
-
-        <div className="mt-4 max-w-sm">
-          <label className="text-xs text-slate-400">Priorisierungsmodus</label>
-          <select value={advancedSettings.issuePriorityMode} onChange={(event) => setAdvancedSettings({ ...advancedSettings, issuePriorityMode: event.target.value as AdvancedPlanningSettings['issuePriorityMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
-            <option value="staffing_first">Besetzung zuerst</option>
-            <option value="balanced">Ausgewogen</option>
-            <option value="fairness_first">Fairness zuerst</option>
-          </select>
-        </div>
-      </Section>
-
-      <Section title="Autonome Krankheits- und Ersatzplanung" icon={Settings2}>
-        <div className="mb-4 rounded-2xl border border-sky-400/15 bg-sky-500/10 px-4 py-3 text-sm text-slate-200">
-          Diese Regeln schaffen die Grundlage für spätere automatische Schichtwechsel bei Krankheit. Aktiviert wird die eigentliche Automatik erst, wenn der geplante Autopilot-Lauf implementiert ist.
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.illnessAutoSwapEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessAutoSwapEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Automatische Ersatzsuche bei Krankheit vorbereiten
-          </label>
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.illnessRequireSkillMatch} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessRequireSkillMatch: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Skill-Match als Pflichtkriterium erzwingen
-          </label>
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200 lg:col-span-2">
-            <input type="checkbox" checked={advancedSettings.illnessProtectWorklifeBalance} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessProtectWorklifeBalance: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Work-Life-Balance und Folgebelastung bei automatischen Vorschlägen schützen
-          </label>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <label className="text-xs text-slate-400">Min. Puffer in der Quellschicht</label>
-            <input type="number" min="0" value={advancedSettings.illnessMinSourceBuffer} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinSourceBuffer: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">Min. Ruhezeit in Stunden</label>
-            <input type="number" min="8" value={advancedSettings.illnessMinRestHours} onChange={(event) => setAdvancedSettings({ ...advancedSettings, illnessMinRestHours: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Wochenendplanung nach Ticketvolumen" icon={CalendarDays}>
-        <div className="mb-4 rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 px-4 py-3 text-sm text-slate-200">
-          Hier wird vorbereitet, dass Wochenendbesetzung später automatisch aus Ticketlast und Sicherheitsaufschlag abgeleitet werden kann.
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
-            <input type="checkbox" checked={advancedSettings.weekendVolumeEnabled} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendVolumeEnabled: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
-            Wochenendplanung auf Ticketvolumen vorbereiten
-          </label>
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <label className="text-xs text-slate-400">Sicherheitsaufschlag (%)</label>
-            <input type="number" min="0" max="100" value={advancedSettings.weekendBufferPercent} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendBufferPercent: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">Min. Dispatcher am Wochenende</label>
-            <input type="number" min="0" value={advancedSettings.weekendMinDispatchers} onChange={(event) => setAdvancedSettings({ ...advancedSettings, weekendMinDispatchers: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
-          </div>
-        </div>
-      </Section>
-
-      <div className="flex justify-end">
-        <button onClick={saveAdvancedSettings} disabled={saving === 'advanced'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
-          <Save className="h-4 w-4" />
-          {saving === 'advanced' ? 'Speichert...' : 'Leitstand & Autopilot speichern'}
-        </button>
-      </div>
-
-      <Section title="Mitarbeiter-Ausschlüsse" icon={UserX}>
+      {/* ── Employee exclusions ── */}
+      <Section title={t("shiftAdmin.sectionExclusions")} icon={UserX} helpKey="shiftAdmin.helpSectionExclusions" t={t}>
         <div className="mb-4 flex flex-col gap-3 xl:flex-row">
           <select value={newExclusionName} onChange={(event) => setNewExclusionName(event.target.value)} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
-            <option value="">Mitarbeiter auswählen...</option>
+            <option value="">{t("shiftAdmin.exclSelectEmployee")}</option>
             {employees.filter((employee) => !exclusions.some((exclusion) => exclusion.employee_name === employee)).map((employee) => <option key={employee} value={employee}>{employee}</option>)}
           </select>
           <button onClick={() => void addExclusion()} disabled={!newExclusionName.trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/20 disabled:opacity-50">
             <UserX className="h-4 w-4" />
-            Ausschließen
+            {t("shiftAdmin.exclExclude")}
           </button>
         </div>
 
         {exclusions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">Keine Mitarbeiter ausgeschlossen.</div>
+          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">{t("shiftAdmin.exclEmpty")}</div>
         ) : (
           <div className="space-y-3">
             {exclusions.map((exclusion) => (
               <div key={exclusion.id} className="flex flex-col gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <div className="text-sm font-medium text-slate-100">{exclusion.employee_name}</div>
-                  <div className="text-xs text-slate-400">Angelegt von {exclusion.created_by} am {new Date(exclusion.created_at).toLocaleDateString('de-DE')}</div>
+                  <div className="text-xs text-slate-400">{t("shiftAdmin.exclCreatedBy")} {exclusion.created_by} {isGerman ? 'am' : 'on'} {new Date(exclusion.created_at).toLocaleDateString(isGerman ? 'de-DE' : 'en-US')}</div>
                 </div>
                 <button onClick={() => void removeExclusion(exclusion.id)} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20">
                   <Plus className="h-4 w-4" />
-                  Zurück in Planung
+                  {t("shiftAdmin.exclRestore")}
                 </button>
               </div>
             ))}

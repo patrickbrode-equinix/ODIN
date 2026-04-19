@@ -67,6 +67,7 @@ router.get(
            sender_name AS "senderName",
            sender_email AS "senderEmail",
            screenshot_name AS "screenshotName",
+           status,
            created_at AS "createdAt"
          FROM feedback_entries
          ORDER BY created_at DESC
@@ -156,6 +157,63 @@ router.post(
       res.status(500).json({
         error: "Feedback konnte nicht gespeichert werden. Bitte versuchen Sie es spaeter erneut.",
       });
+    }
+  }
+);
+
+/* ------------------------------------------------ */
+/* PATCH /api/feedback/entries/:id/status            */
+/* ------------------------------------------------ */
+
+const VALID_STATUSES = ['open', 'in_progress', 'done'];
+
+router.patch(
+  "/entries/:id/status",
+  requireAuth,
+  requirePageAccess("admin_settings", "write"),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      if (!status || !VALID_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `Status muss einer von ${VALID_STATUSES.join(', ')} sein` });
+      }
+      const { rows } = await db.query(
+        `UPDATE feedback_entries SET status = $1 WHERE id = $2
+         RETURNING id, type, title, description, sender_name AS "senderName",
+                   sender_email AS "senderEmail", screenshot_name AS "screenshotName",
+                   status, created_at AS "createdAt"`,
+        [status, id]
+      );
+      if (!rows.length) return res.status(404).json({ error: "Feedback-Eintrag nicht gefunden" });
+      res.json(rows[0]);
+    } catch (err) {
+      console.error("[FEEDBACK] Status update error:", err);
+      res.status(500).json({ error: "Status konnte nicht aktualisiert werden." });
+    }
+  }
+);
+
+/* ------------------------------------------------ */
+/* DELETE /api/feedback/entries/:id                  */
+/* ------------------------------------------------ */
+
+router.delete(
+  "/entries/:id",
+  requireAuth,
+  requirePageAccess("admin_settings", "write"),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { rows } = await db.query(
+        `DELETE FROM feedback_entries WHERE id = $1 RETURNING id`,
+        [id]
+      );
+      if (!rows.length) return res.status(404).json({ error: "Feedback-Eintrag nicht gefunden" });
+      res.json({ ok: true, deleted: rows[0].id });
+    } catch (err) {
+      console.error("[FEEDBACK] Delete error:", err);
+      res.status(500).json({ error: "Feedback konnte nicht geloescht werden." });
     }
   }
 );

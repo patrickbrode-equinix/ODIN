@@ -5,13 +5,27 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { useLanguage } from "../../context/LanguageContext";
 import { Eye, EyeOff, Info } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+
+const LOGIN_COPY = {
+  loginFailed: "Sign-in failed. Please check your credentials.",
+  emailHint: "Sign in with your corporate email address. If you do not have an account yet, you can register below.",
+  email: "Email",
+  emailPlaceholder: "firstname.surname@eu.equinix.com",
+  password: "Password",
+  hidePassword: "Hide password",
+  showPassword: "Show password",
+  loggingIn: "Signing in...",
+  login: "Sign in",
+  forgotPassword: "Forgot password?",
+  noAccount: "No account yet?",
+  register: "Register",
+};
 
 /* ------------------------------------------------ */
 /* LOGIN PAGE COMPONENT                             */
@@ -21,21 +35,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
-  const { t } = useLanguage();
-  const copy = {
-    loginFailed: t("login.loginFailed"),
-    emailHint: t("login.emailHint"),
-    email: t("login.email"),
-    emailPlaceholder: t("login.emailPlaceholder"),
-    password: t("login.password"),
-    hidePassword: t("login.hidePassword"),
-    showPassword: t("login.showPassword"),
-    loggingIn: t("login.loggingIn"),
-    login: t("login.loginButton"),
-    forgotPassword: t("login.forgotPassword"),
-    noAccount: t("login.noAccount"),
-    register: t("login.register"),
-  };
+  const copy = LOGIN_COPY;
 
   const from = location.state?.from?.pathname || "/dashboard";
 

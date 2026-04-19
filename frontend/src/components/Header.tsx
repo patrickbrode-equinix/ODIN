@@ -18,8 +18,10 @@ import { DashboardInfoBar } from "./dashboard/DashboardInfoBar";
 import { getFeatureToggles } from "../api/dashboard";
 import { ProjectsPanel } from "./dashboard/ProjectsPanel";
 import { FeedbackButton } from "./FeedbackButton";
-import { Brain, MessageSquareMore } from "lucide-react";
+import { Brain, MessageSquareMore, Vote } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
+import { FlagIcon } from "./FlagIcon";
+import { PollsPanel } from "./PollsPanel";
 
 import {
   DropdownMenu,
@@ -442,7 +444,7 @@ function EventsPanel() {
 
 function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useLanguage();
-  const [mode, setMode] = useState<"instructions" | "projects" | "events">("instructions");
+  const [mode, setMode] = useState<"instructions" | "projects" | "events" | "polls">("instructions");
 
   if (!open) return null;
   return (
@@ -485,6 +487,17 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 <Camera className="w-3 h-3" />
                 Events
               </button>
+              <button
+                onClick={() => setMode("polls")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
+                  mode === "polls"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Vote className="w-3 h-3" />
+                {t("header.polls")}
+              </button>
             </div>
           </div>
           <button
@@ -499,6 +512,8 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
             <DashboardInfoBar />
           ) : mode === "projects" ? (
             <ProjectsPanel />
+          ) : mode === "polls" ? (
+            <PollsPanel />
           ) : (
             <EventsPanel />
           )}
@@ -949,7 +964,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300">
-                <span className="text-base leading-none">{activeLanguage.flag}</span>
+                <FlagIcon code={activeLanguage.code} />
                 <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
                   {activeLanguage.shortLabel}
                 </span>
@@ -960,7 +975,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               {languages.map((option) => (
                 <DropdownMenuItem key={option.code} onClick={() => setLanguage(option.code)} className="focus:bg-white/10 focus:text-white">
                   <div className="flex items-center gap-2">
-                    <span className="text-base leading-none">{option.flag}</span>
+                    <FlagIcon code={option.code} />
                     <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
                       {option.shortLabel}
                     </span>

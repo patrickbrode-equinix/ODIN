@@ -254,6 +254,10 @@ app.use("/api/admin/settings-audit", settingsAuditRoutes);
 import fairnessSettingsRoutes from "./routes/fairnessSettings.js";
 app.use("/api/admin/fairness-settings", fairnessSettingsRoutes);
 
+// Polls / Umfragen
+import pollsRoutes from "./routes/polls.js";
+app.use("/api/polls", pollsRoutes);
+
 /* ------------------------------------------------ */
 /* GLOBAL ERROR HANDLER                             */
 /* Catches express.json() SyntaxError (malformed    */

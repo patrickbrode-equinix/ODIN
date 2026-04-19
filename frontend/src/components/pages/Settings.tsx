@@ -12,9 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Switch } from "../ui/switch";
 import { Button } from "../ui/button";
-import { Bell, Lock, Settings as SettingsIcon, Sliders, Save } from "lucide-react";
+import { Lock, Settings as SettingsIcon, Sliders, Save } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
 import { useTheme } from "../ThemeProvider";
 import { useAuth } from "../../context/AuthContext";
@@ -489,31 +488,6 @@ export default function Settings() {
             </div>
           </EnterpriseCard>
 
-          {/* NOTIFICATIONS */}
-          <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
-            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2 flex items-center gap-2">
-              <Bell className="w-4 h-4" />
-              {t("settings.notifications")}
-            </div>
-            <div className="space-y-4">
-              <NotificationRow
-                title={t("settings.emailNotifications")}
-                value={settings.notify_email}
-                onChange={(v) => update({ notify_email: v })}
-              />
-              <NotificationRow
-                title={t("settings.browserNotifications")}
-                value={settings.notify_browser}
-                onChange={(v) => update({ notify_browser: v })}
-              />
-              <NotificationRow
-                title={t("settings.shiftReminders")}
-                value={settings.notify_shift_reminder}
-                onChange={(v) => update({ notify_shift_reminder: v })}
-              />
-            </div>
-          </EnterpriseCard>
-
           {/* PREFERRED COLLEAGUES (Wunschkollegen) */}
           <EnterpriseCard noPadding={false} className="flex flex-col gap-4">
             <PreferredColleagues />
@@ -662,23 +636,6 @@ function Info({ label, value }: { label: string; value?: string }) {
     <div>
       <p className="text-muted-foreground">{label}</p>
       <p className="text-foreground">{value ?? "–"}</p>
-    </div>
-  );
-}
-
-function NotificationRow({
-  title,
-  value,
-  onChange,
-}: {
-  title: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between p-4 bg-accent/50 rounded-xl border">
-      <p className="text-foreground">{title}</p>
-      <Switch checked={value} onCheckedChange={onChange} />
     </div>
   );
 }

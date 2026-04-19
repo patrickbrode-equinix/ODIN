@@ -685,6 +685,39 @@ router.get("/assignment-trace", async (_req, res) => {
     // Build final reasons
     const finalReasons = buildFinalReasons(d.selection_reason, null);
 
+    // Build strategy info from selection_reason and rule_path
+    const selReason = (d.selection_reason || '').toLowerCase();
+    const tieBreakerFromPath = (rulePath || []).find(p => typeof p === 'string' && p.startsWith('tie-breaker:'));
+    const tieBreaker = tieBreakerFromPath ? tieBreakerFromPath.replace('tie-breaker:', '') : null;
+    const strategySteps = [];
+    if (selReason.includes('system grouping')) strategySteps.push({ key: 'system-grouping', label: 'System-Cluster', active: true });
+    else strategySteps.push({ key: 'system-grouping', label: 'System-Cluster', active: false });
+    if (selReason.includes('queue purity')) strategySteps.push({ key: 'queue-purity', label: 'Queue-Reinheit', active: true });
+    else strategySteps.push({ key: 'queue-purity', label: 'Queue-Reinheit', active: false });
+    strategySteps.push({ key: 'workload', label: 'Geringste Auslastung', active: true });
+    if (selReason.includes('colleague preference')) strategySteps.push({ key: 'colleague-pref', label: 'Wunschkollege', active: true });
+    else strategySteps.push({ key: 'colleague-pref', label: 'Wunschkollege', active: false });
+    strategySteps.push({ key: 'worker-id', label: 'Deterministischer Fallback', active: tieBreaker === 'worker-id' || !tieBreaker });
+
+    // Build candidate stats
+    const eligibleCount = candidatePool.filter(c => c.state === 'eligible' || c.state === 'selected').length;
+    const excludedCount = candidatePool.filter(c => c.state === 'excluded').length;
+    const candidateStats = {
+      total: initialCandidates.length,
+      eligible: eligibleCount,
+      excluded: excludedCount,
+    };
+
+    // Get ticket pool size (how many tickets were in this run)
+    let ticketPoolSize = 0;
+    try {
+      const poolRes = await query(
+        `SELECT COUNT(*) AS cnt FROM assignment_ticket_decisions WHERE run_id = $1`,
+        [d.run_id]
+      );
+      ticketPoolSize = parseInt(poolRes.rows[0]?.cnt) || 0;
+    } catch (_) { /* best effort */ }
+
     // Assemble trace
     const trace = {
       ticket,
@@ -697,6 +730,13 @@ router.get("/assignment-trace", async (_req, res) => {
       modeLabel: formatModeLabel(d.run_mode || activeMode),
       decidedAt: d.decided_at,
       runId: d.run_id,
+      strategy: {
+        label: 'Deterministische Multi-Faktor-Selektion',
+        tieBreaker: tieBreaker || 'worker-id',
+        steps: strategySteps,
+      },
+      candidateStats,
+      ticketPoolSize,
     };
 
     res.json({ available: true, trace });
@@ -755,6 +795,58 @@ router.get("/automation-status", async (_req, res) => {
   } catch (err) {
     console.error("[TV] /automation-status error:", err.message);
     res.json({ enabled: false, mode: 'unknown' });
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/tv/polls                                */
+/* Active (non-closed, non-expired) polls with      */
+/* aggregated vote counts per option                */
+/* ------------------------------------------------ */
+router.get("/polls", async (_req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT
+        p.id, p.title, p.description, p.options, p.ends_at, p.closed,
+        p.created_at, p.created_by,
+        COALESCE(vc.vote_count, 0)::int AS vote_count
+      FROM polls p
+      LEFT JOIN (
+        SELECT poll_id, COUNT(*) AS vote_count FROM poll_votes GROUP BY poll_id
+      ) vc ON vc.poll_id = p.id
+      WHERE p.closed = FALSE
+        AND (p.ends_at IS NULL OR p.ends_at > NOW())
+      ORDER BY p.created_at DESC
+      LIMIT 10
+    `);
+
+    // Aggregate votes per option for each poll
+    const pollIds = rows.map(r => r.id);
+    let voteMap = {};
+    if (pollIds.length > 0) {
+      const { rows: voteRows } = await query(`
+        SELECT poll_id, option_index, COUNT(*)::int AS count
+        FROM poll_votes
+        WHERE poll_id = ANY($1)
+        GROUP BY poll_id, option_index
+        ORDER BY poll_id, option_index
+      `, [pollIds]);
+      for (const v of voteRows) {
+        if (!voteMap[v.poll_id]) voteMap[v.poll_id] = [];
+        voteMap[v.poll_id].push({ option_index: v.option_index, count: v.count });
+      }
+    }
+
+    const enriched = rows.map(p => ({
+      ...p,
+      options: typeof p.options === "string" ? JSON.parse(p.options) : p.options,
+      votes: voteMap[p.id] || [],
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("[TV] /polls error:", err.message);
+    res.json([]);
   }
 });
 

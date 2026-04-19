@@ -79,6 +79,7 @@ export type TranslationKey =
   | "header.deleteTooltip"
   | "header.instructions"
   | "header.projects"
+  | "header.polls"
   | "header.quickLinks"
   | "header.links"
   | "header.infoAndInstructions"
@@ -467,6 +468,207 @@ export type TranslationKey =
   | "shiftAdmin.title"
   | "shiftAdmin.subtitle"
   | "shiftAdmin.activeOn"
+  /* ── Overview cards ── */
+  | "shiftAdmin.cardDefinitions"
+  | "shiftAdmin.cardDefinitionsDesc"
+  | "shiftAdmin.cardDbsPool"
+  | "shiftAdmin.cardDbsPoolDesc"
+  | "shiftAdmin.cardExclusions"
+  | "shiftAdmin.cardExclusionsDesc"
+  /* ── Shift definitions ── */
+  | "shiftAdmin.sectionDefinitions"
+  | "shiftAdmin.sectionDefinitionsInfo"
+  | "shiftAdmin.helpSectionDefinitions"
+  | "shiftAdmin.defCode"
+  | "shiftAdmin.defName"
+  | "shiftAdmin.defType"
+  | "shiftAdmin.defFrom"
+  | "shiftAdmin.defTo"
+  | "shiftAdmin.defHours"
+  | "shiftAdmin.defMin"
+  | "shiftAdmin.defMax"
+  | "shiftAdmin.defColorStatus"
+  | "shiftAdmin.defActive"
+  | "shiftAdmin.defStartDay"
+  | "shiftAdmin.defEndDay"
+  | "shiftAdmin.defTimeWindow"
+  | "shiftAdmin.defWeekdayPlanning"
+  | "shiftAdmin.defSave"
+  | "shiftAdmin.defSaving"
+  | "shiftAdmin.typeEarly"
+  | "shiftAdmin.typeLate"
+  | "shiftAdmin.typeNight"
+  | "shiftAdmin.typeSpecial"
+  | "shiftAdmin.helpDefWeekdays"
+  | "shiftAdmin.helpDefMinMax"
+  | "shiftAdmin.helpDefDayOffset"
+  /* ── DBS configuration ── */
+  | "shiftAdmin.sectionDbs"
+  | "shiftAdmin.sectionDbsInfo"
+  | "shiftAdmin.helpSectionDbs"
+  | "shiftAdmin.dbsEnabled"
+  | "shiftAdmin.helpDbsEnabled"
+  | "shiftAdmin.dbsRhythm"
+  | "shiftAdmin.helpDbsRhythm"
+  | "shiftAdmin.dbsReferenceDate"
+  | "shiftAdmin.helpDbsReferenceDate"
+  | "shiftAdmin.dbsWeekdays"
+  | "shiftAdmin.helpDbsWeekdays"
+  | "shiftAdmin.dbsShiftCode"
+  | "shiftAdmin.helpDbsShiftCode"
+  | "shiftAdmin.dbsRequiredStaff"
+  | "shiftAdmin.helpDbsRequiredStaff"
+  | "shiftAdmin.dbsDefaultTarget"
+  | "shiftAdmin.helpDbsDefaultTarget"
+  | "shiftAdmin.dbsPool"
+  | "shiftAdmin.dbsSelectEmployee"
+  | "shiftAdmin.dbsMonthlyDays"
+  | "shiftAdmin.helpDbsMonthlyDays"
+  | "shiftAdmin.dbsAddEmployee"
+  | "shiftAdmin.dbsRemove"
+  | "shiftAdmin.dbsSaveConfig"
+  | "shiftAdmin.dbsSavePool"
+  | "shiftAdmin.dbsSavingConfig"
+  | "shiftAdmin.dbsSavingPool"
+  | "shiftAdmin.dbsEmptyPool"
+  | "shiftAdmin.dbsDisabledHint"
+  /* ── Rotation & overtime ── */
+  | "shiftAdmin.sectionRotation"
+  | "shiftAdmin.helpSectionRotation"
+  | "shiftAdmin.rotMaxConsecutiveSame"
+  | "shiftAdmin.helpRotMaxConsecutiveSame"
+  | "shiftAdmin.rotMaxConsecutiveWorkdays"
+  | "shiftAdmin.helpRotMaxConsecutiveWorkdays"
+  | "shiftAdmin.rotMinFreeAfterStreak"
+  | "shiftAdmin.helpRotMinFreeAfterStreak"
+  | "shiftAdmin.rotMinRestHours"
+  | "shiftAdmin.helpRotMinRestHours"
+  | "shiftAdmin.rotMaxNightsMonth"
+  | "shiftAdmin.helpRotMaxNightsMonth"
+  | "shiftAdmin.rotMaxWeekendsMonth"
+  | "shiftAdmin.helpRotMaxWeekendsMonth"
+  | "shiftAdmin.rotFreeDaysAfterNight"
+  | "shiftAdmin.helpRotFreeDaysAfterNight"
+  | "shiftAdmin.rotFreeDaysAfterWeekend"
+  | "shiftAdmin.helpRotFreeDaysAfterWeekend"
+  | "shiftAdmin.rotNightToEarlyForbidden"
+  | "shiftAdmin.helpRotNightToEarlyForbidden"
+  | "shiftAdmin.rotLateToEarlyForbidden"
+  | "shiftAdmin.helpRotLateToEarlyForbidden"
+  | "shiftAdmin.rotSave"
+  | "shiftAdmin.rotSaving"
+  | "shiftAdmin.overtimeTitle"
+  | "shiftAdmin.overtimeMax"
+  | "shiftAdmin.helpOvertimeMax"
+  | "shiftAdmin.overtimeMode"
+  | "shiftAdmin.helpOvertimeMode"
+  | "shiftAdmin.overtimeModeShow"
+  | "shiftAdmin.overtimeModeWarn"
+  | "shiftAdmin.overtimeModeHard"
+  | "shiftAdmin.overtimeHint"
+  /* ── Fairness ── */
+  | "shiftAdmin.sectionFairness"
+  | "shiftAdmin.helpSectionFairness"
+  | "shiftAdmin.fairBalanceNights"
+  | "shiftAdmin.helpFairBalanceNights"
+  | "shiftAdmin.fairBalanceWeekends"
+  | "shiftAdmin.helpFairBalanceWeekends"
+  | "shiftAdmin.fairBalanceLoad"
+  | "shiftAdmin.helpFairBalanceLoad"
+  | "shiftAdmin.fairMaxDeviation"
+  | "shiftAdmin.helpFairMaxDeviation"
+  | "shiftAdmin.fairPriority"
+  | "shiftAdmin.helpFairPriority"
+  | "shiftAdmin.fairOptFairness"
+  | "shiftAdmin.fairOptPreference"
+  | "shiftAdmin.fairOptBalanced"
+  | "shiftAdmin.fairSave"
+  | "shiftAdmin.fairSaving"
+  /* ── Planning ── */
+  | "shiftAdmin.sectionPlanning"
+  | "shiftAdmin.helpSectionPlanning"
+  | "shiftAdmin.planRespectWishes"
+  | "shiftAdmin.helpPlanRespectWishes"
+  | "shiftAdmin.planTargetHours"
+  | "shiftAdmin.helpPlanTargetHours"
+  | "shiftAdmin.planHardRules"
+  | "shiftAdmin.helpPlanHardRules"
+  | "shiftAdmin.planSoftWishes"
+  | "shiftAdmin.planFairness"
+  | "shiftAdmin.planAdminOverride"
+  | "shiftAdmin.planSave"
+  | "shiftAdmin.planSaving"
+  /* ── Issues / control ── */
+  | "shiftAdmin.sectionIssues"
+  | "shiftAdmin.sectionIssuesInfo"
+  | "shiftAdmin.helpSectionIssues"
+  | "shiftAdmin.issuePanel"
+  | "shiftAdmin.issueAutoRefresh"
+  | "shiftAdmin.issueShowSolutions"
+  | "shiftAdmin.issuePriorityMode"
+  | "shiftAdmin.issueModeStaffing"
+  | "shiftAdmin.issueModeBalanced"
+  | "shiftAdmin.issueModeFairness"
+  /* ── Illness / replacement ── */
+  | "shiftAdmin.sectionIllness"
+  | "shiftAdmin.sectionIllnessInfo"
+  | "shiftAdmin.helpSectionIllness"
+  | "shiftAdmin.illnessAutoSwap"
+  | "shiftAdmin.illnessSkillMatch"
+  | "shiftAdmin.illnessProtectWLB"
+  | "shiftAdmin.illnessBuffer"
+  | "shiftAdmin.helpIllnessBuffer"
+  | "shiftAdmin.illnessRestHours"
+  /* ── Weekend ── */
+  | "shiftAdmin.sectionWeekend"
+  | "shiftAdmin.sectionWeekendInfo"
+  | "shiftAdmin.helpSectionWeekend"
+  | "shiftAdmin.weekendVolume"
+  | "shiftAdmin.weekendBuffer"
+  | "shiftAdmin.helpWeekendBuffer"
+  | "shiftAdmin.weekendMinDispatchers"
+  | "shiftAdmin.helpWeekendMinDispatchers"
+  /* ── Skills ── */
+  | "shiftAdmin.sectionSkills"
+  | "shiftAdmin.sectionSkillsInfo"
+  | "shiftAdmin.helpSectionSkills"
+  | "shiftAdmin.skillsEnabled"
+  | "shiftAdmin.helpSkillsEnabled"
+  | "shiftAdmin.skillsEmployeeCount"
+  | "shiftAdmin.skillsCatalogCount"
+  | "shiftAdmin.skillsActive"
+  | "shiftAdmin.skillsInactive"
+  | "shiftAdmin.skillCatalog"
+  | "shiftAdmin.helpSkillCatalog"
+  | "shiftAdmin.skillAddPlaceholder"
+  | "shiftAdmin.skillAdd"
+  | "shiftAdmin.skillRateInfo"
+  | "shiftAdmin.skillRatedCount"
+  | "shiftAdmin.skillSave"
+  | "shiftAdmin.skillSaving"
+  /* ── Exclusions ── */
+  | "shiftAdmin.sectionExclusions"
+  | "shiftAdmin.helpSectionExclusions"
+  | "shiftAdmin.exclSelectEmployee"
+  | "shiftAdmin.exclExclude"
+  | "shiftAdmin.exclEmpty"
+  | "shiftAdmin.exclCreatedBy"
+  | "shiftAdmin.exclRestore"
+  /* ── Shared / toasts ── */
+  | "shiftAdmin.advancedSave"
+  | "shiftAdmin.advancedSaving"
+  | "shiftAdmin.toastDefSaved"
+  | "shiftAdmin.toastRotationSaved"
+  | "shiftAdmin.toastFairnessSaved"
+  | "shiftAdmin.toastPlanSaved"
+  | "shiftAdmin.toastAdvancedSaved"
+  | "shiftAdmin.toastDbsPoolSaved"
+  | "shiftAdmin.toastDbsConfigSaved"
+  | "shiftAdmin.toastExclAdded"
+  | "shiftAdmin.toastExclRemoved"
+  | "shiftAdmin.toastSkillSaved"
+  | "shiftAdmin.toastSkillExists"
+  | "shiftAdmin.error"
   | "shiftplan.title"
   | "shiftplan.shiftEarly"
   | "shiftplan.shiftLate"
@@ -763,6 +965,16 @@ export type TranslationKey =
   | "admin.noFeedback"
   | "admin.from"
   | "admin.unknown"
+  | "admin.feedbackOpen"
+  | "admin.feedbackInProgress"
+  | "admin.feedbackDone"
+  | "admin.feedbackSetStatus"
+  | "admin.feedbackDelete"
+  | "admin.feedbackDeleteConfirm"
+  | "admin.feedbackDeleteTitle"
+  | "admin.feedbackDeleted"
+  | "admin.feedbackStatusUpdated"
+  | "admin.feedbackCancel"
   | "admin.allAreas"
   | "admin.appSettings"
   | "admin.timestamp"
@@ -979,6 +1191,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "header.deleteTooltip": { de: "Löschen", en: "Delete" },
   "header.instructions": { de: "Anweisungen", en: "Instructions" },
   "header.projects": { de: "Projekte", en: "Projects" },
+  "header.polls": { de: "Umfragen", en: "Polls" },
   "header.quickLinks": { de: "Schnellzugriffe", en: "Quick links" },
   "header.links": { de: "Links", en: "Links" },
   "header.infoAndInstructions": { de: "Informationen und Anweisungen", en: "Information and instructions" },
@@ -1383,6 +1596,219 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "shiftAdmin.subtitle": { de: "Konfiguration aller Regeln, Wochenend-Varianten und DBS-Parameter", en: "Configuration of all rules, weekend variants, and DBS parameters" },
   "shiftAdmin.activeOn": { de: "Aktiv an", en: "Active on" },
 
+  /* ── ShiftAdmin: Overview cards ── */
+  "shiftAdmin.cardDefinitions": { de: "Schichtdesign", en: "Shift design" },
+  "shiftAdmin.cardDefinitionsDesc": { de: "Aktive Definitionen, inklusive Wochenend-Varianten und DBS.", en: "Active definitions, including weekend variants and DBS." },
+  "shiftAdmin.cardDbsPool": { de: "DBS-Pool", en: "DBS pool" },
+  "shiftAdmin.cardDbsPoolDesc": { de: "Fest hinterlegte Mitarbeiter mit individuellem Monatslimit.", en: "Fixed employees with individual monthly limit." },
+  "shiftAdmin.cardExclusions": { de: "Ausschlüsse", en: "Exclusions" },
+  "shiftAdmin.cardExclusionsDesc": { de: "Mitarbeiter, die derzeit nicht in automatische Entwürfe einfließen.", en: "Employees currently excluded from automatic drafts." },
+
+  /* ── ShiftAdmin: Shift definitions section ── */
+  "shiftAdmin.sectionDefinitions": { de: "Schichtdefinitionen", en: "Shift definitions" },
+  "shiftAdmin.sectionDefinitionsInfo": { de: "Die Wochentage steuern direkt, an welchen Tagen eine Schicht von der Engine gebaut wird. Für Nachtschichten kann zusätzlich exakt festgelegt werden, ob Beginn und Ende am Plan-Tag oder erst am Folgetag liegen.", en: "Weekdays directly control on which days a shift is built by the engine. For night shifts, you can additionally specify whether start and end fall on the planned day or the next day." },
+  "shiftAdmin.helpSectionDefinitions": { de: "Hier werden alle Schichttypen verwaltet. Jede Schicht hat einen Code, Zeitfenster, Mindest-/Maximalbesetzung und kann auf bestimmte Wochentage beschränkt werden. Änderungen wirken sich auf die automatische Planung aus.", en: "Manage all shift types here. Each shift has a code, time window, min/max staffing and can be restricted to certain weekdays. Changes affect automatic planning." },
+  "shiftAdmin.defCode": { de: "Code", en: "Code" },
+  "shiftAdmin.defName": { de: "Name", en: "Name" },
+  "shiftAdmin.defType": { de: "Typ", en: "Type" },
+  "shiftAdmin.defFrom": { de: "Von", en: "From" },
+  "shiftAdmin.defTo": { de: "Bis", en: "To" },
+  "shiftAdmin.defHours": { de: "Stunden", en: "Hours" },
+  "shiftAdmin.defMin": { de: "Min", en: "Min" },
+  "shiftAdmin.defMax": { de: "Max", en: "Max" },
+  "shiftAdmin.defColorStatus": { de: "Farbe und Status", en: "Color & status" },
+  "shiftAdmin.defActive": { de: "Aktiv", en: "Active" },
+  "shiftAdmin.defStartDay": { de: "Starttag", en: "Start day" },
+  "shiftAdmin.defEndDay": { de: "Endtag", en: "End day" },
+  "shiftAdmin.defTimeWindow": { de: "Zeitfenster", en: "Time window" },
+  "shiftAdmin.defWeekdayPlanning": { de: "Planung pro Wochentag", en: "Planning per weekday" },
+  "shiftAdmin.defSave": { de: "Schicht speichern", en: "Save shift" },
+  "shiftAdmin.defSaving": { de: "Speichert…", en: "Saving…" },
+  "shiftAdmin.typeEarly": { de: "Früh", en: "Early" },
+  "shiftAdmin.typeLate": { de: "Spät", en: "Late" },
+  "shiftAdmin.typeNight": { de: "Nacht", en: "Night" },
+  "shiftAdmin.typeSpecial": { de: "Sonder", en: "Special" },
+  "shiftAdmin.helpDefWeekdays": { de: "Nur an aktivierten Tagen wird die Schicht in die Tages-Slots aufgenommen. Damit lassen sich reine Samstag- oder Sa/So-Positionen direkt über die Definition steuern.", en: "The shift is only included on activated days. This lets you control Saturday-only or Sat/Sun positions directly via the definition." },
+  "shiftAdmin.helpDefMinMax": { de: "Mindestbesetzung: So viele Mitarbeiter werden pro Schicht mindestens benötigt. Maximalbesetzung: Die Engine plant nie mehr als diese Zahl ein. 0 bei Min bedeutet optional.", en: "Minimum staffing: At least this many employees needed per shift. Maximum: The engine never plans more. 0 for min means optional." },
+  "shiftAdmin.helpDefDayOffset": { de: "Bei Nachtschichten kann festgelegt werden, ob die Schicht am Plan-Tag beginnt und am Folgetag endet. Das ist wichtig für korrekte Überschneidungen und Ruhezeiten.", en: "For night shifts, you can specify if the shift starts on the planned day and ends the next. This is important for correct overlaps and rest periods." },
+
+  /* ── ShiftAdmin: DBS configuration ── */
+  "shiftAdmin.sectionDbs": { de: "DBS-Konfiguration", en: "DBS configuration" },
+  "shiftAdmin.sectionDbsInfo": { de: "DBS (Deutsche Börse Services) wird mit einer festen Mitarbeitergruppe im Rotationsrhythmus geplant. Hier werden globale DBS-Parameter und der Mitarbeiterpool konfiguriert.", en: "DBS (Deutsche Börse Services) is planned with a fixed employee group in a rotation rhythm. Configure global DBS parameters and the employee pool here." },
+  "shiftAdmin.helpSectionDbs": { de: "Der DBS-Bereich steuert, wie DBS-Schichten in die Schichtplanung integriert werden. DBS-Mitarbeiter werden bevorzugt für DBS-Schichten eingeplant und erst danach für andere Schichttypen berücksichtigt.", en: "The DBS section controls how DBS shifts are integrated into shift planning. DBS employees are prioritized for DBS shifts before being considered for other shift types." },
+  "shiftAdmin.dbsEnabled": { de: "DBS aktiv", en: "DBS active" },
+  "shiftAdmin.helpDbsEnabled": { de: "Wenn aktiv, werden DBS-Schichten in die automatische Planung einbezogen. Wenn deaktiviert, bleibt der Pool erhalten, aber DBS-Schichten werden nicht geplant. Sinnvoll bei temporärer Pause.", en: "When active, DBS shifts are included in automatic planning. When disabled, the pool is preserved but DBS shifts are not planned. Useful for temporary pauses." },
+  "shiftAdmin.dbsRhythm": { de: "DBS-Rhythmus (Wochen)", en: "DBS rhythm (weeks)" },
+  "shiftAdmin.helpDbsRhythm": { de: "Legt fest, in welchem Wochenrhythmus DBS-Einsätze geplant werden. Beispiel: 2 = alle zwei Wochen. 1 = jede Woche. Der Rhythmus startet ab dem Referenzdatum.", en: "Defines the weekly rhythm for DBS deployments. Example: 2 = every two weeks. 1 = every week. The rhythm starts from the reference date." },
+  "shiftAdmin.dbsReferenceDate": { de: "Referenzdatum", en: "Reference date" },
+  "shiftAdmin.helpDbsReferenceDate": { de: "Das Datum, ab dem der DBS-Rhythmus gezählt wird. An diesem Tag (bzw. in dieser Woche) beginnt der erste DBS-Zyklus. Leer = Beginn ab nächstem Monatsersten.", en: "The date from which the DBS rhythm is counted. The first DBS cycle starts on this day (or in this week). Empty = starts from next month's first day." },
+  "shiftAdmin.dbsWeekdays": { de: "DBS-Wochentage", en: "DBS weekdays" },
+  "shiftAdmin.helpDbsWeekdays": { de: "An welchen Wochentagen DBS-Einsätze stattfinden sollen. Standard: Montag bis Freitag. Kann bei Bedarf um Wochenende erweitert werden.", en: "On which weekdays DBS deployments should occur. Default: Monday to Friday. Can be extended to weekends if needed." },
+  "shiftAdmin.dbsShiftCode": { de: "DBS-Schichttyp", en: "DBS shift type" },
+  "shiftAdmin.helpDbsShiftCode": { de: "Welche Schichtdefinition für DBS-Einsätze verwendet wird. Standard ist 'DBS'. Kann bei abweichender Schicht-Konfiguration angepasst werden.", en: "Which shift definition is used for DBS deployments. Default is 'DBS'. Can be adjusted for different shift configurations." },
+  "shiftAdmin.dbsRequiredStaff": { de: "DBS-Mindestbesetzung", en: "DBS min. staffing" },
+  "shiftAdmin.helpDbsRequiredStaff": { de: "Wie viele Mitarbeiter pro DBS-Tag mindestens eingeplant werden müssen. 0 = wird nicht geprüft. Typisch ist 1.", en: "How many employees must be planned per DBS day at minimum. 0 = not checked. 1 is typical." },
+  "shiftAdmin.dbsDefaultTarget": { de: "Standard Soll-Einsätze/Monat", en: "Default target deployments/month" },
+  "shiftAdmin.helpDbsDefaultTarget": { de: "Globaler Standardwert für DBS-Einsätze pro Monat. Gilt als Fallback, wenn kein individueller Wert hinterlegt ist. Beispiel: 4 = ca. 1× pro Woche.", en: "Global default for DBS deployments per month. Used as fallback when no individual value is set. Example: 4 = approx. once per week." },
+  "shiftAdmin.dbsPool": { de: "DBS-Mitarbeiter", en: "DBS employees" },
+  "shiftAdmin.dbsSelectEmployee": { de: "Mitarbeiter für DBS auswählen…", en: "Select employee for DBS…" },
+  "shiftAdmin.dbsMonthlyDays": { de: "DBS-Tage pro Monat", en: "DBS days per month" },
+  "shiftAdmin.helpDbsMonthlyDays": { de: "Maximale Anzahl an DBS-Einsatztagen pro Monat für diesen Mitarbeiter. 0 = Standard-Sollwert wird verwendet. Ermöglicht individuelle Steuerung bei Teilzeit oder Sondervereinbarungen.", en: "Maximum number of DBS deployment days per month for this employee. 0 = default target is used. Allows individual control for part-time or special agreements." },
+  "shiftAdmin.dbsAddEmployee": { de: "Mitarbeiter hinzufügen", en: "Add employee" },
+  "shiftAdmin.dbsRemove": { de: "Entfernen", en: "Remove" },
+  "shiftAdmin.dbsSaveConfig": { de: "DBS-Konfiguration speichern", en: "Save DBS configuration" },
+  "shiftAdmin.dbsSavePool": { de: "DBS-Pool speichern", en: "Save DBS pool" },
+  "shiftAdmin.dbsSavingConfig": { de: "Speichert…", en: "Saving…" },
+  "shiftAdmin.dbsSavingPool": { de: "Speichert…", en: "Saving…" },
+  "shiftAdmin.dbsEmptyPool": { de: "Noch kein DBS-Pool hinterlegt.", en: "No DBS pool configured yet." },
+  "shiftAdmin.dbsDisabledHint": { de: "DBS ist derzeit deaktiviert. Der Pool bleibt erhalten, aber DBS-Schichten werden nicht automatisch geplant.", en: "DBS is currently disabled. The pool is preserved but DBS shifts are not automatically planned." },
+
+  /* ── ShiftAdmin: Rotation & overtime ── */
+  "shiftAdmin.sectionRotation": { de: "Rotationsregeln & Arbeitszeitgrenzen", en: "Rotation rules & working time limits" },
+  "shiftAdmin.helpSectionRotation": { de: "Diese Regeln definieren harte Grenzen für die automatische Schichtplanung. Verletzungen werden von der Engine nicht zugelassen. Überstundengrenzen steuern die maximale Zusatzbelastung pro Monat.", en: "These rules define hard limits for automatic shift planning. Violations are not permitted by the engine. Overtime limits control maximum additional workload per month." },
+  "shiftAdmin.rotMaxConsecutiveSame": { de: "Max. gleiche Schichten hintereinander", en: "Max. consecutive identical shifts" },
+  "shiftAdmin.helpRotMaxConsecutiveSame": { de: "Wie viele Tage in Folge ein Mitarbeiter dieselbe Schichtart arbeiten darf. Beispiel: 5 = maximal 5 Frühschichten am Stück. Verhindert monotone Belastung.", en: "How many consecutive days an employee may work the same shift type. Example: 5 = max 5 early shifts in a row. Prevents monotonous workload." },
+  "shiftAdmin.rotMaxConsecutiveWorkdays": { de: "Max. Arbeitstage in Folge", en: "Max. consecutive workdays" },
+  "shiftAdmin.helpRotMaxConsecutiveWorkdays": { de: "Maximale Anzahl aufeinanderfolgender Arbeitstage, bevor ein freier Tag eingeplant werden muss. Gesetzlich in DE oft 6, intern häufig 5.", en: "Maximum consecutive workdays before a free day must be scheduled. Legally often 6 in DE, internally often 5." },
+  "shiftAdmin.rotMinFreeAfterStreak": { de: "Min. freie Tage nach Serie", en: "Min. free days after streak" },
+  "shiftAdmin.helpRotMinFreeAfterStreak": { de: "Mindestanzahl freier Tage nach einer durchgängigen Arbeitsserie. Beispiel: 1 = mindestens ein freier Tag nach Ablauf der maximalen Serie.", en: "Minimum free days after a continuous work streak. Example: 1 = at least one free day after the maximum streak runs out." },
+  "shiftAdmin.rotMinRestHours": { de: "Min. Ruhestunden zwischen Schichten", en: "Min. rest hours between shifts" },
+  "shiftAdmin.helpRotMinRestHours": { de: "Minimale Ruhezeit in Stunden zwischen zwei aufeinanderfolgenden Schichten. Gesetzlich in DE mindestens 11 Stunden. Verhindert z.B. Spät→Früh ohne Pause.", en: "Minimum rest time in hours between two consecutive shifts. Legally 11h minimum in DE. Prevents e.g. Late→Early without break." },
+  "shiftAdmin.rotMaxNightsMonth": { de: "Max. Nachtschichten pro Monat", en: "Max. night shifts per month" },
+  "shiftAdmin.helpRotMaxNightsMonth": { de: "Maximale Anzahl an Nachtschichten, die ein Mitarbeiter pro Monat erhält. 0 = keine Begrenzung. Dient dem Gesundheitsschutz.", en: "Maximum night shifts per employee per month. 0 = no limit. Serves health protection." },
+  "shiftAdmin.rotMaxWeekendsMonth": { de: "Max. Wochenenden pro Monat", en: "Max. weekends per month" },
+  "shiftAdmin.helpRotMaxWeekendsMonth": { de: "Maximale Anzahl an Wochenenden (Sa/So), an denen ein Mitarbeiter arbeiten darf. 0 = keine Begrenzung. Ein Wochenende zählt, sobald Sa oder So belegt ist.", en: "Maximum weekends (Sat/Sun) an employee may work. 0 = no limit. A weekend counts if Saturday or Sunday is occupied." },
+  "shiftAdmin.rotFreeDaysAfterNight": { de: "Freie Tage nach Nachtschicht", en: "Free days after night shift" },
+  "shiftAdmin.helpRotFreeDaysAfterNight": { de: "Anzahl freier Tage, die nach einer Nachtschicht automatisch eingeplant werden. Üblich sind 1-2 Tage für Erholung.", en: "Free days automatically scheduled after a night shift. 1-2 days for recovery is common." },
+  "shiftAdmin.rotFreeDaysAfterWeekend": { de: "Freie Tage nach Wochenende", en: "Free days after weekend" },
+  "shiftAdmin.helpRotFreeDaysAfterWeekend": { de: "Anzahl freier Tage nach einem Wochenenddienst. Sorgt dafür, dass Wochenendarbeit durch Freizeit kompensiert wird.", en: "Free days after weekend duty. Ensures weekend work is compensated with time off." },
+  "shiftAdmin.rotNightToEarlyForbidden": { de: "Nacht → Früh verboten", en: "Night → Early forbidden" },
+  "shiftAdmin.helpRotNightToEarlyForbidden": { de: "Verhindert, dass direkt nach einer Nachtschicht eine Frühschicht folgt. Ohne diese Regel wäre die Ruhezeit zu kurz.", en: "Prevents an early shift directly after a night shift. Without this rule, rest time would be too short." },
+  "shiftAdmin.rotLateToEarlyForbidden": { de: "Spät → Früh verboten", en: "Late → Early forbidden" },
+  "shiftAdmin.helpRotLateToEarlyForbidden": { de: "Verhindert, dass direkt nach einer Spätschicht eine Frühschicht folgt. Schützt die gesetzliche Ruhezeit von 11 Stunden.", en: "Prevents an early shift directly after a late shift. Protects the legally required 11-hour rest period." },
+  "shiftAdmin.rotSave": { de: "Rotationsregeln speichern", en: "Save rotation rules" },
+  "shiftAdmin.rotSaving": { de: "Speichert…", en: "Saving…" },
+  "shiftAdmin.overtimeTitle": { de: "Überstundenbegrenzung", en: "Overtime limits" },
+  "shiftAdmin.overtimeMax": { de: "Max. Überstunden pro Monat", en: "Max. overtime hours per month" },
+  "shiftAdmin.helpOvertimeMax": { de: "Maximale Überstunden in Stunden pro Monat und Mitarbeiter. 0 = keine Begrenzung (undefiniert). Die Überstunden werden gegen die monatliche Sollzeit geprüft.", en: "Maximum overtime hours per month per employee. 0 = no limit (undefined). Overtime is checked against the monthly target hours." },
+  "shiftAdmin.overtimeMode": { de: "Überstunden-Modus", en: "Overtime enforcement mode" },
+  "shiftAdmin.helpOvertimeMode": { de: "Bestimmt, wie die Engine mit Überstunden umgeht. 'Nur anzeigen' markiert Überschreitungen visuell. 'Warnen' zeigt zusätzlich Hinweise im Problem-Panel. 'Hart begrenzen' verhindert Planungen, die das Limit überschreiten.", en: "Determines how the engine handles overtime. 'Show only' marks violations visually. 'Warn' also shows hints in the issue panel. 'Hard limit' prevents plans exceeding the limit." },
+  "shiftAdmin.overtimeModeShow": { de: "Nur anzeigen", en: "Show only" },
+  "shiftAdmin.overtimeModeWarn": { de: "Warnen", en: "Warn" },
+  "shiftAdmin.overtimeModeHard": { de: "Hart begrenzen", en: "Hard limit" },
+  "shiftAdmin.overtimeHint": { de: "0 = keine Begrenzung", en: "0 = no limit" },
+
+  /* ── ShiftAdmin: Fairness ── */
+  "shiftAdmin.sectionFairness": { de: "Fairness & Belastungsausgleich", en: "Fairness & workload balance" },
+  "shiftAdmin.helpSectionFairness": { de: "Fairnessregeln sorgen dafür, dass unbeliebte Schichten (Nacht, Wochenende) und die Gesamtbelastung gleichmäßig verteilt werden. Die Engine optimiert innerhalb der erlaubten Abweichung.", en: "Fairness rules ensure that unpopular shifts (night, weekend) and total workload are evenly distributed. The engine optimizes within the allowed deviation." },
+  "shiftAdmin.fairBalanceNights": { de: "Nachtschichten ausgleichen", en: "Balance night shifts" },
+  "shiftAdmin.helpFairBalanceNights": { de: "Verteilt Nachtschichten über den Monat gleichmäßig auf alle Mitarbeiter. Verhindert, dass einzelne Personen überproportional viele Nächte arbeiten.", en: "Distributes night shifts evenly across all employees over the month. Prevents individuals from working disproportionately many nights." },
+  "shiftAdmin.fairBalanceWeekends": { de: "Wochenenden ausgleichen", en: "Balance weekends" },
+  "shiftAdmin.helpFairBalanceWeekends": { de: "Verteilt Wochenendschichten gleichmäßig. Wenn aktiviert, bekommt kein Mitarbeiter deutlich mehr Wochenenddienste als andere.", en: "Distributes weekend shifts evenly. When active, no employee gets significantly more weekend duties than others." },
+  "shiftAdmin.fairBalanceLoad": { de: "Gesamtbelastung ausgleichen", en: "Balance total workload" },
+  "shiftAdmin.helpFairBalanceLoad": { de: "Gleicht die gesamte Stundenbelastung zwischen Mitarbeitern aus. Berücksichtigt alle Schichttypen und sorgt für faire Arbeitszeitverteilung.", en: "Balances total hour workload between employees. Considers all shift types and ensures fair working time distribution." },
+  "shiftAdmin.fairMaxDeviation": { de: "Max. Abweichung (%)", en: "Max. deviation (%)" },
+  "shiftAdmin.helpFairMaxDeviation": { de: "Maximale Abweichung in Prozent vom Durchschnitt. Beispiel: 15% bedeutet, kein Mitarbeiter darf mehr als 15% über oder unter dem Teamschnitt liegen.", en: "Maximum percentage deviation from the average. Example: 15% means no employee may be more than 15% above or below the team average." },
+  "shiftAdmin.fairPriority": { de: "Priorität", en: "Priority" },
+  "shiftAdmin.helpFairPriority": { de: "Bestimmt, ob bei Konflikten Fairness oder Mitarbeiterpräferenzen Vorrang haben. 'Ausgewogen' versucht beides zu berücksichtigen.", en: "Determines whether fairness or employee preferences take precedence in conflicts. 'Balanced' tries to consider both." },
+  "shiftAdmin.fairOptFairness": { de: "Fairness priorisieren", en: "Prioritize fairness" },
+  "shiftAdmin.fairOptPreference": { de: "Präferenzen priorisieren", en: "Prioritize preferences" },
+  "shiftAdmin.fairOptBalanced": { de: "Ausgewogen", en: "Balanced" },
+  "shiftAdmin.fairSave": { de: "Fairnessregeln speichern", en: "Save fairness rules" },
+  "shiftAdmin.fairSaving": { de: "Speichert…", en: "Saving…" },
+
+  /* ── ShiftAdmin: Planning config ── */
+  "shiftAdmin.sectionPlanning": { de: "Planungsgewichtung", en: "Planning weights" },
+  "shiftAdmin.helpSectionPlanning": { de: "Steuert, wie die Engine bei der automatischen Planung Regeln, Wünsche und Fairness gegeneinander abwägt. Höhere Prozentwerte bedeuten stärkeren Einfluss.", en: "Controls how the engine weighs rules, wishes and fairness during automatic planning. Higher percentages mean stronger influence." },
+  "shiftAdmin.planRespectWishes": { de: "Mitarbeiterwünsche berücksichtigen", en: "Respect employee wishes" },
+  "shiftAdmin.helpPlanRespectWishes": { de: "Wenn aktiv, fließen individuelle Schichtwünsche der Mitarbeiter in die Planung ein. Wenn deaktiviert, plant die Engine rein nach Regeln und Fairness.", en: "When active, individual shift wishes are included in planning. When disabled, the engine plans purely by rules and fairness." },
+  "shiftAdmin.planTargetHours": { de: "Monatliche Sollzeit (Std.)", en: "Monthly target hours" },
+  "shiftAdmin.helpPlanTargetHours": { de: "Ziel-Arbeitsstunden pro Monat und Mitarbeiter. Die Engine versucht, jeden Mitarbeiter nahe an diesen Wert zu planen. 0 = kein festes Ziel.", en: "Target work hours per month per employee. The engine tries to plan each employee close to this value. 0 = no fixed target." },
+  "shiftAdmin.planHardRules": { de: "Harte Regeln (%)", en: "Hard rules (%)" },
+  "shiftAdmin.helpPlanHardRules": { de: "Gewichtung der harten Regeln (Rotation, Ruhezeiten, Maximalwerte). 100% = Regeln werden nie verletzt, auch wenn die Planung dadurch Lücken hat.", en: "Weight of hard rules (rotation, rest times, limits). 100% = rules are never violated, even if it causes planning gaps." },
+  "shiftAdmin.planSoftWishes": { de: "Wünsche (%)", en: "Wishes (%)" },
+  "shiftAdmin.planFairness": { de: "Fairness (%)", en: "Fairness (%)" },
+  "shiftAdmin.planAdminOverride": { de: "Admin-Vorgaben Gewichtung", en: "Admin override weight" },
+  "shiftAdmin.planSave": { de: "Planungskonfiguration speichern", en: "Save planning config" },
+  "shiftAdmin.planSaving": { de: "Speichert…", en: "Saving…" },
+
+  /* ── ShiftAdmin: Issues / control ── */
+  "shiftAdmin.sectionIssues": { de: "Problemerkennung und Leitstand", en: "Issue detection & control panel" },
+  "shiftAdmin.sectionIssuesInfo": { de: "Diese Einstellungen steuern die Problem- und Lösungsansicht im Schichtplan. Bestehende Mindestbesetzungsregeln bleiben die fachliche Grundlage, die Oberfläche priorisiert nur ihre Darstellung.", en: "These settings control the issue and solution view in the shift plan. Existing minimum staffing rules remain the technical basis; the interface only prioritizes their display." },
+  "shiftAdmin.helpSectionIssues": { de: "Das Problem-Panel zeigt Besetzungslücken, Regelverletzungen und andere Planungsprobleme direkt im Schichtplan an. Lösungsvorschläge helfen bei der schnellen Behebung.", en: "The issue panel shows staffing gaps, rule violations and other planning problems directly in the shift plan. Solution suggestions help with quick resolution." },
+  "shiftAdmin.issuePanel": { de: "Problem-Panel im Schichtplan aktivieren", en: "Enable issue panel in shift plan" },
+  "shiftAdmin.issueAutoRefresh": { de: "Hinweise nach Berechnung automatisch aktualisieren", en: "Auto-refresh issues after calculation" },
+  "shiftAdmin.issueShowSolutions": { de: "Lösungsvorschläge im Panel anzeigen", en: "Show solution suggestions in panel" },
+  "shiftAdmin.issuePriorityMode": { de: "Priorisierungsmodus", en: "Priority mode" },
+  "shiftAdmin.issueModeStaffing": { de: "Besetzung zuerst", en: "Staffing first" },
+  "shiftAdmin.issueModeBalanced": { de: "Ausgewogen", en: "Balanced" },
+  "shiftAdmin.issueModeFairness": { de: "Fairness zuerst", en: "Fairness first" },
+
+  /* ── ShiftAdmin: Illness / replacement ── */
+  "shiftAdmin.sectionIllness": { de: "Autonome Krankheits- und Ersatzplanung", en: "Autonomous illness & replacement planning" },
+  "shiftAdmin.sectionIllnessInfo": { de: "Diese Regeln schaffen die Grundlage für automatische Schichtwechsel bei Krankheit. Die eigentliche Automatik wird aktiviert, wenn der Autopilot-Lauf implementiert ist.", en: "These rules lay the groundwork for automatic shift swaps during illness. The actual automation activates when the autopilot run is implemented." },
+  "shiftAdmin.helpSectionIllness": { de: "Definiert die Rahmenbedingungen für automatische Ersatzsuche bei Krankheitsausfall. Der Autopilot prüft Quellschicht-Puffer, Ruhezeiten und Skill-Übereinstimmung.", en: "Defines the framework for automatic replacement search during illness. The autopilot checks source shift buffer, rest times and skill matching." },
+  "shiftAdmin.illnessAutoSwap": { de: "Automatische Ersatzsuche bei Krankheit vorbereiten", en: "Prepare automatic replacement for illness" },
+  "shiftAdmin.illnessSkillMatch": { de: "Skill-Match als Pflichtkriterium erzwingen", en: "Require skill match as mandatory" },
+  "shiftAdmin.illnessProtectWLB": { de: "Work-Life-Balance bei automatischen Vorschlägen schützen", en: "Protect work-life balance in automatic suggestions" },
+  "shiftAdmin.illnessBuffer": { de: "Min. Puffer in der Quellschicht", en: "Min. buffer in source shift" },
+  "shiftAdmin.helpIllnessBuffer": { de: "Mindestanzahl an Mitarbeitern, die in der Quellschicht verbleiben müssen, bevor ein Tausch erlaubt ist. Verhindert, dass durch Ersatzsuche eine andere Schicht unterbesetzt wird.", en: "Minimum employees that must remain in the source shift before a swap is allowed. Prevents understaffing another shift through replacement search." },
+  "shiftAdmin.illnessRestHours": { de: "Min. Ruhezeit in Stunden", en: "Min. rest hours" },
+
+  /* ── ShiftAdmin: Weekend ── */
+  "shiftAdmin.sectionWeekend": { de: "Wochenendplanung nach Ticketvolumen", en: "Weekend planning by ticket volume" },
+  "shiftAdmin.sectionWeekendInfo": { de: "Hier wird vorbereitet, dass Wochenendbesetzung später automatisch aus Ticketlast und Sicherheitsaufschlag abgeleitet werden kann.", en: "Prepares automatic weekend staffing derivation from ticket load and safety buffer." },
+  "shiftAdmin.helpSectionWeekend": { de: "Die Wochenendplanung kann sich dynamisch an das tatsächliche Ticketvolumen anpassen. Der Sicherheitsaufschlag stellt sicher, dass auch bei Schwankungen genug Personal vorhanden ist.", en: "Weekend planning can dynamically adapt to actual ticket volume. The safety buffer ensures enough staff even during fluctuations." },
+  "shiftAdmin.weekendVolume": { de: "Wochenendplanung auf Ticketvolumen vorbereiten", en: "Prepare weekend planning by ticket volume" },
+  "shiftAdmin.weekendBuffer": { de: "Sicherheitsaufschlag (%)", en: "Safety buffer (%)" },
+  "shiftAdmin.helpWeekendBuffer": { de: "Prozentualer Aufschlag auf das berechnete Wochenend-Ticketvolumen. Beispiel: 15% = 15% mehr Personal als das Minimum. Schützt gegen unerwartete Peaks.", en: "Percentage margin on calculated weekend ticket volume. Example: 15% = 15% more staff than minimum. Protects against unexpected peaks." },
+  "shiftAdmin.weekendMinDispatchers": { de: "Min. Dispatcher am Wochenende", en: "Min. dispatchers on weekend" },
+  "shiftAdmin.helpWeekendMinDispatchers": { de: "Absolute Mindestanzahl an Dispatchern, die unabhängig vom Ticketvolumen am Wochenende eingeplant werden. 0 = keine feste Untergrenze.", en: "Absolute minimum dispatchers scheduled on weekends regardless of ticket volume. 0 = no fixed lower bound." },
+
+  /* ── ShiftAdmin: Skills ── */
+  "shiftAdmin.sectionSkills": { de: "Skills und Kompetenzmatrix", en: "Skills & competency matrix" },
+  "shiftAdmin.sectionSkillsInfo": { de: "Hier kann eine detaillierte Skill-Matrix pro Mitarbeiter gepflegt werden. Die Matrix ist optional aktivierbar und startet getrennt von den bestehenden Coverage-Merkmalen.", en: "Maintain a detailed skill matrix per employee here. The matrix can be optionally activated and starts separately from existing coverage attributes." },
+  "shiftAdmin.helpSectionSkills": { de: "Die Skill-Matrix bewertet Mitarbeiter von 1-5 in verschiedenen Kompetenzbereichen. Wenn aktiviert, nutzt die Engine diese Bewertungen bei der Schichtzuteilung für optimale Besetzung.", en: "The skill matrix rates employees 1-5 in various competency areas. When active, the engine uses these ratings for optimal staffing during shift allocation." },
+  "shiftAdmin.skillsEnabled": { de: "Skill-Matrix aktivieren", en: "Enable skill matrix" },
+  "shiftAdmin.helpSkillsEnabled": { de: "Wenn aktiv, wird die Skill-Matrix in der Schichtplanung als Bewertungskriterium verwendet. Im deaktivierten Zustand bleibt sie reine Stammdatenpflege ohne Einfluss auf die Planung.", en: "When active, the skill matrix is used as an evaluation criterion in shift planning. When disabled, it remains pure master data maintenance without planning influence." },
+  "shiftAdmin.skillsEmployeeCount": { de: "Mitarbeiter", en: "Employees" },
+  "shiftAdmin.skillsCatalogCount": { de: "Skills im Katalog", en: "Skills in catalog" },
+  "shiftAdmin.skillsActive": { de: "Die Skill-Matrix ist aktiv. Bewertete Skills fließen in die automatische Schichtplanung ein.", en: "The skill matrix is active. Rated skills are included in automatic shift planning." },
+  "shiftAdmin.skillsInactive": { de: "Die Skill-Matrix ist derzeit nur gepflegt, aber nicht aktiv. Skills beeinflussen die Planung nicht.", en: "The skill matrix is maintained but not active. Skills do not affect planning." },
+  "shiftAdmin.skillCatalog": { de: "Skill-Katalog", en: "Skill catalog" },
+  "shiftAdmin.helpSkillCatalog": { de: "Lege hier die Skill-Namen fest, die im Team bewertet werden sollen. Sterne bedeuten 1 bis 5 Kompetenzstufen. Ein erneuter Klick auf denselben Stern entfernt die Bewertung.", en: "Define skill names to be rated in the team. Stars mean 1 to 5 competency levels. Clicking the same star again removes the rating." },
+  "shiftAdmin.skillAddPlaceholder": { de: "Neuen Skill hinzufügen…", en: "Add new skill…" },
+  "shiftAdmin.skillAdd": { de: "Skill hinzufügen", en: "Add skill" },
+  "shiftAdmin.skillRateInfo": { de: "Bewerte die vorhandenen Skills mit 1 bis 5 Sternen. 0 = noch nicht bewertet.", en: "Rate existing skills with 1 to 5 stars. 0 = not yet rated." },
+  "shiftAdmin.skillRatedCount": { de: "Bewertete Skills", en: "Rated skills" },
+  "shiftAdmin.skillSave": { de: "Skill-Matrix speichern", en: "Save skill matrix" },
+  "shiftAdmin.skillSaving": { de: "Speichert…", en: "Saving…" },
+
+  /* ── ShiftAdmin: Exclusions ── */
+  "shiftAdmin.sectionExclusions": { de: "Mitarbeiter-Ausschlüsse", en: "Employee exclusions" },
+  "shiftAdmin.helpSectionExclusions": { de: "Ausgeschlossene Mitarbeiter werden nicht in automatisch generierte Schichtplan-Entwürfe aufgenommen. Der Ausschluss kann jederzeit aufgehoben werden.", en: "Excluded employees are not included in automatically generated shift plan drafts. The exclusion can be lifted at any time." },
+  "shiftAdmin.exclSelectEmployee": { de: "Mitarbeiter auswählen…", en: "Select employee…" },
+  "shiftAdmin.exclExclude": { de: "Ausschließen", en: "Exclude" },
+  "shiftAdmin.exclEmpty": { de: "Keine Mitarbeiter ausgeschlossen.", en: "No employees excluded." },
+  "shiftAdmin.exclCreatedBy": { de: "Angelegt von", en: "Created by" },
+  "shiftAdmin.exclRestore": { de: "Zurück in Planung", en: "Restore to planning" },
+
+  /* ── ShiftAdmin: Shared / toasts ── */
+  "shiftAdmin.advancedSave": { de: "Leitstand & Autopilot speichern", en: "Save control & autopilot" },
+  "shiftAdmin.advancedSaving": { de: "Speichert…", en: "Saving…" },
+  "shiftAdmin.toastDefSaved": { de: "Schichtdefinition gespeichert", en: "Shift definition saved" },
+  "shiftAdmin.toastRotationSaved": { de: "Rotationsregeln gespeichert", en: "Rotation rules saved" },
+  "shiftAdmin.toastFairnessSaved": { de: "Fairnessregeln gespeichert", en: "Fairness rules saved" },
+  "shiftAdmin.toastPlanSaved": { de: "Planungskonfiguration gespeichert", en: "Planning configuration saved" },
+  "shiftAdmin.toastAdvancedSaved": { de: "Leitstand-Einstellungen gespeichert", en: "Control settings saved" },
+  "shiftAdmin.toastDbsPoolSaved": { de: "DBS-Pool gespeichert", en: "DBS pool saved" },
+  "shiftAdmin.toastDbsConfigSaved": { de: "DBS-Konfiguration gespeichert", en: "DBS configuration saved" },
+  "shiftAdmin.toastExclAdded": { de: "Mitarbeiter von Schichtplanung ausgeschlossen", en: "Employee excluded from shift planning" },
+  "shiftAdmin.toastExclRemoved": { de: "Ausschluss aufgehoben", en: "Exclusion removed" },
+  "shiftAdmin.toastSkillSaved": { de: "Skill-Matrix gespeichert", en: "Skill matrix saved" },
+  "shiftAdmin.toastSkillExists": { de: "Skill existiert bereits", en: "Skill already exists" },
+  "shiftAdmin.error": { de: "Fehler", en: "Error" },
+
   /* ── Shiftplan ── */
   "shiftplan.title": { de: "SCHICHTPLAN", en: "SHIFT PLAN" },
   "shiftplan.shiftEarly": { de: "Früh", en: "Early" },
@@ -1685,6 +2111,16 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "admin.noFeedback": { de: "Es liegen aktuell keine gespeicherten Feedbacks vor.", en: "There is currently no stored feedback." },
   "admin.from": { de: "Von", en: "From" },
   "admin.unknown": { de: "Unbekannt", en: "Unknown" },
+  "admin.feedbackOpen": { de: "Offen", en: "Open" },
+  "admin.feedbackInProgress": { de: "In Bearbeitung", en: "In progress" },
+  "admin.feedbackDone": { de: "Erledigt", en: "Done" },
+  "admin.feedbackSetStatus": { de: "Status ändern", en: "Change status" },
+  "admin.feedbackDelete": { de: "Löschen", en: "Delete" },
+  "admin.feedbackDeleteConfirm": { de: "Soll dieser Feedback-Eintrag endgültig gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden.", en: "Do you want to permanently delete this feedback entry? This action cannot be undone." },
+  "admin.feedbackDeleteTitle": { de: "Feedback löschen", en: "Delete feedback" },
+  "admin.feedbackDeleted": { de: "Feedback gelöscht", en: "Feedback deleted" },
+  "admin.feedbackStatusUpdated": { de: "Status aktualisiert", en: "Status updated" },
+  "admin.feedbackCancel": { de: "Abbrechen", en: "Cancel" },
   "admin.allAreas": { de: "Alle Bereiche", en: "All areas" },
   "admin.appSettings": { de: "App-Einstellungen", en: "App settings" },
   "admin.timestamp": { de: "Zeitpunkt", en: "Timestamp" },

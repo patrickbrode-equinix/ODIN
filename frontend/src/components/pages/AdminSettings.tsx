@@ -34,7 +34,7 @@ import {
   Tv, Settings, Zap, MessageSquare, Shield, Clock, Save,
   ToggleLeft, ToggleRight, Loader2,
   History, GripVertical, Brain, Trash2, CalendarClock,
-  Scale, Shuffle, BarChart3,
+  Scale, Shuffle, BarChart3, CheckCircle2, CircleDot,
 } from "lucide-react";
 
 type TabId = "shiftplan" | "teams" | "tv" | "thresholds" | "toggles" | "feedback" | "odin" | "maintenance" | "audit";
@@ -168,6 +168,7 @@ type FeedbackEntry = {
   senderName: string | null;
   senderEmail: string | null;
   screenshotName: string | null;
+  status: 'open' | 'in_progress' | 'done';
   createdAt: string;
 };
 
@@ -866,6 +867,7 @@ function FeedbackTab() {
   const [entries, setEntries] = useState<FeedbackEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -883,15 +885,60 @@ function FeedbackTab() {
     setLoading(false);
   }, []);
 
+  const reloadEntries = useCallback(async () => {
+    try {
+      const entriesRes = await api.get<FeedbackEntry[]>("/feedback/entries", { params: { limit: 100 } });
+      setEntries(Array.isArray(entriesRes.data) ? entriesRes.data : []);
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
   const save = async () => {
     setSaving(true);
-    try { await api.put("/app-settings", settings); } catch (err) { console.error(err); }
+    try {
+      await api.put("/app-settings", settings);
+      toast.success(isGerman ? "Einstellungen gespeichert" : "Settings saved");
+    } catch (err) {
+      console.error(err);
+      toast.error(isGerman ? "Fehler beim Speichern" : "Error saving");
+    }
     setSaving(false);
   };
 
+  const updateStatus = async (id: number, status: FeedbackEntry['status']) => {
+    setUpdatingId(id);
+    try {
+      const { data } = await api.patch<FeedbackEntry>(`/feedback/entries/${id}/status`, { status });
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
+      toast.success(t('admin.feedbackStatusUpdated'));
+    } catch (err) {
+      console.error(err);
+      toast.error(isGerman ? "Fehler beim Status-Update" : "Error updating status");
+    }
+    setUpdatingId(null);
+  };
+
+  const deleteEntry = async (id: number) => {
+    setUpdatingId(id);
+    try {
+      await api.delete(`/feedback/entries/${id}`);
+      setEntries(prev => prev.filter(e => e.id !== id));
+      toast.success(t('admin.feedbackDeleted'));
+    } catch (err) {
+      console.error(err);
+      toast.error(isGerman ? "Fehler beim Löschen" : "Error deleting");
+    }
+    setUpdatingId(null);
+  };
+
   if (loading) return <LoadingSpinner />;
+
+  const statusConfig: Record<FeedbackEntry['status'], { label: string; icon: typeof Clock; colorClass: string }> = {
+    open: { label: t('admin.feedbackOpen'), icon: Clock, colorClass: 'bg-slate-500/15 text-slate-300' },
+    in_progress: { label: t('admin.feedbackInProgress'), icon: CircleDot, colorClass: 'bg-amber-500/15 text-amber-300' },
+    done: { label: t('admin.feedbackDone'), icon: CheckCircle2, colorClass: 'bg-emerald-500/15 text-emerald-300' },
+  };
 
   const fields: { key: string; label: string; type: "text" | "toggle" | "number"; help: ReactNode }[] = [
     { key: "feedback.enabled", label: t('admin.feedbackEnabled'), type: "toggle", help: FEEDBACK_HELP["feedback.enabled"][isGerman ? "de" : "en"] },
@@ -950,31 +997,103 @@ function FeedbackTab() {
           </div>
         ) : (
           <div className="space-y-3">
-            {entries.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${entry.type === "Bug" ? "bg-red-500/15 text-red-300" : "bg-blue-500/15 text-blue-300"}`}>
-                        {entry.type}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-100">{entry.title}</span>
+            {entries.map((entry) => {
+              const status = statusConfig[entry.status] || statusConfig.open;
+              const StatusIcon = status.icon;
+              const isUpdating = updatingId === entry.id;
+
+              return (
+                <div key={entry.id} className={`rounded-2xl border bg-white/[0.03] p-4 transition ${entry.status === 'done' ? 'border-emerald-500/20 opacity-70' : 'border-white/10'}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${entry.type === "Bug" ? "bg-red-500/15 text-red-300" : "bg-blue-500/15 text-blue-300"}`}>
+                          {entry.type}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${status.colorClass}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {status.label}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-100">{entry.title}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        {t('admin.from')} {entry.senderName || entry.senderEmail || t('admin.unknown')} {t('admin.on')} {new Date(entry.createdAt).toLocaleString(isGerman ? "de-DE" : "en-GB")}
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      {t('admin.from')} {entry.senderName || entry.senderEmail || t('admin.unknown')} {t('admin.on')} {new Date(entry.createdAt).toLocaleString(isGerman ? "de-DE" : "en-GB")}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {entry.screenshotName ? (
+                        <span className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300">
+                          Screenshot: {entry.screenshotName}
+                        </span>
+                      ) : null}
+                      {/* Status buttons */}
+                      {entry.status !== 'in_progress' ? (
+                        <button
+                          onClick={() => updateStatus(entry.id, 'in_progress')}
+                          disabled={isUpdating}
+                          className="inline-flex items-center gap-1 rounded-lg border border-amber-400/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
+                          title={t('admin.feedbackInProgress')}
+                        >
+                          <CircleDot className="w-3 h-3" />
+                          {t('admin.feedbackInProgress')}
+                        </button>
+                      ) : null}
+                      {entry.status !== 'done' ? (
+                        <button
+                          onClick={() => updateStatus(entry.id, 'done')}
+                          disabled={isUpdating}
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                          title={t('admin.feedbackDone')}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          {t('admin.feedbackDone')}
+                        </button>
+                      ) : null}
+                      {entry.status === 'done' ? (
+                        <button
+                          onClick={() => updateStatus(entry.id, 'open')}
+                          disabled={isUpdating}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-400/25 bg-slate-500/10 px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-slate-500/20 disabled:opacity-50"
+                          title={t('admin.feedbackOpen')}
+                        >
+                          <Clock className="w-3 h-3" />
+                          {t('admin.feedbackOpen')}
+                        </button>
+                      ) : null}
+                      {/* Delete button with confirmation */}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button
+                            disabled={isUpdating}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-400/25 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                            title={t('admin.feedbackDelete')}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>{t('admin.feedbackDeleteTitle')}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {t('admin.feedbackDeleteConfirm')}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>{t('admin.feedbackCancel')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => deleteEntry(entry.id)} className="bg-red-600 hover:bg-red-700">
+                              {t('admin.feedbackDelete')}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
-                  {entry.screenshotName ? (
-                    <span className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300">
-                      {isGerman ? "Screenshot" : "Screenshot"}: {entry.screenshotName}
-                    </span>
-                  ) : null}
+                  <div className="mt-3 whitespace-pre-wrap text-sm text-slate-300">
+                    {entry.description}
+                  </div>
                 </div>
-                <div className="mt-3 whitespace-pre-wrap text-sm text-slate-300">
-                  {entry.description}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </EnterpriseCard>
