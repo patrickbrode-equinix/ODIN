@@ -72,6 +72,7 @@ export async function persistTicketDecision(runId, decisionLog) {
     normalizedTicket: decisionLog.normalizedTicket,
     rawTicket: decisionLog.rawTicket,
     errorMessage: decisionLog.errorMessage,
+    decisionTrace: decisionLog.decisionTrace,
   });
 }
 

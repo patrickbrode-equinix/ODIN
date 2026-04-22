@@ -1026,7 +1026,7 @@ export default function Shiftplan() {
               <Button
                 variant={showHolidayOverlay ? "default" : "secondary"}
                 size="sm"
-                className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showHolidayOverlay ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
+                className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showHolidayOverlay ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
                 onClick={() => setShowHolidayOverlay(v => !v)}
                 onContextMenu={(e) => { e.preventDefault(); setHolidayListOpen(true); }}
                 title={t("shiftplan.holidayTooltip")}
@@ -1035,12 +1035,12 @@ export default function Shiftplan() {
               </Button>
             </div>
 
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="theme-divider mx-1 h-5 w-px" />
 
             <Button
               variant={warningsVisible ? "default" : "secondary"}
               size="sm"
-              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${warningsVisible ? 'bg-red-500/80 hover:bg-red-500 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
+              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${warningsVisible ? 'bg-red-500/80 hover:bg-red-500 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
               onClick={() => setWarningsVisible(!warningsVisible)}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1054,7 +1054,7 @@ export default function Shiftplan() {
             <Button
               variant={wellbeingVisible ? "default" : "secondary"}
               size="sm"
-              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${wellbeingVisible ? 'bg-blue-500/80 hover:bg-blue-500 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-blue-400 border border-blue-500/30 auto shadow-sm'}`}
+              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${wellbeingVisible ? 'bg-blue-500/80 hover:bg-blue-500 text-white border-transparent' : 'theme-toolbar-button border border-blue-500/30 bg-background/85 text-blue-700 shadow-sm hover:bg-blue-500/10 dark:text-blue-300'}`}
               onClick={() => setWellbeingVisible(!wellbeingVisible)}
             >
               {t("shiftplan.wellbeing")}
@@ -1063,7 +1063,7 @@ export default function Shiftplan() {
             <Button
               variant={hiddenPanelVisible ? "default" : "secondary"}
               size="sm"
-              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${hiddenPanelVisible ? 'bg-sky-600/80 hover:bg-sky-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm'}`}
+              className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${hiddenPanelVisible ? 'bg-sky-600/80 hover:bg-sky-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
               onClick={() => setHiddenPanelVisible(!hiddenPanelVisible)}
             >
               {hiddenPanelVisible ? `${t("shiftplan.hiddenOn")}: ${hiddenEmployees.size}` : `${t("shiftplan.hidden")} (${hiddenEmployees.size})`}
@@ -1071,7 +1071,7 @@ export default function Shiftplan() {
 
             {canEdit && (
               <>
-                <div className="w-px h-5 bg-white/10 mx-1" />
+                <div className="theme-divider mx-1 h-5 w-px" />
                 <Button
                   size="sm"
                   className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-green-600/80 hover:bg-green-600 text-white disabled:opacity-50"
@@ -1083,7 +1083,7 @@ export default function Shiftplan() {
               </>
             )}
 
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="theme-divider mx-1 h-5 w-px" />
 
             <ExportMenu
               currentYear={selectedYear}
@@ -1107,13 +1107,13 @@ export default function Shiftplan() {
       {(<>
 
       {/* MONTH NAVIGATION */}
-      <EnterpriseCard className="flex items-center justify-center relative !py-2 !px-4 bg-black/20" noPadding={false}>
-        <div className="absolute left-4 flex items-center gap-2 p-1 rounded-md bg-white/5 border border-white/10">
-          <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/10 hover:text-white text-muted-foreground" onClick={() => setSelectedYear(y => y - 1)}>
+      <EnterpriseCard className="theme-glass-panel relative flex items-center justify-center !px-4 !py-2" noPadding={false}>
+        <div className="theme-glass-inset absolute left-4 flex items-center gap-2 rounded-md border p-1">
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => setSelectedYear(y => y - 1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-sm font-bold min-w-[3rem] text-center text-white">{selectedYear}</span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/10 hover:text-white text-muted-foreground" onClick={() => setSelectedYear(y => y + 1)}>
+          <span className="min-w-[3rem] text-center text-sm font-bold text-foreground">{selectedYear}</span>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => setSelectedYear(y => y + 1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -1140,7 +1140,7 @@ export default function Shiftplan() {
                     ? "bg-indigo-600/90 text-white shadow-sm border-indigo-500"
                     : hasData
                       ? "text-emerald-400/90 border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/20"
-                      : "text-muted-foreground/50 border-white/5 bg-white/5 hover:bg-white/10"
+                      : "text-muted-foreground border-border/60 bg-background/70 hover:bg-accent"
                   }
                           `}
               >
@@ -1288,7 +1288,7 @@ export default function Shiftplan() {
       </>)}
 
       <Dialog open={holidayListOpen} onOpenChange={setHolidayListOpen}>
-        <DialogContent className="max-w-2xl border border-indigo-500/30 bg-[#0c1428] text-white shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+        <DialogContent className="theme-modal-surface max-w-2xl border border-indigo-500/30 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
           <DialogHeader>
             <DialogTitle>{isGerman ? `Feiertage Hessen ${selectedYear}` : `Public holidays Hesse ${selectedYear}`}</DialogTitle>
           </DialogHeader>
@@ -1297,13 +1297,13 @@ export default function Shiftplan() {
               Object.entries(holidayMap)
                 .sort((a, b) => a[0].localeCompare(b[0]))
                 .map(([date, name]) => (
-                  <div key={date} className="flex items-center justify-between gap-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 text-sm">
-                    <span className="font-mono text-indigo-300">{date.slice(5).split('-').reverse().join('.')}</span>
-                    <span className="font-medium text-slate-100">{name}</span>
+                  <div key={date} className="theme-glass-inset flex items-center justify-between gap-3 rounded-xl border border-indigo-500/20 px-3 py-2 text-sm">
+                    <span className="font-mono text-indigo-700 dark:text-indigo-300">{date.slice(5).split('-').reverse().join('.')}</span>
+                    <span className="font-medium text-foreground">{name}</span>
                   </div>
                 ))
             ) : (
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-300">
+              <div className="theme-glass-inset rounded-xl border px-4 py-6 text-sm text-muted-foreground">
                 {t("shiftplan.noHolidays")}
               </div>
             )}
@@ -1312,26 +1312,26 @@ export default function Shiftplan() {
       </Dialog>
 
       <Dialog open={warningDialogOpen} onOpenChange={setWarningDialogOpen}>
-        <DialogContent className="max-w-4xl border border-red-500/30 bg-[#150d12] text-white shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+        <DialogContent className="theme-modal-surface max-w-4xl border border-red-500/30 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
           <DialogHeader>
             <DialogTitle>{isGerman ? "Warnungsdetails für " : "Warning details for "}{formatMonthLabel(selectedYear, selectedMonthIndex + 1, locale)}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-red-200/70">{t("common.total")}</div>
-              <div className="mt-2 text-2xl font-semibold text-red-100">{warningsSummary.total}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-red-700/80 dark:text-red-200/70">{t("common.total")}</div>
+              <div className="mt-2 text-2xl font-semibold text-red-700 dark:text-red-100">{warningsSummary.total}</div>
             </div>
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-blue-200/70">{shiftTypeLabels.early}</div>
-              <div className="mt-2 text-2xl font-semibold text-blue-100">{warningsSummary.early.length}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-blue-700/80 dark:text-blue-200/70">{shiftTypeLabels.early}</div>
+              <div className="mt-2 text-2xl font-semibold text-blue-700 dark:text-blue-100">{warningsSummary.early.length}</div>
             </div>
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-amber-200/70">{shiftTypeLabels.late}</div>
-              <div className="mt-2 text-2xl font-semibold text-amber-100">{warningsSummary.late.length}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-200/70">{shiftTypeLabels.late}</div>
+              <div className="mt-2 text-2xl font-semibold text-amber-700 dark:text-amber-100">{warningsSummary.late.length}</div>
             </div>
             <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-violet-200/70">{shiftTypeLabels.night}</div>
-              <div className="mt-2 text-2xl font-semibold text-violet-100">{warningsSummary.night.length}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-violet-700/80 dark:text-violet-200/70">{shiftTypeLabels.night}</div>
+              <div className="mt-2 text-2xl font-semibold text-violet-700 dark:text-violet-100">{warningsSummary.night.length}</div>
             </div>
           </div>
           <div className="max-h-[60vh] space-y-2 overflow-auto pr-1">
@@ -1339,15 +1339,15 @@ export default function Shiftplan() {
               warningsComputed.map((warning, index) => (
                 <div key={`${warning.dateKey}-${warning.kind}-${warning.label}-${index}`} className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3">
                   <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                    <div className="text-sm font-semibold text-red-100">{warning.label}</div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-red-200/70">{formatShiftTypeLabel(warning.kind, shiftTypeLabels)}</div>
+                    <div className="text-sm font-semibold text-red-700 dark:text-red-100">{warning.label}</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-red-700/80 dark:text-red-200/70">{formatShiftTypeLabel(warning.kind, shiftTypeLabels)}</div>
                   </div>
-                  <div className="mt-2 text-sm text-slate-200">{warning.dateKey}</div>
-                  <div className="mt-1 text-xs text-slate-400">{isGerman ? "Ist" : "Actual"}: {warning.actual} | {isGerman ? "Soll" : "Target"}: {warning.target}</div>
+                  <div className="mt-2 text-sm text-foreground">{warning.dateKey}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{isGerman ? "Ist" : "Actual"}: {warning.actual} | {isGerman ? "Soll" : "Target"}: {warning.target}</div>
                 </div>
               ))
             ) : (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-200">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-6 text-sm text-emerald-700 dark:text-emerald-200">
                 {isGerman
                   ? "Für den aktuellen Monat wurden keine Unterbesetzungen erkannt."
                   : "No understaffing gaps were detected for the current month."}
@@ -1358,8 +1358,8 @@ export default function Shiftplan() {
             <div className="space-y-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-slate-100">{isGerman ? "Problem- und Lösungsansicht" : "Issue and resolution view"}</div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-sm font-semibold text-foreground">{isGerman ? "Problem- und Lösungsansicht" : "Issue and resolution view"}</div>
+                  <div className="text-xs text-muted-foreground">
                     {issueInsights.length > 0
                       ? isGerman
                         ? `${issueCounts.total} Hinweise erkannt, davon ${issueCounts.high} kritisch priorisiert.`
@@ -1369,26 +1369,26 @@ export default function Shiftplan() {
                         : "No further issues were detected in the loaded validation data."}
                   </div>
                 </div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{isGerman ? "Priorisierung" : "Priority"}: {formatIssuePriorityMode(issuePriorityMode, isGerman)}</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{isGerman ? "Priorisierung" : "Priority"}: {formatIssuePriorityMode(issuePriorityMode, isGerman)}</div>
               </div>
 
               <div className="max-h-[34vh] space-y-2 overflow-auto pr-1">
                 {issueInsights.length > 0 ? (
                   issueInsights.map((issue) => (
-                    <div key={issue.id} className={`rounded-2xl border px-4 py-3 ${issue.severity === 'high' ? 'border-red-400/20 bg-red-500/10' : 'border-amber-400/20 bg-slate-950/40'}`}>
+                    <div key={issue.id} className={`rounded-2xl border px-4 py-3 ${issue.severity === 'high' ? 'border-red-400/20 bg-red-500/10' : 'border-amber-400/20 bg-amber-500/10'}`}>
                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                        <div className="text-sm font-semibold text-slate-100">{issue.title}</div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${issue.severity === 'high' ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
+                        <div className="text-sm font-semibold text-foreground">{issue.title}</div>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${issue.severity === 'high' ? 'bg-red-500/20 text-red-700 dark:text-red-200' : 'bg-amber-500/20 text-amber-700 dark:text-amber-200'}`}>
                           {issue.severity === 'high' ? (isGerman ? 'Kritisch' : 'Critical') : (isGerman ? 'Hinweis' : 'Notice')}
                         </span>
                       </div>
-                      <div className="mt-2 text-sm text-slate-200">{issue.detected}</div>
-                      {issueShowSolutions ? <div className="mt-2 text-sm text-slate-300"><span className="font-semibold text-sky-200">{isGerman ? 'Lösung' : 'Solution'}:</span> {issue.solution}</div> : null}
-                      <div className="mt-2 text-xs text-slate-400">{isGerman ? 'Quelle' : 'Source'}: {formatIssueSource(issue.source, isGerman)} | {issue.meta}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{issue.detected}</div>
+                      {issueShowSolutions ? <div className="mt-2 text-sm text-muted-foreground"><span className="font-semibold text-sky-700 dark:text-sky-200">{isGerman ? 'Lösung' : 'Solution'}:</span> {issue.solution}</div> : null}
+                      <div className="mt-2 text-xs text-muted-foreground">{isGerman ? 'Quelle' : 'Source'}: {formatIssueSource(issue.source, isGerman)} | {issue.meta}</div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-200">
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-700 dark:text-emerald-200">
                     {isGerman
                       ? "Die kombinierte Warnungsanalyse meldet für diesen Monat aktuell keine akuten Probleme."
                       : "The combined warning analysis currently reports no acute issues for this month."}

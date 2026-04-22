@@ -348,6 +348,11 @@ async function start() {
     import("./services/verificationScheduler.js")
       .then(({ startVerificationScheduler }) => startVerificationScheduler())
       .catch((err) => console.warn("[SERVER] Verification scheduler not started:", err?.message));
+
+    // Start assignment scheduler (polls assignment.enabled and runs the engine automatically)
+    import("./services/assignmentScheduler.js")
+      .then(({ startAssignmentScheduler }) => startAssignmentScheduler())
+      .catch((err) => console.warn("[SERVER] Assignment scheduler not started:", err?.message));
   });
 
   // 4. Error Handling (EADDRINUSE)

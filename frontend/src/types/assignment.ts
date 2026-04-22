@@ -21,9 +21,12 @@ export interface AssignmentSettings {
   'assignment.enableRotationTieBreaker': string;
   'assignment.fallbackTieBreaker': string;
   'assignment.planningWindowHours': string;
+  'assignment.currentShiftOnly': string;
   'assignment.maxTicketsPerRun': string;
   'assignment.stopOnCriticalError': string;
   'assignment.supportedTicketTypes': string;
+  'assignment.crawlerMaxAgeMinutes': string;
+  'assignment.enableLiveMode': string;
   'assignment.enabled': string;
   'assignment.insufficientResources': string;
   [key: string]: string;
@@ -69,10 +72,14 @@ export interface CandidateRef {
   role?: string | null;
   weekplanRole?: string | null;
   shiftCode?: string | null;
+  shiftPlanningDate?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
   shiftActive?: boolean;
   planningSource?: string | null;
   userMapped?: boolean;
   plannedEmployeeName?: string | null;
+  currentLoad?: number | null;
 }
 
 export interface ExcludedCandidate {
@@ -83,6 +90,9 @@ export interface ExcludedCandidate {
   role?: string | null;
   weekplanRole?: string | null;
   shiftCode?: string | null;
+  shiftPlanningDate?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
   shiftActive?: boolean;
   planningSource?: string | null;
   userMapped?: boolean;
@@ -99,6 +109,103 @@ export interface DecisionTraceStep {
   label: string;
   status: 'done' | 'pending' | 'skipped';
   reason: string;
+  stepOrder?: number;
+  stepType?: string;
+  inputSummary?: Record<string, unknown> | null;
+  outputSummary?: Record<string, unknown> | null;
+  timestamp?: string | null;
+}
+
+export interface DecisionTraceFactor {
+  key: string;
+  label: string;
+  value: unknown;
+  detail?: string | null;
+  emphasis?: string | null;
+}
+
+export interface DecisionComparedTicket {
+  ticketId: string | null;
+  displayTicketNumber: string | null;
+  ticketType?: string | null;
+  ticketPriority?: string | null;
+  priorityTier?: number | null;
+  rank?: number | null;
+  selectedFirstBy?: string | null;
+  factors: DecisionTraceFactor[];
+}
+
+export interface TicketSelectionTrace {
+  prioritizationRank: number | null;
+  totalEligibleTickets: number | null;
+  totalRemainingTickets: number | null;
+  priorityTier: number | null;
+  selectedNextReason: string | null;
+  prioritizationFactors: DecisionTraceFactor[];
+  comparedTickets: DecisionComparedTicket[];
+}
+
+export interface CandidateSummaryTrace {
+  initialCandidateCount: number;
+  excludedCandidateCount: number;
+  exclusionEventCount: number;
+  survivingCandidateCount: number;
+  selectedCandidateCount: number;
+}
+
+export interface CandidateRankingEntry {
+  employeeId: number | null;
+  employeeName: string | null;
+  role?: string | null;
+  weekplanRole?: string | null;
+  shiftCode?: string | null;
+  shiftPlanningDate?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  workload?: number | null;
+  groupingScore?: number | null;
+  queuePure?: boolean | null;
+  colleagueScore?: number | null;
+  selectionBlocked: boolean;
+  blockingReason?: string | null;
+  rankingFactors: string[];
+  scoreBreakdown: Record<string, unknown>;
+  finalRank: number | null;
+  selected: boolean;
+}
+
+export interface DecisionConfigSnapshot {
+  mode?: string | null;
+  currentShiftOnly?: boolean | null;
+  planningWindowHours?: number | null;
+  siteStrictness?: boolean | null;
+  responsibilityStrictness?: boolean | null;
+  enableRotationTieBreaker?: boolean | null;
+  fallbackTieBreaker?: string | null;
+  insufficientResources?: boolean | null;
+  verificationEnabled?: boolean | null;
+  pendingBlocksAssignment?: boolean | null;
+}
+
+export interface FinalDecisionTrace {
+  result: string;
+  assignedWorkerId: number | null;
+  assignedWorkerName: string | null;
+  tieBreaker?: string | null;
+  selectionReason: string | null;
+  shortReason: string | null;
+  noAssignmentReason: string | null;
+}
+
+export interface AssignmentStructuredTrace {
+  version: number;
+  generatedAt: string | null;
+  configSnapshot: DecisionConfigSnapshot;
+  ticketSelection: TicketSelectionTrace | null;
+  candidateSummary: CandidateSummaryTrace;
+  candidateRanking: CandidateRankingEntry[];
+  finalDecision: FinalDecisionTrace;
+  timeline: DecisionTraceStep[];
 }
 
 export interface AssignmentTicketContext {
@@ -139,6 +246,7 @@ export interface AssignmentDecision {
   normalized_ticket: Record<string, unknown> | null;
   raw_ticket: Record<string, unknown> | null;
   error_message: string | null;
+  decision_trace?: AssignmentStructuredTrace | null;
   decided_at: string;
   run_mode?: AssignmentMode | null;
 }
@@ -159,6 +267,12 @@ export interface TicketExplanationStructured {
   ticketSite: string | null;
   ticketContext: AssignmentTicketContext;
   decisionTrace: DecisionTraceStep[];
+  traceModel: AssignmentStructuredTrace;
+  ticketSelection: TicketSelectionTrace | null;
+  candidateSummary: CandidateSummaryTrace;
+  candidateRanking: CandidateRankingEntry[];
+  configSnapshot: DecisionConfigSnapshot;
+  finalDecision: FinalDecisionTrace;
   normalizationWarnings: string[];
   initialCandidates: CandidateRef[];
   excludedCandidates: ExcludedCandidate[];
@@ -206,6 +320,9 @@ export interface AssignmentHealth {
   phase: number;
   mode: AssignmentMode;
   enabled?: boolean;
+  schedulerRunning?: boolean;
+  schedulerBusy?: boolean;
+  schedulerIntervalSeconds?: number;
   settingsCount: number;
   lastStartedAt?: string | null;
   lastStartedBy?: string | null;

@@ -54,14 +54,14 @@ export function InfoTooltip({
       <HoverCardContent
         align={align}
         side={side}
-        className={`${width} rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-xl text-sm shadow-2xl shadow-black/40 p-4 space-y-2 z-[100]`}
+        className={`${width} theme-popover-surface rounded-xl border p-4 text-sm shadow-2xl space-y-2 z-[100]`}
       >
         {title && (
-          <div className="font-semibold text-xs text-blue-400 tracking-wide uppercase mb-1">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400">
             {title}
           </div>
         )}
-        <div className="text-xs text-zinc-300 leading-relaxed space-y-2">
+        <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
           {children}
         </div>
       </HoverCardContent>

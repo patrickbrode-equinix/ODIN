@@ -40,9 +40,9 @@ async function getFeedbackSettings() {
 async function saveFeedbackToDb(data) {
   try {
     await db.query(
-      `INSERT INTO feedback_entries (type, title, description, sender_name, sender_email, screenshot_name, email_sent, email_error)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [data.type, data.title, data.description, data.senderName, data.senderEmail, data.screenshotName, false, null]
+      `INSERT INTO feedback_entries (type, title, description, sender_name, sender_email, screenshot_name, screenshot_data, screenshot_mime, email_sent, email_error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [data.type, data.title, data.description, data.senderName, data.senderEmail, data.screenshotName, data.screenshotData || null, data.screenshotMime || null, false, null]
     );
   } catch (err) {
     console.error("[FEEDBACK] Failed to save feedback to DB:", err.message);
@@ -135,6 +135,8 @@ router.post(
         senderName,
         senderEmail,
         screenshotName: req.file?.originalname || null,
+        screenshotData: req.file?.buffer || null,
+        screenshotMime: req.file?.mimetype || null,
       });
 
       res.json({
@@ -152,6 +154,8 @@ router.post(
           senderName: req.user?.email || 'unknown',
           senderEmail: req.user?.email,
           screenshotName: req.file?.originalname || null,
+          screenshotData: req.file?.buffer || null,
+          screenshotMime: req.file?.mimetype || null,
         });
       } catch { /* ignore */ }
       res.status(500).json({
@@ -214,6 +218,35 @@ router.delete(
     } catch (err) {
       console.error("[FEEDBACK] Delete error:", err);
       res.status(500).json({ error: "Feedback konnte nicht geloescht werden." });
+    }
+  }
+);
+
+/* ------------------------------------------------ */
+/* GET /api/feedback/entries/:id/screenshot          */
+/* ------------------------------------------------ */
+
+router.get(
+  "/entries/:id/screenshot",
+  requireAuth,
+  requirePageAccess("admin_settings", "view"),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { rows } = await db.query(
+        `SELECT screenshot_data, screenshot_mime, screenshot_name FROM feedback_entries WHERE id = $1`,
+        [id]
+      );
+      if (!rows.length || !rows[0].screenshot_data) {
+        return res.status(404).json({ error: "Kein Screenshot vorhanden" });
+      }
+      const { screenshot_data, screenshot_mime, screenshot_name } = rows[0];
+      res.set("Content-Type", screenshot_mime || "image/png");
+      res.set("Content-Disposition", `inline; filename="${screenshot_name || "screenshot"}"`);
+      res.send(screenshot_data);
+    } catch (err) {
+      console.error("[FEEDBACK] Screenshot serve error:", err);
+      res.status(500).json({ error: "Screenshot konnte nicht geladen werden." });
     }
   }
 );

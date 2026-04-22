@@ -10,6 +10,7 @@ const OES_DEBUG = true;
 let OES_IS_RUNNING = false;
 let OES_CONTINUOUS_MODE = false;
 let OES_NEXT_RUN_TIMER = null;
+let OES_SESSION_SUCCESS_COUNT = 0;
 
 // Canonical queue identifiers (must match options.js ALL_QUEUE_IDS)
 const ALL_QUEUE_IDS = ["smartHands", "troubleTickets", "ccInstalls", "deinstalls"];
@@ -177,6 +178,14 @@ async function runContinuousCycle(reason) {
         url: location.href
       });
     } catch (_) { }
+
+    // Jarvis UI sometimes loses card counts mid-session after crawler clicks.
+    // Only reload if we had at least one successful scrape (avoids reload loop on initial page load).
+    if (String(e?.message || "").includes("Could not read expected count from Jarvis UI") && OES_SESSION_SUCCESS_COUNT > 0) {
+      warn(`[Loop] Jarvis UI returned null counts after ${OES_SESSION_SUCCESS_COUNT} successful run(s) — reloading page to recover.`);
+      location.reload();
+      return; // reload will restart the continuous loop via the init path
+    }
   } finally {
     if (OES_CONTINUOUS_MODE) {
       scheduleNextContinuousRun(reason);
@@ -1644,7 +1653,8 @@ async function scrapeAllQueuesAndUpload() {
 
     const resp = await uploadSnapshotViaBackground(payload);
     log("[Run] Upload OK:", resp);
-    log(`[Run] ======== Scrape run complete (${((Date.now() - runStartTime) / 1000).toFixed(1)}s) ========`);
+    OES_SESSION_SUCCESS_COUNT++;
+    log(`[Run] ======== Scrape run complete (${((Date.now() - runStartTime) / 1000).toFixed(1)}s) [session successes: ${OES_SESSION_SUCCESS_COUNT}] ========`);
     notifyRunSummary("success", meta, Date.now() - runStartTime, Object.keys(queuesToUpload), "upload_ok");
   } finally {
     OES_IS_RUNNING = false;

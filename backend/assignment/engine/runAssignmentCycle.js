@@ -9,15 +9,74 @@ import { refreshAssignmentRuntimeRules } from '../services/runtimeRules.js';
 import { getVerificationSettings } from '../../services/shiftVerification.js';
 import { normalizeTicket } from '../normalization/normalizeTicket.js';
 import { checkRelevance } from '../relevance/checkRelevance.js';
-import { sortTickets } from '../priority/sortAndSelect.js';
+import { sortTickets, buildTicketPrioritySnapshot, explainTicketOrderDecision } from '../priority/sortAndSelect.js';
 import { loadCandidateWorkers, buildCandidatePool, loadWorkerCurrentTickets, loadLastCrawlerTimestamp, loadExclusionList, loadSubtypeExclusionList } from '../candidates/loadCandidates.js';
 import { processTicket } from './processTicket.js';
-import { persistAssignmentRun } from '../persistence/persist.js';
-import { buildRunSummary } from '../logging/decisionLog.js';
+import { persistAssignmentRun, persistTicketDecision } from '../persistence/persist.js';
+import { buildRunSummary, buildDecisionLog } from '../logging/decisionLog.js';
 import { checkCrawlerFreshness } from '../rules/crawlerGuard.js';
 import { routeHandover } from '../rules/handoverRouter.js';
 import { AssignmentError } from '../errors.js';
 import { CRAWLER_MAX_AGE_MS, SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
+
+const ASSIGNMENT_RUN_ADVISORY_LOCK_KEY = 17042026;
+
+async function acquireAssignmentRunLock() {
+  const { rows } = await pool.query(
+    `SELECT pg_try_advisory_lock($1) AS locked`,
+    [ASSIGNMENT_RUN_ADVISORY_LOCK_KEY],
+  );
+  return rows[0]?.locked === true;
+}
+
+async function releaseAssignmentRunLock() {
+  await pool.query(
+    `SELECT pg_advisory_unlock($1)`,
+    [ASSIGNMENT_RUN_ADVISORY_LOCK_KEY],
+  );
+}
+
+function buildDecisionConfigSnapshot(settings = {}) {
+  return {
+    mode: settings.mode || settings.executionMode || null,
+    currentShiftOnly: settings.currentShiftOnly ?? null,
+    planningWindowHours: settings.planningWindowHours ?? null,
+    siteStrictness: settings.siteStrictness ?? null,
+    responsibilityStrictness: settings.responsibilityStrictness ?? null,
+    enableRotationTieBreaker: settings.enableRotationTieBreaker ?? null,
+    fallbackTieBreaker: settings.fallbackTieBreaker ?? null,
+    insufficientResources: settings.insufficientResources ?? null,
+    verificationEnabled: settings.verificationEnabled ?? null,
+    pendingBlocksAssignment: settings.pendingBlocksAssignment ?? null,
+  };
+}
+
+function buildTicketSelectionTraceMap(sortedTickets, now = Date.now()) {
+  const selectionMap = new Map();
+
+  for (let index = 0; index < sortedTickets.length; index++) {
+    const ticket = sortedTickets[index];
+    const remaining = sortedTickets.slice(index);
+    const ticketSnapshot = buildTicketPrioritySnapshot(ticket, now);
+    const comparedTickets = remaining.slice(1, 4).map((candidate, candidateIndex) => ({
+      ...buildTicketPrioritySnapshot(candidate, now),
+      rank: index + candidateIndex + 2,
+      selectedFirstBy: explainTicketOrderDecision(ticket, candidate, now),
+    }));
+
+    selectionMap.set(String(ticket.id), {
+      prioritizationRank: index + 1,
+      totalEligibleTickets: sortedTickets.length,
+      totalRemainingTickets: remaining.length,
+      priorityTier: ticketSnapshot.priorityTier,
+      selectedNextReason: comparedTickets[0]?.selectedFirstBy || 'Only eligible ticket remaining after relevance filtering',
+      prioritizationFactors: ticketSnapshot.factors,
+      comparedTickets,
+    });
+  }
+
+  return selectionMap;
+}
 
 /**
  * Run a complete assignment cycle.
@@ -47,8 +106,14 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
   let run = null;
   const decisions = [];
   let summaryExtras = {};
+  let lockAcquired = false;
 
   try {
+    lockAcquired = await acquireAssignmentRunLock();
+    if (!lockAcquired) {
+      throw new AssignmentError('Another assignment cycle is already running');
+    }
+
     // 1. Load settings
     const settings = await assignmentSettingsService.getEngineConfig();
     await refreshAssignmentRuntimeRules();
@@ -180,12 +245,15 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     console.log(`[ASSIGNMENT] ${relevant.length} relevant, ${notRelevant.length} not relevant`);
 
     // 8. Sort relevant tickets by spec priority tiers
-    const sorted = sortTickets(relevant);
+    const priorityNow = Date.now();
+    const sorted = sortTickets(relevant, priorityNow);
+    const ticketSelectionTraceMap = buildTicketSelectionTraceMap(sorted, priorityNow);
 
     // 9. Load candidate workers + current workloads
-    const allWorkers = await loadCandidateWorkers();
+    const allWorkers = await loadCandidateWorkers(executionSettings);
     const candidatePool = buildCandidatePool(allWorkers);
     const workerTicketsMap = await loadWorkerCurrentTickets(candidatePool);
+    const decisionConfigSnapshot = buildDecisionConfigSnapshot(executionSettings);
 
     summaryExtras = {
       ...summaryExtras,
@@ -205,18 +273,40 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
     // 11. Process each ticket
     // First, log not-relevant tickets
     for (const { ticket, reason } of notRelevant) {
-      decisions.push({
-        ticketId: ticket.id,
+      const log = buildDecisionLog({
+        ticket,
         result: 'not_relevant',
-        shortReason: reason,
+        assignedWorker: null,
+        selectionReason: reason,
+        rulePath: ['relevance'],
+        initialCandidates: [],
+        excludedCandidates: [],
+        remainingCandidates: [],
+        decisionTraceInput: {
+          configSnapshot: decisionConfigSnapshot,
+        },
       });
+      decisions.push(log);
+      await persistTicketDecision(run.id, log);
     }
 
     // Process relevant tickets in priority order
     const stopOnError = executionSettings.stopOnCriticalError === 'true';
     for (const ticket of sorted) {
       try {
-        const decision = await processTicket(ticket, candidatePool, executionSettings, run.id, workerTicketsMap, exclusionList, subtypeExclusionList);
+        const decision = await processTicket(
+          ticket,
+          candidatePool,
+          executionSettings,
+          run.id,
+          workerTicketsMap,
+          exclusionList,
+          subtypeExclusionList,
+          {
+            configSnapshot: decisionConfigSnapshot,
+            ticketSelection: ticketSelectionTraceMap.get(String(ticket.id)) || null,
+          },
+        );
         decisions.push(decision);
       } catch (err) {
         console.error(`[ASSIGNMENT] Critical error processing ticket ${ticket.id}:`, err.message);
@@ -299,5 +389,13 @@ export async function runAssignmentCycle({ triggeredBy, modeOverride, skipCrawle
       } catch (_) { /* best effort */ }
     }
     throw err;
+  } finally {
+    if (lockAcquired) {
+      try {
+        await releaseAssignmentRunLock();
+      } catch (unlockErr) {
+        console.warn('[ASSIGNMENT] Could not release advisory lock:', unlockErr?.message || unlockErr);
+      }
+    }
   }
 }

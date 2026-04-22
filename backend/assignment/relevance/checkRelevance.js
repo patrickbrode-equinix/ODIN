@@ -12,6 +12,7 @@ export function checkRelevance(ticket, settings = {}) {
   const supportedTypes = settings.supportedTicketTypes
     ? settings.supportedTicketTypes.split(',').map(t => t.trim())
     : ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
+  const temporalReference = ticket.scheduledStart || ticket.dueAt;
 
   // Closed tickets are not relevant
   if (CLOSED_STATUSES.includes(ticket.status)) {
@@ -43,14 +44,14 @@ export function checkRelevance(ticket, settings = {}) {
   }
 
   // Planning window check
-  if (settings.planningWindowHours && ticket.dueAt) {
+  if (settings.planningWindowHours && temporalReference) {
     const windowMs = Number(settings.planningWindowHours) * 60 * 60 * 1000;
     const now = Date.now();
-    const dueTime = new Date(ticket.dueAt).getTime();
+    const dueTime = new Date(temporalReference).getTime();
     // Tickets already overdue are RELEVANT (urgent)
     // Tickets beyond the planning window are not actively processed
     if (dueTime > now + windowMs) {
-      return { relevant: false, reason: `Ticket due date is beyond planning window (${settings.planningWindowHours}h)` };
+      return { relevant: false, reason: `Ticket start/due date is beyond planning window (${settings.planningWindowHours}h)` };
     }
   }
 

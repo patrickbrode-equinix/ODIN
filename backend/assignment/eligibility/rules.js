@@ -5,7 +5,7 @@
 import { applyRoleFilter } from '../rules/roleFilter.js';
 import { checkQueuePurity } from '../rules/queuePurity.js';
 import { evaluateTicketCapacity } from '../rules/ticketCapacity.js';
-import { isShiftCodeActiveNow } from '../candidates/loadCandidates.js';
+import { isMomentInShiftWindow, isShiftCodeActiveNow } from '../candidates/loadCandidates.js';
 
 /**
  * Each rule function returns:
@@ -110,8 +110,55 @@ export function isNotAbsent(worker) {
   return { eligible: true, rule: 'isNotAbsent', reason: 'Worker is not absent' };
 }
 
-export function isShiftActive(worker, ticket, now = Date.now()) {
+export function isShiftActive(worker, ticket, settingsOrNow = {}, nowOverride = Date.now()) {
+  const settings = (settingsOrNow instanceof Date || typeof settingsOrNow === 'number' || typeof settingsOrNow === 'string')
+    ? {}
+    : (settingsOrNow || {});
+  const now = (settingsOrNow instanceof Date || typeof settingsOrNow === 'number' || typeof settingsOrNow === 'string')
+    ? settingsOrNow
+    : nowOverride;
+  const currentMoment = now instanceof Date ? now : new Date(now);
   const scheduledReference = ticket?.scheduledStart || (ticket?.type === 'Scheduled' ? ticket?.dueAt : null);
+  const hasShiftWindow = worker?.shiftStart && worker?.shiftEnd;
+  const currentShiftOnly = settings?.currentShiftOnly !== false && settings?.currentShiftOnly !== 'false';
+
+  if (hasShiftWindow) {
+    const shiftStart = new Date(worker.shiftStart);
+    const shiftEnd = new Date(worker.shiftEnd);
+    const shiftWindow = {
+      start: isNaN(shiftStart.getTime()) ? null : shiftStart,
+      end: isNaN(shiftEnd.getTime()) ? null : shiftEnd,
+    };
+
+    if (scheduledReference) {
+      const scheduledAt = new Date(scheduledReference);
+      if (!isNaN(scheduledAt.getTime()) && !isMomentInShiftWindow(scheduledAt, shiftWindow)) {
+        return {
+          eligible: false,
+          rule: 'isShiftActive',
+          reason: `${worker.name} liegt mit Schichtinstanz ${worker.shiftStart} bis ${worker.shiftEnd} außerhalb des Ticket-Starts ${scheduledAt.toISOString()}`,
+        };
+      }
+
+      if (!currentShiftOnly && !isNaN(scheduledAt.getTime()) && scheduledAt.getTime() > currentMoment.getTime()) {
+        return {
+          eligible: true,
+          rule: 'isShiftActive',
+          reason: `Worker is planned for the future shift instance ${worker.shiftStart} to ${worker.shiftEnd}`,
+        };
+      }
+    }
+
+    if (!isMomentInShiftWindow(currentMoment, shiftWindow) || worker.shiftActive === false) {
+      return {
+        eligible: false,
+        rule: 'isShiftActive',
+        reason: `${worker.name} ist nicht Teil der aktuell aktiven Schichtinstanz (${worker.shiftStart} bis ${worker.shiftEnd})`,
+      };
+    }
+
+    return { eligible: true, rule: 'isShiftActive', reason: 'Worker is on the current active shift instance' };
+  }
 
   if (worker.shiftCode && scheduledReference) {
     const scheduledAt = new Date(scheduledReference);
@@ -120,6 +167,14 @@ export function isShiftActive(worker, ticket, now = Date.now()) {
         eligible: false,
         rule: 'isShiftActive',
         reason: `${worker.name} ist für den Ticket-Start ${scheduledAt.toISOString()} laut Wochenplanung nicht im aktiven Schichtfenster (${worker.shiftCode})`,
+      };
+    }
+
+    if (!currentShiftOnly && !isNaN(scheduledAt.getTime()) && scheduledAt.getTime() > currentMoment.getTime()) {
+      return {
+        eligible: true,
+        rule: 'isShiftActive',
+        reason: `${worker.name} ist für das zukünftige Ticket laut geplantem Schichtfenster (${worker.shiftCode}) zulässig`,
       };
     }
   }
@@ -225,11 +280,10 @@ export function applyEligibilityRules(worker, ticket, settings, workerCurrentTic
     () => isNotOnBreak(worker),
     () => isNotAbsent(worker),
     () => isVerified(worker, settings),
-    () => isShiftActive(worker, ticket, now),
+    () => isShiftActive(worker, ticket, settings, now),
     () => checkRole(worker, ticket, now),
     () => matchesSite(worker, ticket, settings),
     () => matchesResponsibility(worker, ticket, settings),
-    () => checkQueueClean(worker, ticket, workerCurrentTickets, insufficientResources, now),
     () => checkTicketCapacity(worker, ticket, workerCurrentTickets),
   ];
 

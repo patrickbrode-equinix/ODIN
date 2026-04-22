@@ -7,6 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import type { TvShiftEmployee, TvShiftplanProps } from "./tv.types";
 import { getRemainingMs, getColorTier, tierClasses, formatRemainingTime } from "../../utils/ticketColors";
 
+const TV_WEEKPLAN_ROLE_BADGES: Record<string, { label: string; className: string }> = {
+  dispatcher: { label: "Dispatcher", className: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+  dbs_project: { label: "DBS Project", className: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30" },
+  colo: { label: "COLO", className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  largeorder: { label: "Largeorder", className: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
+  projekt: { label: "Projekt", className: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
+  lead: { label: "Lead", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+  buddy: { label: "Buddy", className: "bg-teal-500/20 text-teal-300 border-teal-500/30" },
+  neueinsteiger: { label: "Neueinsteiger", className: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
+  cc: { label: "CC", className: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
+  support: { label: "Support", className: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+};
+
 /* ------------------------------------------------ */
 /* SHIFT REMAINING TIME                             */
 /* ------------------------------------------------ */
@@ -94,6 +107,7 @@ function EmployeeCard({
   shiftLabel,
   time,
   category,
+  weekplanRole,
   tickets,
   shiftKind,
   crawlerStale,
@@ -104,6 +118,7 @@ function EmployeeCard({
   shiftLabel: string;
   time: string;
   category?: string;
+  weekplanRole?: string | null;
   tickets?: any[];
   shiftKind: "early" | "late" | "night";
   crawlerStale?: boolean;
@@ -113,6 +128,7 @@ function EmployeeCard({
   const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
   const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
   const shiftRemaining = getShiftRemainingLabel(shift);
+  const roleBadge = weekplanRole ? TV_WEEKPLAN_ROLE_BADGES[weekplanRole] ?? { label: weekplanRole, className: "bg-white/10 text-white border-white/20" } : null;
   const vBadge = verificationStatus ? VERIFICATION_BADGES[verificationStatus] : null;
 
   return (
@@ -122,7 +138,12 @@ function EmployeeCard({
         <span className={`text-sm font-bold px-2 py-1 rounded uppercase tracking-wider shrink-0 ${colors.badge}`}>
           {shift}
         </span>
-        <span className="flex-1 font-bold text-base break-words whitespace-normal leading-tight">{name}</span>
+        <span className="flex-1 font-bold text-base wrap-break-word whitespace-normal leading-tight">{name}</span>
+        {roleBadge && (
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${roleBadge.className}`}>
+            {roleBadge.label}
+          </span>
+        )}
         {vBadge && (
           <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${vBadge.className}`}>
             {vBadge.label}
@@ -241,6 +262,7 @@ function ShiftBlock({
                 shiftLabel={title}
                 time={e.time}
                 category={e.category}
+                weekplanRole={e.weekplanRole}
                 tickets={ticketsByOwner?.get(e.name)}
                 shiftKind={shiftKind}
                 crawlerStale={crawlerStale}

@@ -38,19 +38,19 @@ export const ENT_GLOBAL_STYLES = `
 `;
 
 export const ENT_CARD_BASE: React.CSSProperties = {
-    background: "rgba(8,12,28,0.72)",
+    background: "var(--surface-1)",
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
-    border: "1px solid rgba(59,130,246,0.13)",
+    border: "1px solid var(--surface-border)",
     borderRadius: "18px",
     padding: "22px",
-    boxShadow: "0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)",
+    boxShadow: "var(--surface-shadow)",
     transition: "box-shadow 0.3s ease, border-color 0.3s ease",
 };
 
 export const ENT_CARD_HOVER_GLOW = {
     ...ENT_CARD_BASE,
-    boxShadow: "0 8px 40px rgba(0,0,0,0.55), 0 0 30px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06)",
+    boxShadow: "0 0 30px rgba(59,130,246,0.12), var(--surface-shadow-strong)",
 };
 
 interface EnterprisePageShellProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -87,7 +87,7 @@ export function EnterpriseHeader({ icon, title, subtitle, rightContent, style, .
         <div className="stat-card" style={{
             ...ENT_CARD_BASE,
             padding: "18px 22px",
-            background: "linear-gradient(135deg, rgba(8,12,28,0.85) 0%, rgba(30,42,80,0.55) 100%)",
+            background: "var(--surface-hero)",
             display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "space-between",
             flexWrap: "wrap", gap: "12px",
             ...style
@@ -96,16 +96,16 @@ export function EnterpriseHeader({ icon, title, subtitle, rightContent, style, .
             {/* TITLE & ICON (LEFT) */}
             <div className="flex items-center gap-4">
                 {icon && (
-                    <div className="flex items-center justify-center p-2 rounded-xl bg-white/5 border border-white/10 shadow-inner">
+                    <div className="theme-glass-inset flex items-center justify-center rounded-xl p-2 shadow-inner">
                         {icon}
                     </div>
                 )}
                 <div className="flex flex-col">
-                    <h1 className="text-[15px] font-bold tracking-wide text-slate-100 flex items-center gap-2">
+                    <h1 className="flex items-center gap-2 text-[15px] font-bold tracking-wide text-foreground">
                         {title}
                     </h1>
                     {subtitle && (
-                        <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                        <span className="mt-0.5 text-[11px] font-medium text-muted-foreground">
                             {subtitle}
                         </span>
                     )}
@@ -185,16 +185,16 @@ export function EnterpriseKpiCard({
                 flex: expanded || children ? "1 1 100%" : "1 1 130px", // Allow full width if expanded
                 minWidth: 120,
                 background: hovered || expanded
-                    ? `linear-gradient(135deg, rgba(8,12,28,0.9) 0%, ${accent}18 100%)`
-                    : "rgba(8,12,28,0.72)",
+                    ? `linear-gradient(135deg, var(--surface-2) 0%, ${accent}18 100%)`
+                    : "var(--surface-1)",
                 backdropFilter: "blur(20px)",
-                border: `1px solid ${hovered || expanded ? accent + "44" : accent + "20"}`,
+                border: hovered || expanded ? `1px solid ${accent}44` : "1px solid var(--surface-border)",
                 borderRadius: "14px",
                 display: "flex",
                 flexDirection: "column",
                 boxShadow: hovered || expanded
-                    ? `0 0 28px ${accent}20, 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)`
-                    : "0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)",
+                    ? `0 0 28px ${accent}20, var(--surface-shadow-strong)`
+                    : "var(--surface-shadow)",
                 transition: "all 0.25s ease",
                 cursor: onToggle ? "pointer" : "default",
                 position: "relative",
@@ -234,7 +234,7 @@ export function EnterpriseKpiCard({
 
                 <div style={{
                     fontSize: "11px", fontWeight: 600, letterSpacing: "0.09em",
-                    color: "#4b5563", textTransform: "uppercase", marginBottom: "4px"
+                    color: "var(--surface-text-soft)", textTransform: "uppercase", marginBottom: "4px"
                 }}>
                     {label}
                 </div>
@@ -252,7 +252,7 @@ export function EnterpriseKpiCard({
                     </div>
                 )}
                 {sub && (
-                    <div style={{ fontSize: "11px", color: "#374151", marginTop: "4px" }}>{sub}</div>
+                    <div style={{ fontSize: "11px", color: "var(--surface-text-muted)", marginTop: "4px" }}>{sub}</div>
                 )}
             </div>
 
@@ -277,6 +277,6 @@ export function EnterpriseKpiCard({
 
 export const ENT_SECTION_TITLE: React.CSSProperties = {
     fontSize: "11px", fontWeight: 600, letterSpacing: "0.1em",
-    color: "#374151", textTransform: "uppercase", marginBottom: "14px"
+    color: "var(--surface-text-soft)", textTransform: "uppercase", marginBottom: "14px"
 };
 

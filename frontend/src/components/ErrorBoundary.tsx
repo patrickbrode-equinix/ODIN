@@ -1,6 +1,27 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { Button } from "./ui/button"; // Adjust path if needed
 
+type ErrorBoundaryLanguage = "de" | "en";
+
+const ERROR_COPY: Record<ErrorBoundaryLanguage, { title: string; description: string; reload: string }> = {
+    de: {
+        title: "Ein unerwarteter Fehler ist aufgetreten",
+        description: "Die Anwendung konnte nicht geladen werden. Bitte versuche es erneut oder kontaktiere den Support, falls das Problem bestehen bleibt.",
+        reload: "Seite neu laden",
+    },
+    en: {
+        title: "An unexpected error occurred",
+        description: "The application could not be loaded. Please try again or contact support if the problem persists.",
+        reload: "Reload page",
+    },
+};
+
+function getErrorBoundaryLanguage(): ErrorBoundaryLanguage {
+    if (typeof window === "undefined") return "de";
+    const stored = window.localStorage.getItem("odin.language");
+    return stored === "en" ? "en" : "de";
+}
+
 interface Props {
     children: ReactNode;
 }
@@ -30,15 +51,16 @@ export class ErrorBoundary extends Component<Props, State> {
 
     public render() {
         if (this.state.hasError) {
+            const copy = ERROR_COPY[getErrorBoundaryLanguage()];
+
             return (
                 <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-6 text-center space-y-6">
                     <div className="space-y-2">
                         <h1 className="text-2xl font-bold text-red-500">
-                            Ein unerwarteter Fehler ist aufgetreten
+                            {copy.title}
                         </h1>
                         <p className="text-muted-foreground max-w-md mx-auto">
-                            Die Anwendung konnte nicht geladen werden. Bitte versuche es erneut oder
-                            kontaktiere den Support, falls das Problem bestehen bleibt.
+                            {copy.description}
                         </p>
                     </div>
 
@@ -48,7 +70,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         </code>
                     </div>
 
-                    <Button onClick={this.handleReload}>Seite neu laden</Button>
+                    <Button onClick={this.handleReload}>{copy.reload}</Button>
                 </div>
             );
         }

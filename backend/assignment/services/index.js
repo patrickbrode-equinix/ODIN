@@ -68,6 +68,7 @@ export const assignmentSettingsService = {
       enableRotationTieBreaker: map[SETTINGS_KEYS.ENABLE_ROTATION] || 'true',
       fallbackTieBreaker: map[SETTINGS_KEYS.FALLBACK_TIE] || 'stable-id',
       planningWindowHours: map[SETTINGS_KEYS.PLANNING_WINDOW] || '72',
+      currentShiftOnly: map[SETTINGS_KEYS.CURRENT_SHIFT_ONLY] || 'true',
       maxTicketsPerRun: map[SETTINGS_KEYS.MAX_TICKETS] || '500',
       stopOnCriticalError: map[SETTINGS_KEYS.STOP_ON_ERROR] || 'false',
       supportedTicketTypes: map[SETTINGS_KEYS.SUPPORTED_TYPES] || 'TroubleTicket,SmartHands,CrossConnect,Scheduled,Other',

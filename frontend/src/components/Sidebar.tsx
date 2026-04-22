@@ -71,9 +71,11 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
   /* FILTERED NAV (FINAL)               */
   /* ———————————————————————————————— */
 
-  const topItems = NAV_TOP.filter((item) =>
-    (item.pageKey === "admin_settings" ? canAccessAdminHub : canAccess(item.pageKey, "view")) && !shiftplanChildPaths.has(item.to)
-  );
+  const topItems = NAV_TOP.filter((item) => {
+    // TV Dashboard is reserved for the master account (root)
+    if (item.pageKey === "tv_dashboard" && !user?.isRoot) return false;
+    return (item.pageKey === "admin_settings" ? canAccessAdminHub : canAccess(item.pageKey, "view")) && !shiftplanChildPaths.has(item.to);
+  });
 
   const shiftplanChildItems = NAV_TOP.filter((item) =>
     shiftplanChildPaths.has(item.to) && canAccess(item.pageKey, "view")
@@ -427,7 +429,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
         <button
           type="button"
           onClick={() => setTutorialOpen(true)}
-          className={`inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:border-sky-300/30 hover:bg-sky-500/10 hover:text-sky-100 ${isCollapsed ? "px-2" : ""}`}
+          className={`theme-glass-inset inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition hover:border-sky-300/30 hover:bg-sky-500/10 hover:text-sky-700 dark:hover:text-sky-100 ${isCollapsed ? "px-2" : ""}`}
           title={t("sidebar.openTutorial")}
         >
           <BookOpen className="h-3.5 w-3.5" />

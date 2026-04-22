@@ -56,13 +56,13 @@ function TabBadge({ icon, label }: { icon: React.ReactNode; label: string }) {
 
 function AdminTabCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-white/8 bg-white/[0.03] p-3 transition hover:border-[#00d8ff]/20 hover:bg-[#00d8ff]/[0.04]">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+    <div className="theme-glass-inset flex gap-3 rounded-xl p-3 transition hover:border-[#00d8ff]/25 hover:bg-[#00d8ff]/[0.06]">
+      <div className="theme-glass-inset mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[13px] font-semibold text-slate-100">{title}</div>
-        <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{description}</div>
+        <div className="text-[13px] font-semibold text-foreground">{title}</div>
+        <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</div>
       </div>
     </div>
   );
@@ -393,7 +393,7 @@ function WelcomeHero({ step, copy }: { step: TutorialStep; copy: TutorialCopy })
   return (
     <div className="space-y-6 overflow-y-auto flex-1 min-h-0 pr-1">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-[#00d8ff]/20 bg-gradient-to-br from-[#0a1628] via-[#0f1d36] to-[#0a1628] p-6">
+      <div className="theme-admin-hero relative overflow-hidden rounded-2xl border border-[#00d8ff]/20 p-6">
         {/* Grid bg */}
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.06]"
@@ -430,7 +430,7 @@ function WelcomeHero({ step, copy }: { step: TutorialStep; copy: TutorialCopy })
       </div>
 
       {/* Content (without the first line which is the subtitle) */}
-      <div className="text-sm leading-7 text-slate-300">
+      <div className="text-sm leading-7 text-muted-foreground">
         <RichText text={step.body.split("\n").slice(2).join("\n")} />
       </div>
     </div>
@@ -463,7 +463,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[860px] max-h-[92vh] overflow-hidden flex flex-col bg-[#080e1e] border-[#00d8ff]/15">
+      <DialogContent className="theme-modal-surface sm:max-w-[860px] max-h-[92vh] overflow-hidden flex flex-col border-[#00d8ff]/15">
         {/* Header */}
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-3">
@@ -471,9 +471,9 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
               <BookOpen className="h-4 w-4 text-[#00d8ff]" />
             </div>
             <div className="flex flex-col">
-              <span className="text-base font-bold text-slate-100">{copy.title}</span>
+              <span className="text-base font-bold text-foreground">{copy.title}</span>
               {selectedLanguage !== null && (
-                <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">
+                <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                   {copy.progress} {stepIndex + 1} / {totalSteps}
                 </span>
               )}
@@ -490,7 +490,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
           /* ── LANGUAGE SELECTION ── */
           <div className="space-y-5 py-2">
             {/* Logo hero */}
-            <div className="relative overflow-hidden rounded-2xl border border-[#00d8ff]/15 bg-gradient-to-br from-[#0a1628] via-[#0f1d36] to-[#0a1628] p-8 text-center">
+            <div className="theme-admin-hero relative overflow-hidden rounded-2xl border border-[#00d8ff]/15 p-8 text-center">
               <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full bg-[#00d8ff]/8 blur-[60px]" />
               <img
                 src="/app/ODIN_Logo.png"
@@ -508,12 +508,12 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+            <div className="theme-glass-inset rounded-2xl p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Languages className="h-4 w-4 text-[#00d8ff]" />
                 {copy.languageTitle}
               </div>
-              <div className="mt-1.5 text-sm leading-relaxed text-slate-400">
+              <div className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                 {copy.languageHint}
               </div>
             </div>
@@ -523,7 +523,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
                 <button
                   key={option.code}
                   type="button"
-                  className="rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4 text-left transition hover:border-[#00d8ff]/30 hover:bg-[#00d8ff]/[0.06] hover:shadow-[0_0_20px_rgba(0,216,255,0.08)] group"
+                  className="theme-glass-panel rounded-2xl px-5 py-4 text-left transition hover:border-[#00d8ff]/30 hover:bg-[#00d8ff]/[0.06] hover:shadow-[0_0_20px_rgba(0,216,255,0.08)] group"
                   onClick={() => {
                     setSelectedLanguage(option.code);
                     setStepIndex(0);
@@ -534,10 +534,10 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
                       <FlagIcon code={option.code} />
                     </div>
                     <div className="ml-2">
-                      <div className="text-sm font-semibold text-slate-100 group-hover:text-[#00d8ff] transition-colors">
+                      <div className="text-sm font-semibold text-foreground transition-colors group-hover:text-[#00d8ff]">
                         {option.nativeLabel}
                       </div>
-                      <div className="mt-0.5 text-xs uppercase tracking-[0.18em] text-slate-500">
+                      <div className="mt-0.5 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         {option.shortLabel}
                       </div>
                     </div>
@@ -554,14 +554,14 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1" dir="ltr">
             {/* Step title with icon */}
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+              <div className="theme-glass-inset flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
                 {currentStep.icon}
               </div>
-              <h3 className="text-xl font-bold text-slate-100">{currentStep.title}</h3>
+              <h3 className="text-xl font-bold text-foreground">{currentStep.title}</h3>
             </div>
 
             {/* Step content */}
-            <div className="text-sm leading-7 text-slate-300">
+            <div className="text-sm leading-7 text-muted-foreground">
               <RichText text={currentStep.body} />
             </div>
 
@@ -581,7 +581,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
                   key={i}
                   onClick={() => setStepIndex(i)}
                   className={`h-1.5 flex-1 rounded-full transition-all cursor-pointer hover:opacity-80 ${
-                    i <= stepIndex ? "bg-[#00d8ff]" : "bg-white/8"
+                    i <= stepIndex ? "bg-[#00d8ff]" : "bg-border"
                   } ${i === stepIndex ? "shadow-[0_0_8px_rgba(0,216,255,0.5)]" : ""}`}
                 />
               ))}
@@ -590,9 +590,9 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
         )}
 
         {/* Footer */}
-        <DialogFooter className="flex items-center justify-between gap-3 sm:justify-between flex-shrink-0 border-t border-white/5 pt-4">
+        <DialogFooter className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 pt-4 sm:justify-between">
           {selectedLanguage === null ? (
-            <Button variant="secondary" onClick={() => onOpenChange(false)} className="border-white/10 hover:border-white/20">
+            <Button variant="secondary" onClick={() => onOpenChange(false)} className="border-border/70 hover:border-border">
               {copy.close}
             </Button>
           ) : (
@@ -600,7 +600,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
-                  className="border-white/10 hover:border-white/20"
+                  className="border-border/70 hover:border-border"
                   onClick={() => {
                     if (stepIndex === 0) {
                       setSelectedLanguage(null);
@@ -616,7 +616,7 @@ export function AppTutorialDialog({ open, onOpenChange }: { open: boolean; onOpe
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-slate-500 hover:text-slate-300"
+                    className="text-muted-foreground hover:text-foreground"
                     onClick={() => onOpenChange(false)}
                   >
                     {copy.skip}

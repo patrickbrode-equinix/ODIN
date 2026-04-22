@@ -92,6 +92,7 @@ export const SETTINGS_KEYS = {
   ENABLE_ROTATION: 'assignment.enableRotationTieBreaker',
   FALLBACK_TIE: 'assignment.fallbackTieBreaker',
   PLANNING_WINDOW: 'assignment.planningWindowHours',
+  CURRENT_SHIFT_ONLY: 'assignment.currentShiftOnly',
   MAX_TICKETS: 'assignment.maxTicketsPerRun',
   STOP_ON_ERROR: 'assignment.stopOnCriticalError',
   SUPPORTED_TYPES: 'assignment.supportedTicketTypes',

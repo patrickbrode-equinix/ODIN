@@ -165,7 +165,7 @@ export function DashboardInfoBar() {
                                     </div>
 
                                     {/* Footer: Date + Auto-Delete Badge */}
-                                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-white/5">
+                                    <div className="mt-auto flex items-center justify-between border-t border-border/50 pt-2">
                                         <div className="text-[0.75em] text-muted-foreground">
                                             {new Date(entry.created_at).toLocaleDateString(locale)}
                                         </div>
@@ -196,7 +196,7 @@ export function DashboardInfoBar() {
             </div>
 
             {/* Add new entry */}
-            <div className="flex gap-2 flex-none pt-2 border-t border-white/5">
+            <div className="flex flex-none gap-2 border-t border-border/50 pt-2">
                 <Textarea
                     value={newContent}
                     onChange={(e) => setNewContent(e.target.value)}
@@ -220,7 +220,7 @@ export function DashboardInfoBar() {
             {/* CONTEXT MENU */}
             {contextMenu && (
                 <div
-                    className="fixed z-9999 bg-[#0f172a] border border-white/20 rounded-lg shadow-2xl p-2 w-60 animate-in fade-in zoom-in-95 text-[0.85em]"
+                    className="theme-popover-surface fixed z-9999 w-60 rounded-lg border p-2 text-[0.85em] shadow-2xl animate-in fade-in zoom-in-95"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -229,25 +229,25 @@ export function DashboardInfoBar() {
                     {/* INFO / INSTRUCTION SWITCH */}
                     <div className="space-y-1 mb-2">
                         <div
-                            className="px-2 py-1.5 hover:bg-white/10 rounded cursor-pointer flex items-center gap-2"
+                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-accent"
                             onClick={() => handleUpdate({ type: 'info' })}
                         >
                             <div className="w-2 h-2 rounded-full bg-blue-400"></div> {t("dashboardInfo.markAsInfo")}
                         </div>
                         <div
-                            className="px-2 py-1.5 hover:bg-white/10 rounded cursor-pointer flex items-center gap-2"
+                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-accent"
                             onClick={() => handleUpdate({ type: 'instruction' })}
                         >
                             <div className="w-2 h-2 rounded-full bg-amber-400"></div> {t("dashboardInfo.markAsInstruction")}
                         </div>
                     </div>
 
-                    <div className="h-px bg-white/10 my-1"></div>
+                    <div className="theme-divider my-1 h-px"></div>
 
                     <div className="px-2 py-1 mb-1 text-muted-foreground font-semibold">{t("dashboardInfo.autoDeletion")}</div>
                     <input
                         type="date"
-                        className="w-full bg-black/20 border border-white/10 rounded px-2 py-1 text-[0.85em] text-white mb-1"
+                        className="mb-1 w-full rounded border border-border bg-background px-2 py-1 text-[0.85em] text-foreground"
                         onChange={(e) => {
                             if (e.target.valueAsDate) handleUpdateDeleteAt(e.target.value);
                             setContextMenu(null);

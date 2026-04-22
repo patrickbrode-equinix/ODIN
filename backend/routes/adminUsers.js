@@ -76,6 +76,7 @@ router.get(
           provisioned_employee_name AS "provisionedEmployeeName",
           created_at AS "createdAt"
         FROM users
+        WHERE is_root = false
         ORDER BY id ASC
         `
       );

@@ -84,7 +84,7 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
       {variant === "header" ? (
         <button
           onClick={() => { setOpen(true); setResult(null); }}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1.5 text-[12px] font-medium text-indigo-700 transition-colors hover:bg-indigo-500/20 dark:text-indigo-300"
           title="Feedback erfassen"
         >
           <MessageSquare className="w-3.5 h-3.5" />

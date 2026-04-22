@@ -136,11 +136,16 @@ const TV_SHIFT_TYPES = {
   SEMINAR:{ label: "S",      color: "bg-purple-600",  name: "Seminar",    time: "08:00-16:00" },
 };
 
+function currentLocalDateKey(base = new Date()) {
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+}
+
 router.get("/schedules/today", async (_req, res) => {
   try {
     const today = new Date();
     const day   = today.getDate();
     const monthLabel = `${GERMAN_MONTHS[today.getMonth()]} ${today.getFullYear()}`;
+    const todayKey = currentLocalDateKey(today);
 
     const result = await query(
       `SELECT employee_name, shift_code
@@ -158,6 +163,32 @@ router.get("/schedules/today", async (_req, res) => {
     let verifyMap = new Map();
     try { verifyMap = await getVerificationStatusMap(today); } catch { /* non-fatal for TV */ }
 
+    // Load weekplan roles for today (non-blocking) so TV can mirror dashboard role badges.
+    let roleMap = new Map();
+    try {
+      const roleResult = await query(
+        `SELECT employee_name, role_key
+         FROM weekplan_roles
+         WHERE date = $1`,
+        [todayKey]
+      );
+
+      roleMap = new Map(
+        (roleResult.rows || [])
+          .filter((row) => row?.employee_name && row?.role_key)
+          .flatMap((row) => {
+            const rawName = String(row.employee_name).trim();
+            const normalizedName = rawName.replace(",", "").trim();
+            return [
+              [rawName, row.role_key],
+              [normalizedName, row.role_key],
+            ];
+          })
+      );
+    } catch {
+      roleMap = new Map();
+    }
+
     for (const row of result.rows) {
       const code = row.shift_code;
       const info = TV_SHIFT_TYPES[code];
@@ -166,7 +197,8 @@ router.get("/schedules/today", async (_req, res) => {
       // "Nachname, Vorname" → "Nachname Vorname"
       const name = String(row.employee_name ?? "").replace(",", "").trim();
       const vStatus = verifyMap.get(row.employee_name)?.status || verifyMap.get(name)?.status || null;
-      const entry = { name, shift: code, time: info.time, info, verificationStatus: vStatus };
+  const weekplanRole = roleMap.get(String(row.employee_name ?? "").trim()) || roleMap.get(name) || null;
+  const entry = { name, shift: code, time: info.time, info, verificationStatus: vStatus, weekplanRole };
 
       if (code === "E1" || code === "E2") early.push(entry);
       else if (code === "L1" || code === "L2") late.push(entry);

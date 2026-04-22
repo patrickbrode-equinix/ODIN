@@ -74,8 +74,8 @@ export const assignmentDecisionRepository = {
        (run_id, ticket_id, external_id, ticket_type, ticket_status, ticket_priority, ticket_site,
         result, assigned_worker_id, assigned_worker_name, selection_reason, short_reason,
         rule_path, initial_candidates, excluded_candidates, remaining_candidates,
-        normalization_warnings, normalized_ticket, raw_ticket, error_message)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        normalization_warnings, normalized_ticket, raw_ticket, error_message, decision_trace)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
         decision.runId,
@@ -98,6 +98,7 @@ export const assignmentDecisionRepository = {
         JSON.stringify(decision.normalizedTicket),
         JSON.stringify(decision.rawTicket),
         decision.errorMessage,
+        JSON.stringify(decision.decisionTrace || null),
       ]
     );
     return rows[0];

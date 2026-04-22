@@ -2,10 +2,18 @@
 /* ODIN-Logik — Explanation Card (Structured)       */
 /* ================================================ */
 
-import type { TicketExplanation, ExcludedCandidateGroup, CandidateRef } from '../../types/assignment';
+import type { TicketExplanation, ExcludedCandidateGroup, CandidateRef, CandidateRankingEntry } from '../../types/assignment';
 import { CheckCircle, XCircle, AlertTriangle, Info, ListOrdered, Users, UserCheck } from 'lucide-react';
 import { getAssignmentDisplayTicketNumber, getAssignmentInternalTicketId, getAssignmentQueueOrigin } from '../../utils/assignmentTicketDisplay';
 import { useLanguage } from '../../context/LanguageContext';
+import { AssignmentGlossaryPanel, AssignmentMetricBadge } from './AssignmentTraceGlossary';
+import {
+  collectAssignmentTraceGlossaryKeys,
+  formatAssignmentMetricLabel,
+  formatAssignmentPrioritizationFactor,
+  formatAssignmentRankingFactorText,
+  resolveAssignmentTraceGlossaryKey,
+} from '../../utils/assignmentTraceGlossary';
 
 interface Props {
   explanation: TicketExplanation;
@@ -14,6 +22,7 @@ interface Props {
 export function AssignmentExplanationCard({ explanation }: Props) {
   const { language } = useLanguage();
   const isGerman = language === 'de';
+  const glossaryLanguage = isGerman ? 'de' : 'en';
 
   if (!explanation.found || !explanation.explanation) {
     return (
@@ -24,6 +33,12 @@ export function AssignmentExplanationCard({ explanation }: Props) {
   }
 
   const s = explanation.explanation.structured;
+  const glossaryKeys = collectAssignmentTraceGlossaryKeys({
+    configSnapshot: s.configSnapshot,
+    ticketSelection: s.ticketSelection,
+    finalDecision: s.finalDecision,
+    candidateRanking: s.candidateRanking,
+  });
 
   const resultStyles: Record<string, { label: string; className: string; icon: typeof CheckCircle }> = {
     assigned: { label: isGerman ? 'Zugewiesen' : 'Assigned', className: 'text-green-400', icon: CheckCircle },
@@ -92,6 +107,97 @@ export function AssignmentExplanationCard({ explanation }: Props) {
         </dl>
       </Section>
 
+      {s.ticketSelection && (
+        <Section title={isGerman ? 'Priorisierung' : 'Prioritization'} icon={ListOrdered}>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="text-muted-foreground">{isGerman ? 'Reihenfolge im Lauf' : 'Rank in run'}</div>
+              <div>{s.ticketSelection.prioritizationRank || '–'} / {s.ticketSelection.totalEligibleTickets || '–'}</div>
+              <div className="text-muted-foreground">{isGerman ? 'Aktiver Restpool' : 'Remaining pool'}</div>
+              <div>{s.ticketSelection.totalRemainingTickets || '–'}</div>
+            </div>
+            {s.ticketSelection.selectedNextReason && (
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-blue-100">
+                {s.ticketSelection.selectedNextReason}
+              </div>
+            )}
+            {(s.ticketSelection.prioritizationFactors || []).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {s.ticketSelection.prioritizationFactors.map((factor) => (
+                  <AssignmentMetricBadge
+                    key={`${factor.key}-${String(factor.value)}`}
+                    label={formatAssignmentPrioritizationFactor(factor, glossaryLanguage)}
+                    glossaryKey={resolveAssignmentTraceGlossaryKey(factor)}
+                    language={glossaryLanguage}
+                    className="rounded-full border border-border/30 bg-background/60 px-2 py-1 text-[10px] text-foreground/80"
+                    tooltipWidth="w-80"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+
+      {(s.configSnapshot.mode || s.configSnapshot.currentShiftOnly != null || s.configSnapshot.planningWindowHours != null || s.configSnapshot.enableRotationTieBreaker != null || s.configSnapshot.fallbackTieBreaker || s.configSnapshot.verificationEnabled != null) && (
+        <Section title={isGerman ? 'Engine-Rahmen' : 'Engine frame'} icon={Info}>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {s.configSnapshot.mode && <span className="rounded-full border border-border/30 bg-background/60 px-2 py-1">{isGerman ? 'Modus' : 'Mode'}: {s.configSnapshot.mode}</span>}
+            {s.configSnapshot.currentShiftOnly != null && (
+              <AssignmentMetricBadge
+                label={formatAssignmentMetricLabel('current-shift-only', s.configSnapshot.currentShiftOnly, glossaryLanguage)}
+                glossaryKey="current-shift-only"
+                language={glossaryLanguage}
+                className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                tooltipWidth="w-80"
+              />
+            )}
+            {s.configSnapshot.planningWindowHours != null && (
+              <AssignmentMetricBadge
+                label={formatAssignmentMetricLabel('planning-window', s.configSnapshot.planningWindowHours, glossaryLanguage)}
+                glossaryKey="planning-window"
+                language={glossaryLanguage}
+                className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                tooltipWidth="w-80"
+              />
+            )}
+            {s.configSnapshot.enableRotationTieBreaker != null && (
+              <AssignmentMetricBadge
+                label={formatAssignmentMetricLabel('rotation-tie-breaker', s.configSnapshot.enableRotationTieBreaker, glossaryLanguage)}
+                glossaryKey="rotation-tie-breaker"
+                language={glossaryLanguage}
+                className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                tooltipWidth="w-80"
+              />
+            )}
+            {s.configSnapshot.fallbackTieBreaker && (
+              <AssignmentMetricBadge
+                label={formatAssignmentMetricLabel('tie-breaker', s.configSnapshot.fallbackTieBreaker, glossaryLanguage)}
+                glossaryKey="tie-breaker"
+                language={glossaryLanguage}
+                className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                tooltipWidth="w-80"
+              />
+            )}
+            {s.configSnapshot.verificationEnabled != null && (
+              <AssignmentMetricBadge
+                label={formatAssignmentMetricLabel('verification', s.configSnapshot.verificationEnabled, glossaryLanguage)}
+                glossaryKey="verification"
+                language={glossaryLanguage}
+                className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                tooltipWidth="w-80"
+              />
+            )}
+          </div>
+        </Section>
+      )}
+
+      {glossaryKeys.length > 0 && (
+        <Section title={isGerman ? 'Begriffserklärung' : 'Metric guide'} icon={Info}>
+          <AssignmentGlossaryPanel keys={glossaryKeys} language={glossaryLanguage} />
+        </Section>
+      )}
+
       {s.decisionTrace.length > 0 && (
         <Section title={isGerman ? 'Entscheidungsweg' : 'Decision trace'} icon={ListOrdered}>
           <ol className="space-y-2">
@@ -130,7 +236,14 @@ export function AssignmentExplanationCard({ explanation }: Props) {
           <ul className="space-y-0.5">
             {s.initialCandidates.map((c: CandidateRef) => (
               <li key={c.id} className="text-xs text-foreground/80">
-                {c.name} <span className="text-muted-foreground">(ID: {c.id})</span>
+                {c.name}
+                <AssignmentMetricBadge
+                  label={formatAssignmentMetricLabel('worker-id', c.id, glossaryLanguage)}
+                  glossaryKey="worker-id"
+                  language={glossaryLanguage}
+                  className="ml-2 text-muted-foreground"
+                  tooltipWidth="w-80"
+                />
                 {(c.shiftCode || c.weekplanRole || c.role) && (
                   <span className="text-muted-foreground"> • {[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>
                 )}
@@ -148,7 +261,14 @@ export function AssignmentExplanationCard({ explanation }: Props) {
               <li key={i} className="text-xs flex items-start gap-1.5">
                 <XCircle className="w-3 h-3 mt-0.5 shrink-0 text-red-400" />
                 <div>
-                  <span className="font-medium text-foreground/80">{e.name || `ID: ${e.id}`}</span>
+                  <span className="font-medium text-foreground/80">{e.name || '–'}</span>
+                  <AssignmentMetricBadge
+                    label={formatAssignmentMetricLabel('worker-id', e.id, glossaryLanguage)}
+                    glossaryKey="worker-id"
+                    language={glossaryLanguage}
+                    className="ml-2 text-muted-foreground"
+                    tooltipWidth="w-80"
+                  />
                   <span className="text-muted-foreground"> — {e.reasons.join('; ')}</span>
                   {(e.shiftCode || e.weekplanRole || e.role) && (
                     <span className="text-muted-foreground"> • {[e.shiftCode, e.weekplanRole || e.role].filter(Boolean).join(' | ')}</span>
@@ -168,7 +288,14 @@ export function AssignmentExplanationCard({ explanation }: Props) {
           <ul className="space-y-0.5">
             {s.remainingCandidates.map((c: CandidateRef) => (
               <li key={c.id} className="text-xs text-green-400/80">
-                ✓ {c.name} <span className="text-muted-foreground">(ID: {c.id})</span>
+                ✓ {c.name}
+                <AssignmentMetricBadge
+                  label={formatAssignmentMetricLabel('worker-id', c.id, glossaryLanguage)}
+                  glossaryKey="worker-id"
+                  language={glossaryLanguage}
+                  className="ml-2 text-muted-foreground"
+                  tooltipWidth="w-80"
+                />
                 {(c.shiftCode || c.weekplanRole || c.role) && (
                   <span className="text-muted-foreground"> • {[c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ')}</span>
                 )}
@@ -178,6 +305,90 @@ export function AssignmentExplanationCard({ explanation }: Props) {
         )}
       </Section>
 
+      {s.candidateRanking.length > 0 && (
+        <Section title={isGerman ? 'Kandidatenranking' : 'Candidate ranking'} icon={UserCheck}>
+          <div className="space-y-2">
+            {s.candidateRanking.map((candidate: CandidateRankingEntry) => (
+              <div key={`${candidate.employeeId ?? 'candidate'}-${candidate.finalRank ?? 'x'}`} className={`rounded-md border px-3 py-2 text-xs ${candidate.selected ? 'border-green-500/30 bg-green-500/5' : candidate.selectionBlocked ? 'border-red-500/20 bg-red-500/5' : 'border-border/20 bg-background/40'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium text-foreground/90">
+                    {candidate.employeeName || '–'}
+                    {candidate.finalRank != null && <span className="ml-2 text-muted-foreground">#{candidate.finalRank}</span>}
+                  </div>
+                  {candidate.selected && <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">{isGerman ? 'Gewählt' : 'Selected'}</span>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                  {candidate.employeeId != null && (
+                    <AssignmentMetricBadge
+                      label={formatAssignmentMetricLabel('worker-id', candidate.employeeId, glossaryLanguage)}
+                      glossaryKey="worker-id"
+                      language={glossaryLanguage}
+                      className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5"
+                      tooltipWidth="w-80"
+                    />
+                  )}
+                  {candidate.shiftCode && <span>{candidate.shiftCode}</span>}
+                  {(candidate.weekplanRole || candidate.role) && <span>{candidate.weekplanRole || candidate.role}</span>}
+                  {candidate.workload != null && (
+                    <AssignmentMetricBadge
+                      label={formatAssignmentMetricLabel('workload', candidate.workload, glossaryLanguage)}
+                      glossaryKey="workload"
+                      language={glossaryLanguage}
+                      className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5"
+                      tooltipWidth="w-80"
+                    />
+                  )}
+                  {candidate.groupingScore != null && (
+                    <AssignmentMetricBadge
+                      label={formatAssignmentMetricLabel('grouping-score', candidate.groupingScore, glossaryLanguage)}
+                      glossaryKey="grouping-score"
+                      language={glossaryLanguage}
+                      className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5"
+                      tooltipWidth="w-80"
+                    />
+                  )}
+                  {candidate.queuePure != null && (
+                    <AssignmentMetricBadge
+                      label={formatAssignmentMetricLabel('queue-purity', candidate.queuePure, glossaryLanguage)}
+                      glossaryKey="queue-purity"
+                      language={glossaryLanguage}
+                      className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5"
+                      tooltipWidth="w-80"
+                    />
+                  )}
+                  {(candidate.colleagueScore || 0) > 0 && (
+                    <AssignmentMetricBadge
+                      label={formatAssignmentMetricLabel('colleague-proximity', candidate.colleagueScore, glossaryLanguage)}
+                      glossaryKey="colleague-proximity"
+                      language={glossaryLanguage}
+                      className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5"
+                      tooltipWidth="w-80"
+                    />
+                  )}
+                </div>
+                {(candidate.rankingFactors || []).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {candidate.rankingFactors.map((factor) => (
+                      <AssignmentMetricBadge
+                        key={factor}
+                        label={formatAssignmentRankingFactorText(factor, glossaryLanguage)}
+                        glossaryKey={resolveAssignmentTraceGlossaryKey(factor)}
+                        language={glossaryLanguage}
+                        className="rounded-full border border-border/30 bg-background/60 px-2 py-0.5 text-[10px] text-foreground/80"
+                        tooltipWidth="w-80"
+                      />
+                    ))}
+                  </div>
+                )}
+                {candidate.selectionBlocked && candidate.blockingReason && (
+                  <div className="mt-2 text-[10px] text-red-300">{candidate.blockingReason}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Selection */}
       {s.result === 'assigned' && (
         <Section title={isGerman ? 'Auswahl' : 'Selection'} icon={CheckCircle}>
@@ -185,8 +396,29 @@ export function AssignmentExplanationCard({ explanation }: Props) {
             <div>
               <span className="text-muted-foreground">{isGerman ? 'Ausgewählt' : 'Selected'}: </span>
               <span className="font-semibold text-green-400">{s.assignedWorkerName}</span>
-              {s.assignedWorkerId && <span className="text-muted-foreground"> (ID: {s.assignedWorkerId})</span>}
             </div>
+            {(s.assignedWorkerId != null || s.finalDecision?.tieBreaker) && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {s.assignedWorkerId != null && (
+                  <AssignmentMetricBadge
+                    label={formatAssignmentMetricLabel('worker-id', s.assignedWorkerId, glossaryLanguage)}
+                    glossaryKey="worker-id"
+                    language={glossaryLanguage}
+                    className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                    tooltipWidth="w-80"
+                  />
+                )}
+                {s.finalDecision?.tieBreaker ? (
+                  <AssignmentMetricBadge
+                    label={formatAssignmentMetricLabel('tie-breaker', s.finalDecision.tieBreaker, glossaryLanguage)}
+                    glossaryKey="tie-breaker"
+                    language={glossaryLanguage}
+                    className="rounded-full border border-border/30 bg-background/60 px-2 py-1"
+                    tooltipWidth="w-80"
+                  />
+                ) : null}
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">{isGerman ? 'Begründung' : 'Reason'}: </span>
               <span className="text-foreground/80">{s.selectionReason || '–'}</span>

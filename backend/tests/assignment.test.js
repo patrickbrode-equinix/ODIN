@@ -23,7 +23,7 @@ import {
 } from '../assignment/eligibility/rules.js';
 
 // Priority / Selection
-import { sortTickets, selectWorker, resolveWorkerTie, getPriorityTier } from '../assignment/priority/sortAndSelect.js';
+import { sortTickets, selectWorker, resolveWorkerTie, getPriorityTier, buildTicketPrioritySnapshot, explainTicketOrderDecision } from '../assignment/priority/sortAndSelect.js';
 
 // Logging
 import { buildDecisionLog, buildRunSummary, buildTicketExplanation } from '../assignment/logging/decisionLog.js';
@@ -38,9 +38,13 @@ import { evaluateTicketCapacity } from '../assignment/rules/ticketCapacity.js';
 import { evaluateSystemGrouping } from '../assignment/rules/systemGrouping.js';
 import { PRIORITY_TIERS, CRAWLER_MAX_AGE_MS } from '../assignment/constants.js';
 import { refreshAssignmentRuntimeRules } from '../assignment/services/runtimeRules.js';
+import { assignmentRotationRepository } from '../assignment/repositories/index.js';
 import {
   isShiftCodeActiveNow,
   isWorkingShiftCode,
+  getPlanningContextsForMoment,
+  getShiftWindowForPlanEntry,
+  isMomentInShiftWindow,
   resolveEffectiveWorkerRole,
 } from '../assignment/candidates/loadCandidates.js';
 import {
@@ -314,6 +318,24 @@ describe('checkRelevance', () => {
     );
     assert.equal(r.relevant, false);
   });
+
+  it('uses scheduledStart as the planning-window reference for scheduled tickets', () => {
+    const scheduledStart = new Date(Date.now() + 100 * 60 * 60 * 1000).toISOString();
+    const dueAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const r = checkRelevance(
+      {
+        id: '1',
+        status: 'open',
+        type: 'Scheduled',
+        manualHold: false,
+        autoAssignable: true,
+        scheduledStart,
+        dueAt,
+      },
+      { planningWindowHours: '72' }
+    );
+    assert.equal(r.relevant, false);
+  });
 });
 
 /* ================================================ */
@@ -367,6 +389,63 @@ describe('Eligibility Rules', () => {
       { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-08T21:00:00' }
     );
     assert.equal(result.eligible, true);
+  });
+
+  it('rejects a scheduled ticket on the next day even when the shift code matches by time of day', () => {
+    const now = new Date('2026-03-08T08:00:00');
+    const result = isShiftActive(
+      {
+        ...baseWorker,
+        shiftCode: 'E1',
+        shiftActive: true,
+        shiftPlanningDate: '2026-03-08',
+        shiftStart: new Date('2026-03-08T06:30:00').toISOString(),
+        shiftEnd: new Date('2026-03-08T15:30:00').toISOString(),
+      },
+      { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-09T07:00:00' },
+      now,
+    );
+
+    assert.equal(result.eligible, false);
+    assert.match(result.reason, /Schichtinstanz/);
+  });
+
+  it('keeps a scheduled ticket within the same active shift instance eligible', () => {
+    const now = new Date('2026-03-08T08:00:00');
+    const result = isShiftActive(
+      {
+        ...baseWorker,
+        shiftCode: 'E1',
+        shiftActive: true,
+        shiftPlanningDate: '2026-03-08',
+        shiftStart: new Date('2026-03-08T06:30:00').toISOString(),
+        shiftEnd: new Date('2026-03-08T15:30:00').toISOString(),
+      },
+      { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-08T14:00:00' },
+      now,
+    );
+
+    assert.equal(result.eligible, true);
+  });
+
+  it('allows a future scheduled ticket for a planned future shift when current-shift-only is disabled', () => {
+    const now = new Date('2026-03-08T08:00:00');
+    const result = isShiftActive(
+      {
+        ...baseWorker,
+        shiftCode: 'E1',
+        shiftActive: false,
+        shiftPlanningDate: '2026-03-09',
+        shiftStart: new Date('2026-03-09T06:30:00').toISOString(),
+        shiftEnd: new Date('2026-03-09T15:30:00').toISOString(),
+      },
+      { ...baseTicket, type: 'Scheduled', scheduledStart: '2026-03-09T07:00:00' },
+      { currentShiftOnly: 'false' },
+      now,
+    );
+
+    assert.equal(result.eligible, true);
+    assert.match(result.reason, /future shift instance|zukünftige Ticket/i);
   });
 
   it('matchesSite passes when sites match', () => {
@@ -434,6 +513,32 @@ describe('Weekly Plan Shift Windows', () => {
   it('keeps night shift active across midnight window', () => {
     const activeAt = new Date('2026-03-08T02:30:00');
     assert.equal(isShiftCodeActiveNow('N', activeAt), true);
+  });
+
+  it('builds a cross-midnight shift window for the planning date', () => {
+    const window = getShiftWindowForPlanEntry('N', '2026-03-08');
+    assert.equal(window.planningDate, '2026-03-08');
+    assert.equal(window.start?.toISOString(), new Date('2026-03-08T21:15:00').toISOString());
+    assert.equal(window.end?.toISOString(), new Date('2026-03-09T06:45:00').toISOString());
+  });
+
+  it('recognizes the previous day context after midnight', () => {
+    const contexts = getPlanningContextsForMoment(new Date('2026-03-09T02:30:00'));
+    assert.deepEqual(contexts.map((context) => context.today), ['2026-03-09', '2026-03-08']);
+  });
+
+  it('loads future planning contexts when lookahead is enabled', () => {
+    const contexts = getPlanningContextsForMoment(new Date('2026-03-09T02:30:00'), {
+      includeFuture: true,
+      lookaheadHours: 30,
+    });
+    assert.deepEqual(contexts.map((context) => context.today), ['2026-03-09', '2026-03-08', '2026-03-10']);
+  });
+
+  it('marks a previous-day night shift instance as active after midnight', () => {
+    const window = getShiftWindowForPlanEntry('N', '2026-03-08');
+    assert.equal(isMomentInShiftWindow(new Date('2026-03-09T02:30:00'), window), true);
+    assert.equal(isMomentInShiftWindow(new Date('2026-03-09T21:30:00'), window), false);
   });
 
   it('maps weekplan aliases for CC and Deutsche Boerse roles', () => {
@@ -506,6 +611,31 @@ describe('sortTickets', () => {
     ]);
     assert.equal(sorted[0].id, 'B');
   });
+
+  it('builds traceable priority snapshots and comparison reasons', () => {
+    const NOW = new Date('2026-03-08T12:00:00Z').getTime();
+    const winner = {
+      id: 'TT-1',
+      externalId: 'TT-1',
+      priority: 'critical',
+      type: 'TroubleTicket',
+      dueAt: '2026-03-08T13:00:00Z',
+    };
+    const runnerUp = {
+      id: 'SCH-9',
+      externalId: 'SCH-9',
+      priority: 'medium',
+      type: 'Scheduled',
+      scheduledStart: '2026-03-08T12:30:00Z',
+    };
+
+    const snapshot = buildTicketPrioritySnapshot(winner, NOW);
+    const comparison = explainTicketOrderDecision(winner, runnerUp, NOW);
+
+    assert.equal(snapshot.priorityTier, PRIORITY_TIERS.TT_HIGH);
+    assert.ok(snapshot.factors.length >= 4);
+    assert.match(comparison, /priority tier/i);
+  });
 });
 
 /* ================================================ */
@@ -551,6 +681,29 @@ describe('selectWorker', () => {
       workerTicketsMap
     );
     assert.equal(r.worker.id, 2); // fewer tickets
+  });
+
+  it('returns structured ranking details for the audit trace', async () => {
+    const workerTicketsMap = new Map([
+      [1, [{ type: 'SmartHands' }, { type: 'SmartHands' }]],
+      [2, [{ type: 'SmartHands' }]],
+    ]);
+
+    const r = await selectWorker(
+      [
+        { id: 1, name: 'Worker A', shiftCode: 'EARLY' },
+        { id: 2, name: 'Worker B', shiftCode: 'EARLY' },
+      ],
+      { type: 'SmartHands', systemName: null },
+      {},
+      workerTicketsMap,
+    );
+
+    assert.equal(r.worker.id, 2);
+    assert.equal(r.ranking.length, 2);
+    assert.equal(r.ranking[0].employeeId, 2);
+    assert.equal(r.ranking[0].selected, true);
+    assert.ok(r.ranking[0].rankingFactors.some((factor) => /workload/i.test(factor)));
   });
 });
 
@@ -710,6 +863,79 @@ describe('buildTicketExplanation', () => {
     assert.equal(exp.structured.excludedCandidateGroups.length, 1);
     assert.equal(exp.structured.excludedCandidateGroups[0].reasons.length, 2);
     assert.ok(exp.structured.decisionTrace.length >= 4);
+  });
+
+  it('exposes structured prioritization and ranking trace data', () => {
+    const log = buildDecisionLog({
+      ticket: {
+        id: '777',
+        externalId: 'TT-777',
+        type: 'TroubleTicket',
+        status: 'open',
+        priority: 'high',
+        site: 'FR2',
+        normalizationWarnings: [],
+        raw: {},
+      },
+      result: 'assigned',
+      assignedWorker: { id: 5, name: 'Alice' },
+      selectionReason: 'Selected by: workload: 0 tickets, worker ID: 5',
+      rulePath: ['relevance', 'eligibility', 'worker-selection'],
+      initialCandidates: [{ id: 5, name: 'Alice' }, { id: 8, name: 'Bob' }],
+      excludedCandidates: [{ id: 8, name: 'Bob', reason: 'Not in active shift', rule: 'isShiftActive' }],
+      remainingCandidates: [{ id: 5, name: 'Alice' }],
+      decisionTraceInput: {
+        configSnapshot: {
+          mode: 'shadow',
+          currentShiftOnly: 'true',
+          planningWindowHours: '24',
+          fallbackTieBreaker: 'stable-id',
+        },
+        selectionTieBreaker: 'queue-purity',
+        ticketSelection: {
+          prioritizationRank: 1,
+          totalEligibleTickets: 3,
+          totalRemainingTickets: 3,
+          priorityTier: 1,
+          selectedNextReason: 'TT-777 outranks SH-9 because priority tier 1 beats tier 3',
+          prioritizationFactors: [
+            { key: 'priority-tier', label: 'Priority tier', value: 'Tier 1' },
+          ],
+          comparedTickets: [
+            {
+              ticketId: 'SH-9',
+              displayTicketNumber: 'SH-9',
+              rank: 2,
+              selectedFirstBy: 'Priority tier comparison',
+              factors: [],
+            },
+          ],
+        },
+        candidateRanking: [
+          {
+            employeeId: 5,
+            employeeName: 'Alice',
+            workload: 0,
+            selectionBlocked: false,
+            rankingFactors: ['Current workload 0'],
+            scoreBreakdown: { workload: 0 },
+            finalRank: 1,
+            selected: true,
+          },
+        ],
+      },
+    });
+
+    const exp = buildTicketExplanation(log);
+
+    assert.equal(log.decisionTrace.ticketSelection.prioritizationRank, 1);
+    assert.equal(log.decisionTrace.candidateRanking[0].selected, true);
+    assert.equal(log.decisionTrace.finalDecision.tieBreaker, 'queue-purity');
+    assert.equal(exp.structured.ticketSelection?.prioritizationRank, 1);
+    assert.equal(exp.structured.configSnapshot.currentShiftOnly, true);
+    assert.equal(exp.structured.finalDecision?.tieBreaker, 'queue-purity');
+    assert.equal(exp.structured.candidateRanking.length, 1);
+    assert.ok(exp.structured.decisionTrace.length >= 6);
   });
 });
 
@@ -1260,13 +1486,13 @@ describe('Eligibility — V2 Role + Purity', () => {
     assert.ok(r.exclusions.some(e => e.rule === 'roleFilter'));
   });
 
-  it('excludes by queue purity', () => {
+  it('does not hard-exclude by queue purity because purity is ranked later', () => {
     const w = { name: 'Test', autoAssignable: true, blocked: false, onBreak: false, absent: false, shiftActive: true, role: 'normal' };
     const shTicket = { type: 'SmartHands', priority: 'medium', handoverType: null, site: null, responsibility: null };
     const currentTickets = [{ type: 'CrossConnect' }];
     const r = applyEligibilityRules(w, shTicket, settings, currentTickets);
-    assert.equal(r.eligible, false);
-    assert.ok(r.exclusions.some(e => e.rule === 'queuePurity'));
+    assert.equal(r.eligible, true);
+    assert.equal(r.exclusions.some(e => e.rule === 'queuePurity'), false);
   });
 
   it('accepts normal worker with clean queue', () => {
@@ -1331,6 +1557,84 @@ describe('V2 Worker Selection', () => {
       false, NOW,
     );
     assert.equal(r.worker.id, 3);
+  });
+
+  it('uses round-robin when rotation tie-breaker is explicitly enabled', async () => {
+    const originalGetForSite = assignmentRotationRepository.getForSite;
+    assignmentRotationRepository.getForSite = async () => ({ last_assigned_worker_id: 3 });
+
+    try {
+      const r = await selectWorker(
+        [{ id: 3, name: 'Worker C' }, { id: 5, name: 'Worker E' }],
+        { type: 'SmartHands', systemName: null, site: 'FRA1' },
+        { enableRotationTieBreaker: 'true', fallbackTieBreaker: 'stable-id' },
+        new Map([[3, []], [5, []]]),
+        false,
+        NOW,
+      );
+
+      assert.equal(r.worker.id, 5);
+      assert.equal(r.tieBreaker, 'round-robin');
+      assert.match(r.reason, /round-robin rotation/i);
+    } finally {
+      assignmentRotationRepository.getForSite = originalGetForSite;
+    }
+  });
+
+  it('uses random fallback when configured and rotation is disabled', async () => {
+    const originalRandom = Math.random;
+    Math.random = () => 0.99;
+
+    try {
+      const r = await selectWorker(
+        [{ id: 3, name: 'Worker C' }, { id: 5, name: 'Worker E' }],
+        { type: 'SmartHands', systemName: null, site: 'FRA1' },
+        { enableRotationTieBreaker: 'false', fallbackTieBreaker: 'random' },
+        new Map([[3, []], [5, []]]),
+        false,
+        NOW,
+      );
+
+      assert.equal(r.worker.id, 5);
+      assert.equal(r.tieBreaker, 'random');
+      assert.match(r.reason, /random fallback/i);
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+
+  it('still assigns a worker when only queue-impure candidates remain', async () => {
+    const candidates = [
+      { id: 5, name: 'Worker A' },
+      { id: 7, name: 'Worker B' },
+    ];
+    const wMap = new Map([
+      [5, [{ type: 'CrossConnect', systemName: 'SYS-X', priority: 'medium' }]],
+      [7, [{ type: 'CrossConnect', systemName: 'SYS-Y', priority: 'medium' }]],
+    ]);
+
+    const r = await selectWorker(candidates, { type: 'TroubleTicket', systemName: 'SYS-TT', priority: 'high' }, {}, wMap, false, NOW);
+    assert.equal(r.worker.id, 5);
+    assert.equal(r.tieBreaker, 'worker-id');
+    assert.equal(r.ranking[0].queuePure, false);
+    assert.equal(r.ranking[1].queuePure, false);
+  });
+
+  it('still prefers queue-pure candidates over impure ones', async () => {
+    const candidates = [
+      { id: 5, name: 'Worker A' },
+      { id: 7, name: 'Worker B' },
+    ];
+    const wMap = new Map([
+      [5, [{ type: 'CrossConnect', systemName: 'SYS-X', priority: 'medium' }]],
+      [7, []],
+    ]);
+
+    const r = await selectWorker(candidates, { type: 'TroubleTicket', systemName: 'SYS-TT', priority: 'high' }, {}, wMap, false, NOW);
+    assert.equal(r.worker.id, 7);
+    assert.equal(r.tieBreaker, 'queue-purity');
+    assert.equal(r.ranking[0].employeeId, 7);
+    assert.equal(r.ranking[1].employeeId, 5);
   });
 
   it('returns the only candidate', async () => {

@@ -8,9 +8,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/components/ui/utils";
 import { format } from "date-fns";
-import { de } from "date-fns/locale";
+import { de, enUS } from "date-fns/locale";
 import { CalendarIcon, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/context/LanguageContext";
 import { api } from "@/api/api"; // Assuming api wrapper exists, or use fetch
 
 interface ExportDialogProps {
@@ -22,6 +23,9 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange, type, currentYear, currentMonth }: ExportDialogProps) {
+    const { language } = useLanguage();
+    const isGerman = language === "de";
+    const dateLocale = isGerman ? de : enUS;
     const [mode, setMode] = useState<"MONTH" | "RANGE">("MONTH");
     const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
     const [loading, setLoading] = useState(false);
@@ -42,7 +46,7 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
                 toStr = format(defaultTo, "yyyy-MM-dd");
             } else {
                 if (!dateRange.from || !dateRange.to) {
-                    toast.error("Bitte Zeitraum wählen");
+                    toast.error(isGerman ? "Bitte Zeitraum wählen" : "Please select a date range");
                     setLoading(false);
                     return;
                 }
@@ -57,12 +61,12 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
 
             if (type === "SHIFTPLAN") {
                 url = `/reports/shiftplan/export?from=${fromStr}&to=${toStr}`;
-                filename = `Schichtplan_${fromStr}_${toStr}.xlsx`;
+                filename = `${isGerman ? "Schichtplan" : "Shiftplan"}_${fromStr}_${toStr}.xlsx`;
             } else if (type === "CHANGES") {
                 url = `/reports/changes/export?from=${fromStr}&to=${toStr}`;
-                filename = `Aenderungen_${fromStr}_${toStr}.xlsx`;
+                filename = `${isGerman ? "Aenderungen" : "Changes"}_${fromStr}_${toStr}.xlsx`;
             } else if (type === "WARNINGS_LEGACY") {
-                toast.info("Legacy Export selected");
+                toast.info(isGerman ? "Legacy-Export ausgewählt" : "Legacy export selected");
                 setLoading(false);
                 return;
             }
@@ -81,17 +85,19 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
             a.click();
             a.remove();
 
-            toast.success("Download gestartet");
+            toast.success(isGerman ? "Download gestartet" : "Download started");
             onOpenChange(false);
         } catch (e) {
             console.error(e);
-            toast.error("Export fehlgeschlagen");
+            toast.error(isGerman ? "Export fehlgeschlagen" : "Export failed");
         } finally {
             setLoading(false);
         }
     };
 
-    const title = type === "SHIFTPLAN" ? "Schichtplan exportieren" : "Änderungen exportieren";
+    const title = type === "SHIFTPLAN"
+        ? (isGerman ? "Schichtplan exportieren" : "Export shift plan")
+        : (isGerman ? "Änderungen exportieren" : "Export changes");
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -106,13 +112,13 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
                         {/* OPTION 1: CURRENT MONTH */}
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="MONTH" id="r-month" />
-                            <Label htmlFor="r-month">Aktueller Monat ({format(defaultFrom, "MMMM yyyy", { locale: de })})</Label>
+                            <Label htmlFor="r-month">{isGerman ? "Aktueller Monat" : "Current month"} ({format(defaultFrom, "MMMM yyyy", { locale: dateLocale })})</Label>
                         </div>
 
                         {/* OPTION 2: DATE RANGE */}
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="RANGE" id="r-range" />
-                            <Label htmlFor="r-range">Zeitraum wählen</Label>
+                            <Label htmlFor="r-range">{isGerman ? "Zeitraum wählen" : "Select date range"}</Label>
                         </div>
                     </RadioGroup>
 
@@ -131,14 +137,14 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
                                         {dateRange.from ? (
                                             dateRange.to ? (
                                                 <>
-                                                    {format(dateRange.from, "dd.MM.y")} -{" "}
-                                                    {format(dateRange.to, "dd.MM.y")}
+                                                    {format(dateRange.from, "P", { locale: dateLocale })} -{" "}
+                                                    {format(dateRange.to, "P", { locale: dateLocale })}
                                                 </>
                                             ) : (
-                                                format(dateRange.from, "dd.MM.y")
+                                                format(dateRange.from, "P", { locale: dateLocale })
                                             )
                                         ) : (
-                                            <span>Wähle Datum</span>
+                                            <span>{isGerman ? "Wähle Datum" : "Select date"}</span>
                                         )}
                                     </Button>
                                 </PopoverTrigger>
@@ -150,7 +156,7 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
                                         selected={dateRange as any}
                                         onSelect={(range) => setDateRange(range || {})}
                                         numberOfMonths={2}
-                                        locale={de}
+                                        locale={dateLocale}
                                     />
                                 </PopoverContent>
                             </Popover>
@@ -159,10 +165,10 @@ export function ExportDialog({ open, onOpenChange, type, currentYear, currentMon
                 </div>
 
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Abbrechen</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>{isGerman ? "Abbrechen" : "Cancel"}</Button>
                     <Button onClick={handleExport} disabled={loading}>
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Exportieren
+                        {isGerman ? "Exportieren" : "Export"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

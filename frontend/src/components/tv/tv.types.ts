@@ -34,6 +34,7 @@ export type TvShiftEmployee = {
   name: string;
   shift: string;
   time: string;
+  weekplanRole?: string | null;
   info: {
     color: string;
   };

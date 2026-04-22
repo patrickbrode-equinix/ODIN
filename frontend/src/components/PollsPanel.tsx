@@ -174,16 +174,16 @@ function CreatePollForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
-      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+    <div className="theme-glass-panel rounded-2xl p-5 space-y-4">
+      <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
         <Plus className="h-4 w-4 text-emerald-400" /> {c.newPoll}
       </h3>
 
       {/* Title */}
       <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{c.pollTitle}</label>
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{c.pollTitle}</label>
         <input
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30"
+          className="mt-1 w-full rounded-lg border border-border bg-background/85 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30"
           placeholder={c.pollTitlePlaceholder}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -193,9 +193,9 @@ function CreatePollForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
       {/* Description */}
       <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{c.description}</label>
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{c.description}</label>
         <textarea
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 min-h-[80px] resize-y"
+          className="mt-1 min-h-[80px] w-full resize-y rounded-lg border border-border bg-background/85 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30"
           placeholder={c.descriptionPlaceholder}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -204,12 +204,12 @@ function CreatePollForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
       {/* Options */}
       <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{c.options}</label>
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{c.options}</label>
         <div className="mt-1 space-y-2">
           {options.map((opt, i) => (
             <div key={i} className="flex gap-2">
               <input
-                className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500/50 focus:outline-none"
+                className="flex-1 rounded-lg border border-border bg-background/85 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-sky-500/50 focus:outline-none"
                 placeholder={`${c.optionPlaceholder} ${i + 1}`}
                 value={opt}
                 onChange={(e) => {
@@ -242,12 +242,12 @@ function CreatePollForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
       {/* End date */}
       <div>
-        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          {c.endsAt} <span className="text-slate-600 normal-case">({c.optional})</span>
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {c.endsAt} <span className="normal-case text-slate-600 dark:text-slate-400">({c.optional})</span>
         </label>
         <input
           type="datetime-local"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 [color-scheme:dark]"
+          className="mt-1 w-full rounded-lg border border-border bg-background/85 px-3 py-2 text-sm text-foreground focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 dark:[color-scheme:dark]"
           value={endsAt}
           onChange={(e) => setEndsAt(e.target.value)}
         />
@@ -258,7 +258,7 @@ function CreatePollForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 text-xs rounded-lg border border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20 transition"
+          className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:border-border/90 hover:text-foreground"
         >
           {c.cancel}
         </button>
@@ -327,16 +327,16 @@ function PollCard({ poll, onUpdate }: { poll: Poll; onUpdate: () => void }) {
   const totalVotes = detail ? detail.votes.reduce((s, v) => s + v.count, 0) : poll.vote_count;
 
   return (
-    <div className={`rounded-xl border transition-all ${expired ? "border-white/5 bg-white/[0.01]" : "border-white/10 bg-white/[0.03] hover:border-[#00d8ff]/20"}`}>
+    <div className={`rounded-xl border transition-all ${expired ? "border-border/50 bg-background/55" : "border-border bg-background/80 hover:border-[#00d8ff]/25"}`}>
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-start gap-3 w-full text-left px-4 py-3"
       >
-        <Vote className={`h-4 w-4 mt-0.5 shrink-0 ${expired ? "text-slate-600" : "text-emerald-400"}`} />
+        <Vote className={`mt-0.5 h-4 w-4 shrink-0 ${expired ? "text-slate-600 dark:text-slate-500" : "text-emerald-400"}`} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-slate-100 leading-snug">{poll.title}</div>
-          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+          <div className="text-sm font-semibold leading-snug text-foreground">{poll.title}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
             <span>{c.by} {poll.creator_name}</span>
             <span className="flex items-center gap-1">
               <BarChart3 className="h-3 w-3" />
@@ -356,15 +356,15 @@ function PollCard({ poll, onUpdate }: { poll: Poll; onUpdate: () => void }) {
             )}
           </div>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-slate-500 mt-1" /> : <ChevronDown className="h-4 w-4 text-slate-500 mt-1" />}
+        {expanded ? <ChevronUp className="mt-1 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="mt-1 h-4 w-4 text-muted-foreground" />}
       </button>
 
       {/* Expanded Detail */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3">
+        <div className="space-y-3 border-t border-border/50 px-4 pb-4 pt-3">
           {/* Description */}
           {poll.description && (
-            <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">{poll.description}</p>
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{poll.description}</p>
           )}
 
           {/* Deadline info */}
@@ -394,8 +394,8 @@ function PollCard({ poll, onUpdate }: { poll: Poll; onUpdate: () => void }) {
                       isMyVote
                         ? "border-emerald-500/40 bg-emerald-500/10"
                         : canVote
-                          ? "border-white/8 bg-white/[0.02] hover:border-sky-500/30 hover:bg-sky-500/5 cursor-pointer"
-                          : "border-white/5 bg-white/[0.01]"
+                          ? "cursor-pointer border-border/70 bg-background/60 hover:border-sky-500/30 hover:bg-sky-500/5"
+                          : "border-border/40 bg-background/40"
                     }`}
                   >
                     {/* Progress bar */}
@@ -406,32 +406,32 @@ function PollCard({ poll, onUpdate }: { poll: Poll; onUpdate: () => void }) {
                     <div className="relative flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         {isMyVote && <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
-                        <span className={`truncate ${isMyVote ? "text-emerald-200 font-medium" : "text-slate-200"}`}>{opt}</span>
+                        <span className={`truncate ${isMyVote ? "font-medium text-emerald-700 dark:text-emerald-200" : "text-foreground"}`}>{opt}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 text-xs">
-                        <span className="text-slate-400">{count}</span>
-                        <span className={`font-semibold w-10 text-right ${isMyVote ? "text-emerald-400" : "text-slate-500"}`}>{pct}%</span>
+                        <span className="text-muted-foreground">{count}</span>
+                        <span className={`w-10 text-right font-semibold ${isMyVote ? "text-emerald-500" : "text-muted-foreground"}`}>{pct}%</span>
                       </div>
                     </div>
                   </button>
                 );
               })}
-              <div className="text-[11px] text-slate-600 text-right">
+              <div className="text-right text-[11px] text-slate-600 dark:text-slate-400">
                 {c.total}: {totalVotes} {totalVotes === 1 ? c.vote : c.votes}
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-xs text-slate-500 py-4 justify-center">
+            <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           )}
 
           {/* Admin actions */}
           {manage && (
-            <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+            <div className="flex items-center gap-2 border-t border-border/50 pt-2">
               <button
                 onClick={toggleClosed}
-                className="text-[11px] text-slate-400 hover:text-slate-200 transition px-2 py-1 rounded border border-white/5 hover:border-white/10"
+                className="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-foreground transition hover:border-border hover:text-foreground"
               >
                 {poll.closed ? c.reopenPoll : c.closePoll}
               </button>
@@ -453,7 +453,7 @@ function PollCard({ poll, onUpdate }: { poll: Poll; onUpdate: () => void }) {
                   </button>
                   <button
                     onClick={() => setConfirmDelete(false)}
-                    className="text-[10px] text-slate-500 hover:text-slate-300"
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
                   >
                     {c.cancel}
                   </button>
@@ -493,7 +493,7 @@ export function PollsPanel() {
     <div className="space-y-4 max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
           <Vote className="h-5 w-5 text-emerald-400" />
           {c.title}
         </h2>

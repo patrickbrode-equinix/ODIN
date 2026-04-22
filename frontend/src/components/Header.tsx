@@ -44,6 +44,11 @@ const QUICK_LINKS = [
   { label: "Global Label Printer", url: "https://labelprint.equinix.com", description: "Label Printing" },
 ];
 
+const HEADER_PANEL_CLASS = "theme-toolbar-panel rounded-2xl";
+const HEADER_BUTTON_CLASS = "theme-toolbar-button rounded-lg";
+const HEADER_DROPDOWN_CLASS = "theme-popover-surface border-border text-foreground";
+const HEADER_DROPDOWN_ITEM_CLASS = "cursor-pointer focus:bg-accent focus:text-accent-foreground";
+
 /* ---------------------------------------------------- */
 /* DATA                                                */
 /* ---------------------------------------------------- */
@@ -192,12 +197,12 @@ function EqixStockBadge() {
 
   return (
     <div
-      className="hidden shrink-0 sm:flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-[12px] font-medium text-cyan-100"
+      className="theme-glass-inset hidden shrink-0 items-center gap-2 rounded-lg border border-cyan-500/30 px-2.5 py-1.5 text-[12px] font-medium text-cyan-700 sm:flex dark:text-cyan-100"
       title={title}
     >
       <span className={`h-2 w-2 rounded-full ${available ? (quote?.stale ? "bg-amber-400" : positive ? "bg-emerald-400" : "bg-rose-400") : loading ? "bg-slate-500 animate-pulse" : "bg-slate-500"}`} />
-      <span className="font-semibold tracking-wide text-cyan-200">EQIX</span>
-      <span className="text-slate-100">{available ? formatQuotePrice(quote?.price ?? null, quote?.currency ?? null) : "--"}</span>
+      <span className="font-semibold tracking-wide text-cyan-700 dark:text-cyan-200">EQIX</span>
+      <span className="text-foreground">{available ? formatQuotePrice(quote?.price ?? null, quote?.currency ?? null) : "--"}</span>
       {available && delta ? (
         <span className={positive ? "text-emerald-300" : "text-rose-300"}>{delta}</span>
       ) : null}
@@ -265,20 +270,20 @@ function ClockDisplay() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="px-3 py-1.5 hover:bg-white/5 rounded-lg text-[13px] font-medium tabular-nums flex items-center gap-2 border border-transparent hover:border-white/10 transition-all text-slate-200">
+        <button className={`${HEADER_BUTTON_CLASS} flex items-center gap-2 rounded-lg border border-transparent px-3 py-1.5 text-[13px] font-medium tabular-nums transition-all hover:border-border/80`}>
           <Clock className="w-4 h-4 text-blue-400" />
           <span>{formatTime(now, tz)}</span>
-          <span className="text-slate-500 text-[11px] hidden xl:inline">
+          <span className="hidden text-[11px] text-muted-foreground xl:inline">
             ({tz})
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-96 overflow-y-auto">
+      <DropdownMenuContent align="end" className={`${HEADER_DROPDOWN_CLASS} max-h-96 overflow-y-auto`}>
         {TIMEZONES.map((t) => (
           <DropdownMenuItem
             key={t.value}
             onClick={() => setTz(t.value)}
-            className="flex justify-between gap-4"
+            className={`${HEADER_DROPDOWN_ITEM_CLASS} flex justify-between gap-4`}
           >
             <span>{t.label}</span>
             {tz === t.value && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
@@ -450,18 +455,18 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-[9999] bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl w-[96vw] max-w-[96vw] h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-none">
+      <div className="theme-modal-surface relative z-[9999] flex h-[95vh] w-[96vw] max-w-[96vw] flex-col overflow-hidden rounded-2xl border shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="flex flex-none items-center justify-between border-b border-border/60 px-5 py-3">
           {/* MODE SWITCHER */}
           <div className="flex items-center gap-3">
             <Info className="w-4 h-4 text-amber-400" />
-            <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
+            <div className="theme-glass-inset flex items-center gap-1 rounded-lg p-1">
               <button
                 onClick={() => setMode("instructions")}
                 className={`px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
                   mode === "instructions"
                     ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t("header.instructions")}
@@ -471,7 +476,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 className={`px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
                   mode === "projects"
                     ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t("header.projects")}
@@ -481,7 +486,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
                   mode === "events"
                     ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Camera className="w-3 h-3" />
@@ -492,7 +497,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[12px] font-semibold transition-all ${
                   mode === "polls"
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Vote className="w-3 h-3" />
@@ -502,7 +507,7 @@ function InfosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-white transition"
+            className={`${HEADER_BUTTON_CLASS} rounded p-1 transition hover:bg-accent hover:text-foreground`}
           >
             <X className="w-4 h-4" />
           </button>
@@ -533,23 +538,23 @@ function QuickLinksMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-[12px] font-medium text-blue-700 transition-colors hover:bg-blue-500/20 dark:text-blue-300"
           title={t("header.quickLinks")}
         >
           <Link2 className="w-3.5 h-3.5" />
           <span className="hidden xl:inline">{t("header.links")}</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-[#0f172a] border border-white/10 text-slate-200">
-        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+      <DropdownMenuContent align="end" className={`${HEADER_DROPDOWN_CLASS} w-56`}>
+        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
           {t("header.quickLinks")}
         </div>
-        <DropdownMenuSeparator className="bg-white/10" />
+        <DropdownMenuSeparator />
         {QUICK_LINKS.map((link) => (
           <DropdownMenuItem
             key={link.label}
             asChild
-            className="focus:bg-white/10 focus:text-white cursor-pointer"
+            className={HEADER_DROPDOWN_ITEM_CLASS}
           >
             <a
               href={link.url}
@@ -557,8 +562,8 @@ function QuickLinksMenu() {
               rel="noopener noreferrer"
               className="flex flex-col gap-0.5 px-3 py-2"
             >
-              <span className="font-semibold text-[13px] text-slate-200">{link.label}</span>
-              <span className="text-[11px] text-slate-500">{link.description}</span>
+              <span className="text-[13px] font-semibold text-foreground">{link.label}</span>
+              <span className="text-[11px] text-muted-foreground">{link.description}</span>
             </a>
           </DropdownMenuItem>
         ))}
@@ -735,10 +740,10 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
       <header className="sticky top-0 z-40 flex w-full flex-wrap items-start justify-between gap-3 bg-transparent px-3 pb-2 pt-3 pointer-events-none sm:px-4 sm:pt-4 lg:px-6 2xl:items-center">
         {/* LEFT */}
-        <div className="flex items-center gap-3 bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl p-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] pointer-events-auto transition-all hover:border-blue-500/30">
+        <div className={`${HEADER_PANEL_CLASS} pointer-events-auto flex items-center gap-3 p-1.5 transition-all hover:border-blue-500/30`}>
           <button
             onClick={onToggleSidebar}
-            className="p-2 hover:bg-blue-500/10 text-slate-300 hover:text-blue-400 rounded-xl transition-colors"
+            className={`${HEADER_BUTTON_CLASS} rounded-xl p-2 transition-colors hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400`}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -746,10 +751,10 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
         {/* CENTER: CRAWLER INFO */}
         <div className="order-3 flex basis-full justify-center pointer-events-none">
-          <div className="w-full max-w-[1480px] bg-[rgba(8,12,28,0.72)] backdrop-blur-[20px] border border-blue-500/15 rounded-2xl px-4 py-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12px] shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-blue-500/30 pointer-events-auto">
+          <div className={`${HEADER_PANEL_CLASS} pointer-events-auto flex w-full max-w-[1480px] flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-2 text-[12px] transition-all hover:border-blue-500/30`}>
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">{t("header.crawlerUpdate")}:</span>
-              <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400" : "text-slate-200"}`}>
+              <span className="font-medium text-muted-foreground">{t("header.crawlerUpdate")}:</span>
+              <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-500 dark:text-red-400" : "text-foreground"}`}>
                 {formatDateTime(crawlerMeta?.lastUpdate ?? null)}
               </span>
             </div>
@@ -765,10 +770,10 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               </>
             )}
 
-            <div className="h-4 w-px bg-white/10" />
+            <div className="theme-divider h-4 w-px" />
 
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">{t("header.activeTickets")}:</span>
+              <span className="font-medium text-muted-foreground">{t("header.activeTickets")}:</span>
               <span className={`font-bold ${crawlerStaleness.isStale ? "text-red-400/50" : "text-blue-400"}`}>
                 {crawlerMeta ? crawlerMeta.count : "—"}
               </span>
@@ -776,32 +781,32 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
             {crawlerMeta && (
               <>
-                <div className="h-4 w-px bg-white/10" />
+                <div className="theme-divider h-4 w-px" />
                 <div className="flex items-center gap-4 text-xs font-semibold">
                   <div className="flex items-center gap-4 text-xs font-semibold">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                      <span className="text-blue-200">SH: {crawlerMeta?.breakdown?.sh ?? 0}</span>
+                      <span className="text-blue-700 dark:text-blue-200">SH: {crawlerMeta?.breakdown?.sh ?? 0}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                      <span className="text-rose-200">TT: {crawlerMeta?.breakdown?.tt ?? 0}</span>
+                      <span className="text-rose-700 dark:text-rose-200">TT: {crawlerMeta?.breakdown?.tt ?? 0}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                      <span className="text-amber-200">CC: {crawlerMeta?.breakdown?.cc ?? 0}</span>
+                      <span className="text-amber-700 dark:text-amber-200">CC: {crawlerMeta?.breakdown?.cc ?? 0}</span>
                     </div>
                   </div>
                 </div>
               </>
             )}
 
-            <div className="h-4 w-px bg-white/10" />
+            <div className="theme-divider h-4 w-px" />
 
             <div className="flex items-center gap-2">
-              <Upload className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-500 font-medium">{t("header.shiftplan")}:</span>
-              <span className="font-bold text-slate-200">
+              <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="font-medium text-muted-foreground">{t("header.shiftplan")}:</span>
+              <span className="font-bold text-foreground">
                 {lastShiftplanUpload ? formatDateTime(lastShiftplanUpload) : t("header.noUpdateAvailable")}
               </span>
             </div>
@@ -809,7 +814,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         </div>
 
         {/* RIGHT */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 rounded-2xl border border-blue-500/15 bg-[rgba(8,12,28,0.72)] p-1.5 px-2 shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)] pointer-events-auto transition-all hover:border-blue-500/30">
+        <div className={`${HEADER_PANEL_CLASS} pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 p-1.5 px-2 transition-all hover:border-blue-500/30`}>
           {/* GLOBAL CLOCK */}
           <ClockDisplay />
 
@@ -820,12 +825,12 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
           <EqixStockBadge />
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="theme-divider mx-1 h-4 w-px" />
 
           {/* INFOS BADGE */}
           <button
             onClick={() => setInfosOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
             title={t("header.infoAndInstructions")}
           >
             <Info className="w-3.5 h-3.5" />
@@ -864,19 +869,19 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           {/* QUICK LINKS */}
           <QuickLinksMenu />
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="theme-divider mx-1 h-4 w-px" />
 
           {/* METRICS */}
           <div className="relative group">
-            <button className="p-2 hover:bg-white/5 rounded-lg transition-colors" title={t("header.systemMetrics")}>
+            <button className={`${HEADER_BUTTON_CLASS} rounded-lg p-2 transition-colors`} title={t("header.systemMetrics")}>
               <Activity
-                className={`w-4 h-4 ${metricsOk ? metricsStale ? "text-amber-300" : "text-slate-300" : "text-rose-400"
+                className={`w-4 h-4 ${metricsOk ? metricsStale ? "text-amber-300" : "text-muted-foreground" : "text-rose-400"
                   }`}
               />
             </button>
 
-            <div className="absolute right-0 top-10 z-50 hidden w-[22rem] rounded-xl border border-white/10 bg-[#0f172a] p-4 text-[13px] shadow-2xl animate-in fade-in zoom-in-95 group-hover:block">
-              <div className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            <div className="theme-popover-surface absolute right-0 top-10 z-50 hidden w-[22rem] rounded-xl border p-4 text-[13px] shadow-2xl animate-in fade-in zoom-in-95 group-hover:block">
+              <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
                 <Activity className="w-4 h-4 text-blue-400" />
                 {t("header.systemMetrics")}
               </div>
@@ -885,7 +890,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
                   {metricsError ?? t("header.notAvailable")}
                 </div>
               ) : (
-                <div className="space-y-4 text-slate-300">
+                <div className="space-y-4 text-muted-foreground">
                   {metricsStale ? (
                     <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                       {language === "de"
@@ -894,58 +899,58 @@ export function Header({ onToggleSidebar }: HeaderProps) {
                     </div>
                   ) : null}
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                    <div className="theme-glass-inset rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <UsersRound className="h-3.5 w-3.5 text-sky-300" />
                         {t("header.loggedIn")}
                       </div>
-                      <div className="mt-1 text-lg font-semibold text-slate-100">{onlineUsers ?? "-"}</div>
-                      <div className="text-[11px] text-slate-500">{`${onlineUsers ?? "-"} / ${totalUsers ?? "-"} ${t("header.ofApprovedUsers")}`}</div>
+                      <div className="mt-1 text-lg font-semibold text-foreground">{onlineUsers ?? "-"}</div>
+                      <div className="text-[11px] text-muted-foreground">{`${onlineUsers ?? "-"} / ${totalUsers ?? "-"} ${t("header.ofApprovedUsers")}`}</div>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                    <div className="theme-glass-inset rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <Gauge className="h-3.5 w-3.5 text-amber-300" />
                         {t("header.utilization")}
                       </div>
-                      <div className="mt-1 text-lg font-semibold text-slate-100">{overallUtilization === null ? "-" : `${fmt1(overallUtilization)} %`}</div>
-                      <div className="text-[11px] text-slate-500">{t("header.systemLoad")} {systemLoadPct === null ? "-" : `${fmt1(systemLoadPct)} %`}</div>
+                      <div className="mt-1 text-lg font-semibold text-foreground">{overallUtilization === null ? "-" : `${fmt1(overallUtilization)} %`}</div>
+                      <div className="text-[11px] text-muted-foreground">{t("header.systemLoad")} {systemLoadPct === null ? "-" : `${fmt1(systemLoadPct)} %`}</div>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                    <div className="theme-glass-inset rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <Database className="h-3.5 w-3.5 text-fuchsia-300" />
                         {t("header.dbStorage")}
                       </div>
-                      <div className="mt-1 text-lg font-semibold text-slate-100">{dbSize}</div>
-                      <div className="text-[11px] text-slate-500">{metrics?.database?.connectionCount ?? "-"} {t("header.activeConnections")}</div>
+                      <div className="mt-1 text-lg font-semibold text-foreground">{dbSize}</div>
+                      <div className="text-[11px] text-muted-foreground">{metrics?.database?.connectionCount ?? "-"} {t("header.activeConnections")}</div>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+                    <div className="theme-glass-inset rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
                         <Activity className="h-3.5 w-3.5 text-emerald-300" />
                         {t("header.ticketLoad")}
                       </div>
-                      <div className="mt-1 text-lg font-semibold text-slate-100">{metrics?.tickets?.activeCount ?? "-"}</div>
-                      <div className="text-[11px] text-slate-500">{activeTicketsPerOnlineUser === null ? "-" : `${fmt1(activeTicketsPerOnlineUser)} ${t("header.ticketsPerUser")}`}</div>
+                      <div className="mt-1 text-lg font-semibold text-foreground">{metrics?.tickets?.activeCount ?? "-"}</div>
+                      <div className="text-[11px] text-muted-foreground">{activeTicketsPerOnlineUser === null ? "-" : `${fmt1(activeTicketsPerOnlineUser)} ${t("header.ticketsPerUser")}`}</div>
                     </div>
                   </div>
 
-                  <div className="space-y-2 border-t border-white/10 pt-3">
+                  <div className="space-y-2 border-t border-border/60 pt-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">CPU</span>
-                      <span className="font-medium text-slate-200">{cpuPct === null ? "-" : `${fmt1(cpuPct)} %`}</span>
+                      <span className="text-muted-foreground">CPU</span>
+                      <span className="font-medium text-foreground">{cpuPct === null ? "-" : `${fmt1(cpuPct)} %`}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">RAM</span>
-                      <span className="font-medium text-slate-200">{memPct === null ? "-" : `${fmt1(memPct)} %`}</span>
+                      <span className="text-muted-foreground">RAM</span>
+                      <span className="font-medium text-foreground">{memPct === null ? "-" : `${fmt1(memPct)} %`}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Node Heap</span>
-                      <span className="font-medium text-slate-200">{metrics?.process?.heapUsedMB === undefined ? "-" : `${fmt1(metrics?.process?.heapUsedMB)} / ${fmt1(metrics?.process?.heapTotalMB)} MB`}</span>
+                      <span className="text-muted-foreground">Node Heap</span>
+                      <span className="font-medium text-foreground">{metrics?.process?.heapUsedMB === undefined ? "-" : `${fmt1(metrics?.process?.heapUsedMB)} / ${fmt1(metrics?.process?.heapTotalMB)} MB`}</span>
                     </div>
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500">Uptime</span>
-                    <span className="font-medium text-slate-200">{formatUptime(metrics?.uptimeSec)}</span>
+                    <span className="text-muted-foreground">Uptime</span>
+                    <span className="font-medium text-foreground">{formatUptime(metrics?.uptimeSec)}</span>
                   </div>
                 </div>
               )}
@@ -955,7 +960,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           {/* THEME */}
           <button
             onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            className="p-2 hover:bg-white/5 rounded-lg text-slate-300 transition-colors"
+            className={`${HEADER_BUTTON_CLASS} rounded-lg p-2 transition-colors`}
           >
             {theme === "light" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -963,20 +968,20 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           {/* LANGUAGE */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300">
+              <button className={`${HEADER_BUTTON_CLASS} flex items-center gap-1.5 rounded-lg p-2 transition-colors`}>
                 <FlagIcon code={activeLanguage.code} />
-                <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
+                <span className="theme-toolbar-pill inline-flex min-w-8 items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
                   {activeLanguage.shortLabel}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-[#0f172a] border border-white/10 text-slate-200">
+            <DropdownMenuContent align="end" className={HEADER_DROPDOWN_CLASS}>
               {languages.map((option) => (
-                <DropdownMenuItem key={option.code} onClick={() => setLanguage(option.code)} className="focus:bg-white/10 focus:text-white">
+                <DropdownMenuItem key={option.code} onClick={() => setLanguage(option.code)} className={HEADER_DROPDOWN_ITEM_CLASS}>
                   <div className="flex items-center gap-2">
                     <FlagIcon code={option.code} />
-                    <span className="inline-flex min-w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-100">
+                    <span className="theme-toolbar-pill inline-flex min-w-8 items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
                       {option.shortLabel}
                     </span>
                     <span>{option.nativeLabel}</span>
@@ -986,13 +991,13 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="theme-divider mx-1 h-4 w-px" />
 
           {/* USER */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 p-1.5 pl-2 hover:bg-white/5 rounded-lg transition-colors text-slate-200 group">
-                <span className="hidden md:inline text-[13px] font-medium group-hover:text-white transition-colors">
+              <button className={`${HEADER_BUTTON_CLASS} group flex items-center gap-2 rounded-lg p-1.5 pl-2 transition-colors`}>
+                <span className="hidden text-[13px] font-medium text-foreground/90 transition-colors group-hover:text-foreground md:inline">
                   {displayName}
                 </span>
                 <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-inner">
@@ -1001,11 +1006,11 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-48 bg-[#0f172a] border border-white/10 text-slate-200">
-              <DropdownMenuItem onClick={() => navigate("/settings")} className="focus:bg-white/10 focus:text-white">
+            <DropdownMenuContent align="end" className={`${HEADER_DROPDOWN_CLASS} w-48`}>
+              <DropdownMenuItem onClick={() => navigate("/settings")} className={HEADER_DROPDOWN_ITEM_CLASS}>
                 {t("common.settings")}
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"

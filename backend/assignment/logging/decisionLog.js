@@ -13,10 +13,14 @@ function snapshotCandidate(candidate) {
   if (candidate.role != null) snapshot.role = candidate.role;
   if (candidate.weekplanRole != null) snapshot.weekplanRole = candidate.weekplanRole;
   if (candidate.shiftCode != null) snapshot.shiftCode = candidate.shiftCode;
+  if (candidate.shiftPlanningDate != null) snapshot.shiftPlanningDate = candidate.shiftPlanningDate;
+  if (candidate.shiftStart != null) snapshot.shiftStart = candidate.shiftStart;
+  if (candidate.shiftEnd != null) snapshot.shiftEnd = candidate.shiftEnd;
   if (candidate.shiftActive != null) snapshot.shiftActive = candidate.shiftActive;
   if (candidate.planningSource != null) snapshot.planningSource = candidate.planningSource;
   if (candidate.userMapped != null) snapshot.userMapped = candidate.userMapped;
   if (candidate.plannedEmployeeName != null) snapshot.plannedEmployeeName = candidate.plannedEmployeeName;
+  if (candidate.currentLoad != null) snapshot.currentLoad = candidate.currentLoad;
 
   return snapshot;
 }
@@ -51,6 +55,113 @@ function formatRemainingHours(value) {
   return `${hours} h ${minutes} min`;
 }
 
+function parseBooleanValue(value) {
+  if (value === true || value === false) return value;
+  if (value == null) return null;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return null;
+}
+
+function parseNumberValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sanitizeFactorList(factors = []) {
+  if (!Array.isArray(factors)) return [];
+
+  return factors
+    .filter((factor) => factor && typeof factor === 'object')
+    .map((factor) => ({
+      key: getFirstString(factor.key, factor.label) || 'factor',
+      label: getFirstString(factor.label, factor.key) || 'Factor',
+      value: factor.value ?? null,
+      detail: getFirstString(factor.detail, factor.reason) || null,
+      emphasis: getFirstString(factor.emphasis) || null,
+    }));
+}
+
+function sanitizeComparedTickets(comparedTickets = []) {
+  if (!Array.isArray(comparedTickets)) return [];
+
+  return comparedTickets
+    .filter((ticket) => ticket && typeof ticket === 'object')
+    .map((ticket) => ({
+      ticketId: getFirstString(ticket.ticketId) || null,
+      displayTicketNumber: getFirstString(ticket.displayTicketNumber, ticket.ticketId) || null,
+      ticketType: getFirstString(ticket.ticketType) || null,
+      ticketPriority: getFirstString(ticket.ticketPriority) || null,
+      priorityTier: parseNumberValue(ticket.priorityTier),
+      rank: parseNumberValue(ticket.rank),
+      selectedFirstBy: getFirstString(ticket.selectedFirstBy, ticket.reason) || null,
+      factors: sanitizeFactorList(ticket.factors || []),
+    }));
+}
+
+function sanitizeCandidateRanking(candidateRanking = []) {
+  if (!Array.isArray(candidateRanking)) return [];
+
+  return candidateRanking
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      employeeId: parseNumberValue(entry.employeeId ?? entry.id),
+      employeeName: getFirstString(entry.employeeName, entry.name) || null,
+      role: getFirstString(entry.role) || null,
+      weekplanRole: getFirstString(entry.weekplanRole) || null,
+      shiftCode: getFirstString(entry.shiftCode) || null,
+      shiftPlanningDate: getFirstString(entry.shiftPlanningDate) || null,
+      shiftStart: getFirstString(entry.shiftStart) || null,
+      shiftEnd: getFirstString(entry.shiftEnd) || null,
+      workload: parseNumberValue(entry.workload),
+      groupingScore: parseNumberValue(entry.groupingScore),
+      queuePure: parseBooleanValue(entry.queuePure),
+      colleagueScore: parseNumberValue(entry.colleagueScore),
+      selectionBlocked: entry.selectionBlocked === true,
+      blockingReason: getFirstString(entry.blockingReason) || null,
+      rankingFactors: Array.isArray(entry.rankingFactors)
+        ? entry.rankingFactors.map((factor) => String(factor)).filter(Boolean)
+        : [],
+      scoreBreakdown: entry.scoreBreakdown && typeof entry.scoreBreakdown === 'object'
+        ? entry.scoreBreakdown
+        : {},
+      finalRank: parseNumberValue(entry.finalRank),
+      selected: entry.selected === true,
+    }));
+}
+
+function buildConfigSnapshot(configSnapshot = {}) {
+  if (!configSnapshot || typeof configSnapshot !== 'object') {
+    return {
+      mode: null,
+      currentShiftOnly: null,
+      planningWindowHours: null,
+      siteStrictness: null,
+      responsibilityStrictness: null,
+      enableRotationTieBreaker: null,
+      fallbackTieBreaker: null,
+      insufficientResources: null,
+      verificationEnabled: null,
+      pendingBlocksAssignment: null,
+    };
+  }
+
+  return {
+    mode: getFirstString(configSnapshot.mode, configSnapshot.executionMode) || null,
+    currentShiftOnly: parseBooleanValue(configSnapshot.currentShiftOnly),
+    planningWindowHours: parseNumberValue(configSnapshot.planningWindowHours),
+    siteStrictness: parseBooleanValue(configSnapshot.siteStrictness),
+    responsibilityStrictness: parseBooleanValue(configSnapshot.responsibilityStrictness),
+    enableRotationTieBreaker: parseBooleanValue(configSnapshot.enableRotationTieBreaker),
+    fallbackTieBreaker: getFirstString(configSnapshot.fallbackTieBreaker) || null,
+    insufficientResources: parseBooleanValue(configSnapshot.insufficientResources),
+    verificationEnabled: parseBooleanValue(configSnapshot.verificationEnabled),
+    pendingBlocksAssignment: parseBooleanValue(configSnapshot.pendingBlocksAssignment),
+  };
+}
+
 function groupExcludedCandidates(excludedCandidates = []) {
   const grouped = new Map();
 
@@ -76,7 +187,234 @@ function groupExcludedCandidates(excludedCandidates = []) {
   return Array.from(grouped.values());
 }
 
-function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
+function buildStructuredTimeline({
+  decision,
+  generatedAt,
+  groupedExcludedCandidates = [],
+  ticketSelection = null,
+  candidateRanking = [],
+}) {
+  const initialCandidates = decision.initialCandidates || decision.initial_candidates || [];
+  const remainingCandidates = decision.remainingCandidates || decision.remaining_candidates || [];
+  const resultReason = decision.selectionReason || decision.selection_reason || decision.shortReason || decision.short_reason || decision.errorMessage || decision.error_message || decision.result;
+
+  return [
+    {
+      stepOrder: 1,
+      key: 'ticket-validated',
+      stepType: 'ticket_validation',
+      label: 'Ticket analysiert',
+      status: 'done',
+      reason: decision.shortReason || decision.short_reason || 'Ticketdaten wurden validiert und normalisiert',
+      inputSummary: {
+        ticketId: decision.ticketId || decision.ticket_id || null,
+      },
+      outputSummary: {
+        normalizationWarnings: Array.isArray(decision.normalizationWarnings || decision.normalization_warnings)
+          ? (decision.normalizationWarnings || decision.normalization_warnings).length
+          : 0,
+      },
+      decisionReason: decision.shortReason || decision.short_reason || resultReason,
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 2,
+      key: 'ticket-eligibility',
+      stepType: 'ticket_eligibility',
+      label: 'Ticket-Eligibility geprüft',
+      status: 'done',
+      reason: decision.result === 'not_relevant'
+        ? (resultReason || 'Ticket wurde vor der Zuweisung ausgeschlossen')
+        : 'Ticket hat Relevanz-, Override- und Vorfilter bestanden',
+      inputSummary: {
+        rulePathCount: Array.isArray(decision.rulePath || decision.rule_path)
+          ? (decision.rulePath || decision.rule_path).length
+          : 0,
+      },
+      outputSummary: {
+        result: decision.result === 'not_relevant' ? 'excluded' : 'continued',
+      },
+      decisionReason: decision.result === 'not_relevant'
+        ? resultReason
+        : 'Ticket blieb im Auto-Assignment-Pfad',
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 3,
+      key: 'ticket-prioritization',
+      stepType: 'ticket_prioritization',
+      label: 'Ticket priorisiert',
+      status: ticketSelection ? 'done' : 'skipped',
+      reason: ticketSelection
+        ? (ticketSelection.selectedNextReason || 'Ticket wurde deterministisch in die Prioritätsreihenfolge eingeordnet')
+        : 'Kein Priorisierungskontext vorhanden',
+      inputSummary: {
+        totalEligibleTickets: ticketSelection?.totalEligibleTickets || 0,
+        totalRemainingTickets: ticketSelection?.totalRemainingTickets || 0,
+      },
+      outputSummary: {
+        prioritizationRank: ticketSelection?.prioritizationRank || null,
+      },
+      decisionReason: ticketSelection?.selectedNextReason || null,
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 4,
+      key: 'candidate-pool',
+      stepType: 'candidate_pool',
+      label: 'Kandidatenpool geladen',
+      status: initialCandidates.length > 0 ? 'done' : 'skipped',
+      reason: initialCandidates.length > 0
+        ? `${initialCandidates.length} Mitarbeiter wurden für die Prüfung geladen`
+        : 'Für dieses Ticket war kein Kandidatenpool verfügbar',
+      inputSummary: {
+        candidateCount: initialCandidates.length,
+      },
+      outputSummary: {
+        candidateCount: initialCandidates.length,
+      },
+      decisionReason: initialCandidates.length > 0 ? null : resultReason,
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 5,
+      key: 'candidate-filter',
+      stepType: 'candidate_filtering',
+      label: 'Kandidaten gefiltert',
+      status: initialCandidates.length > 0 ? 'done' : 'skipped',
+      reason: groupedExcludedCandidates.length > 0
+        ? `${groupedExcludedCandidates.length} Mitarbeiter wurden durch harte Regeln ausgeschlossen`
+        : remainingCandidates.length > 0
+          ? 'Keine harten Ausschlüsse nötig'
+          : 'Nach der Filterung blieb kein zulässiger Kandidat übrig',
+      inputSummary: {
+        initialCandidateCount: initialCandidates.length,
+      },
+      outputSummary: {
+        excludedCandidateCount: groupedExcludedCandidates.length,
+        remainingCandidateCount: remainingCandidates.length,
+      },
+      decisionReason: groupedExcludedCandidates[0]?.reasons?.[0] || null,
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 6,
+      key: 'candidate-ranking',
+      stepType: 'candidate_ranking',
+      label: 'Kandidaten gerankt',
+      status: candidateRanking.length > 0 ? 'done' : remainingCandidates.length > 0 ? 'pending' : 'skipped',
+      reason: candidateRanking.length > 0
+        ? `${candidateRanking.filter((candidate) => !candidate.selectionBlocked).length} Kandidaten haben deterministische Ranking-Signale erhalten`
+        : remainingCandidates.length > 0
+          ? 'Rankingdaten fehlen für diese historische Entscheidung'
+          : 'Keine Kandidaten für das Ranking vorhanden',
+      inputSummary: {
+        rankingCandidateCount: candidateRanking.length || remainingCandidates.length,
+      },
+      outputSummary: {
+        topCandidateId: candidateRanking.find((candidate) => candidate.selected)?.employeeId || decision.assignedWorkerId || decision.assigned_worker_id || null,
+      },
+      decisionReason: decision.selectionReason || decision.selection_reason || null,
+      timestamp: generatedAt,
+    },
+    {
+      stepOrder: 7,
+      key: 'final-decision',
+      stepType: 'final_decision',
+      label: 'Finale Entscheidung',
+      status: 'done',
+      reason: resultReason,
+      inputSummary: {
+        result: decision.result,
+      },
+      outputSummary: {
+        assignedWorkerId: decision.assignedWorkerId || decision.assigned_worker_id || null,
+        assignedWorkerName: decision.assignedWorkerName || decision.assigned_worker_name || null,
+      },
+      decisionReason: resultReason,
+      timestamp: generatedAt,
+    },
+  ];
+}
+
+function buildStructuredDecisionTrace(decision, traceInput = {}) {
+  const generatedAt = getFirstString(traceInput.generatedAt) || new Date().toISOString();
+  const groupedExcludedCandidates = groupExcludedCandidates(decision.excludedCandidates || decision.excluded_candidates || []);
+  const initialCandidates = decision.initialCandidates || decision.initial_candidates || [];
+  const excludedCandidates = decision.excludedCandidates || decision.excluded_candidates || [];
+  const remainingCandidates = decision.remainingCandidates || decision.remaining_candidates || [];
+  const candidateRanking = sanitizeCandidateRanking(traceInput.candidateRanking || traceInput.candidate_ranking || []);
+  const ticketSelection = traceInput.ticketSelection
+    ? {
+        prioritizationRank: parseNumberValue(traceInput.ticketSelection.prioritizationRank),
+        totalEligibleTickets: parseNumberValue(traceInput.ticketSelection.totalEligibleTickets),
+        totalRemainingTickets: parseNumberValue(traceInput.ticketSelection.totalRemainingTickets),
+        priorityTier: parseNumberValue(traceInput.ticketSelection.priorityTier),
+        selectedNextReason: getFirstString(traceInput.ticketSelection.selectedNextReason) || null,
+        prioritizationFactors: sanitizeFactorList(traceInput.ticketSelection.prioritizationFactors || []),
+        comparedTickets: sanitizeComparedTickets(traceInput.ticketSelection.comparedTickets || []),
+      }
+    : null;
+
+  const finalDecision = {
+    result: decision.result,
+    assignedWorkerId: decision.assignedWorkerId || decision.assigned_worker_id || null,
+    assignedWorkerName: decision.assignedWorkerName || decision.assigned_worker_name || null,
+    tieBreaker: getFirstString(
+      traceInput.selectionTieBreaker,
+      traceInput.tieBreaker,
+      traceInput.finalDecision?.tieBreaker,
+      traceInput.final_decision?.tieBreaker,
+    ) || null,
+    selectionReason: decision.selectionReason || decision.selection_reason || null,
+    shortReason: decision.shortReason || decision.short_reason || null,
+    noAssignmentReason: getFirstString(traceInput.noAssignmentReason)
+      || (decision.result === 'assigned'
+        ? null
+        : getFirstString(decision.selectionReason, decision.selection_reason, decision.shortReason, decision.short_reason, decision.errorMessage, decision.error_message)),
+  };
+
+  return {
+    version: 2,
+    generatedAt,
+    configSnapshot: buildConfigSnapshot(traceInput.configSnapshot || traceInput.config_snapshot || {}),
+    ticketSelection,
+    candidateSummary: {
+      initialCandidateCount: initialCandidates.length,
+      excludedCandidateCount: groupedExcludedCandidates.length,
+      exclusionEventCount: excludedCandidates.length,
+      survivingCandidateCount: remainingCandidates.length,
+      selectedCandidateCount: decision.result === 'assigned' ? 1 : 0,
+    },
+    candidateRanking,
+    finalDecision,
+    timeline: Array.isArray(traceInput.timeline) && traceInput.timeline.length > 0
+      ? traceInput.timeline
+      : buildStructuredTimeline({
+          decision,
+          generatedAt,
+          groupedExcludedCandidates,
+          ticketSelection,
+          candidateRanking,
+        }),
+  };
+}
+
+function buildDecisionTraceSteps(decision, groupedExcludedCandidates = [], traceModel = null) {
+  if (Array.isArray(traceModel?.timeline) && traceModel.timeline.length > 0) {
+    return traceModel.timeline.map((step, index) => ({
+      key: step.key || step.stepType || `step-${index + 1}`,
+      label: step.label || step.stepType || `Step ${index + 1}`,
+      status: step.status || 'done',
+      reason: step.decisionReason || step.reason || '',
+      stepOrder: step.stepOrder || index + 1,
+      stepType: step.stepType || step.key || `step-${index + 1}`,
+      inputSummary: step.inputSummary || null,
+      outputSummary: step.outputSummary || null,
+      timestamp: step.timestamp || null,
+    }));
+  }
+
   const initialCandidates = decision.initialCandidates || decision.initial_candidates || [];
   const remainingCandidates = decision.remainingCandidates || decision.remaining_candidates || [];
   const rulePath = decision.rulePath || decision.rule_path || [];
@@ -89,6 +427,11 @@ function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
       label: 'Ticket analysiert',
       status: 'done',
       reason: decision.shortReason || 'Ticketdaten wurden validiert und normalisiert',
+      stepOrder: 1,
+      stepType: 'ticket_validation',
+      inputSummary: null,
+      outputSummary: null,
+      timestamp: null,
     },
     {
       key: 'candidates-loaded',
@@ -97,6 +440,11 @@ function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
       reason: initialCandidates.length > 0
         ? `${initialCandidates.length} Kandidaten aus Wochenplanung und ODIN-Stammdaten geladen`
         : 'Kein Kandidatenpool verfügbar',
+      stepOrder: 2,
+      stepType: 'candidate_pool',
+      inputSummary: { candidateCount: initialCandidates.length },
+      outputSummary: { candidateCount: initialCandidates.length },
+      timestamp: null,
     },
     {
       key: 'role-rules-applied',
@@ -105,6 +453,11 @@ function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
       reason: groupedExcludedCandidates.length > 0
         ? `${groupedExcludedCandidates.length} Kandidaten durch Rollen-, Berechtigungs- oder Ausschlussregeln eingeschränkt`
         : 'Keine regelbasierten Ausschlüsse protokolliert',
+      stepOrder: 3,
+      stepType: 'candidate_filtering',
+      inputSummary: { candidateCount: initialCandidates.length },
+      outputSummary: { excludedCandidateCount: groupedExcludedCandidates.length },
+      timestamp: null,
     },
     {
       key: 'capacity-checked',
@@ -113,18 +466,33 @@ function buildDecisionTraceSteps(decision, groupedExcludedCandidates = []) {
       reason: hasCapacityChecks
         ? 'Queue-Mix, Ticketlimits und Lastverteilung wurden bewertet'
         : 'Keine Kapazitätsprüfung im Regelpfad sichtbar',
+      stepOrder: 4,
+      stepType: 'candidate_ranking',
+      inputSummary: { remainingCandidateCount: remainingCandidates.length },
+      outputSummary: { remainingCandidateCount: remainingCandidates.length },
+      timestamp: null,
     },
     {
       key: 'winner-selected',
       label: decision.result === 'assigned' ? 'Gewinner ausgewählt' : 'Finale Entscheidung getroffen',
       status: decision.result === 'error' ? 'skipped' : 'done',
       reason: decision.selectionReason || decision.selection_reason || decision.shortReason || decision.short_reason || 'Finale Entscheidung protokolliert',
+      stepOrder: 5,
+      stepType: 'final_decision',
+      inputSummary: { result: decision.result },
+      outputSummary: { assignedWorkerId: decision.assignedWorkerId || decision.assigned_worker_id || null },
+      timestamp: null,
     },
     {
       key: 'final-reason',
       label: 'Finale Begründung',
       status: 'done',
       reason: decision.shortReason || decision.short_reason || decision.selectionReason || decision.selection_reason || decision.errorMessage || decision.error_message || decision.result,
+      stepOrder: 6,
+      stepType: 'final_reason',
+      inputSummary: null,
+      outputSummary: null,
+      timestamp: null,
     },
   ];
 }
@@ -215,8 +583,9 @@ export function buildDecisionLog({
   excludedCandidates,
   remainingCandidates,
   errorMessage,
+  decisionTraceInput,
 }) {
-  return {
+  const decisionLog = {
     ticketId: ticket.id,
     externalId: ticket.externalId,
     ticketType: ticket.type,
@@ -241,6 +610,10 @@ export function buildDecisionLog({
     rawTicket: ticket.raw || {},
     errorMessage: errorMessage || null,
   };
+
+  decisionLog.decisionTrace = buildStructuredDecisionTrace(decisionLog, decisionTraceInput || {});
+
+  return decisionLog;
 }
 
 /**
@@ -295,7 +668,8 @@ export function buildTicketExplanation(decision) {
   const rawTicket = decision.rawTicket || decision.raw_ticket || null;
   const groupedExcludedCandidates = groupExcludedCandidates(decision.excludedCandidates || decision.excluded_candidates || []);
   const ticketContext = buildTicketContext(decision);
-  const decisionTrace = buildDecisionTraceSteps(decision, groupedExcludedCandidates);
+  const traceModel = buildStructuredDecisionTrace(decision, decision.decisionTrace || decision.decision_trace || {});
+  const decisionTrace = buildDecisionTraceSteps(decision, groupedExcludedCandidates, traceModel);
 
   lines.push(`## Ticket ${displayTicketNumber}`);
   if (internalTicketId && String(internalTicketId) !== String(displayTicketNumber)) {
@@ -332,6 +706,18 @@ export function buildTicketExplanation(decision) {
   if (ticketContext.scheduledStart) lines.push(`- Sched. Start: ${ticketContext.scheduledStart}`);
   lines.push('');
 
+  if (traceModel.ticketSelection) {
+    lines.push('### Priorisierung');
+    lines.push(`- Reihenfolge im Lauf: ${traceModel.ticketSelection.prioritizationRank || 'N/A'} / ${traceModel.ticketSelection.totalEligibleTickets || 'N/A'}`);
+    if (traceModel.ticketSelection.selectedNextReason) {
+      lines.push(`- Warum dieses Ticket jetzt dran war: ${traceModel.ticketSelection.selectedNextReason}`);
+    }
+    for (const factor of traceModel.ticketSelection.prioritizationFactors || []) {
+      lines.push(`- ${factor.label}: ${factor.value}${factor.detail ? ` — ${factor.detail}` : ''}`);
+    }
+    lines.push('');
+  }
+
   // Normalization warnings
   const warnings = decision.normalizationWarnings || decision.normalization_warnings || [];
   if (warnings.length > 0) {
@@ -347,7 +733,7 @@ export function buildTicketExplanation(decision) {
     lines.push('Keine Kandidaten geladen.');
   } else {
     for (const c of initial) {
-      const details = [c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ');
+      const details = [c.shiftCode, c.shiftPlanningDate, c.weekplanRole || c.role].filter(Boolean).join(' | ');
       lines.push(`- ${c.name} (ID: ${c.id})${details ? ` [${details}]` : ''}`);
     }
   }
@@ -358,7 +744,7 @@ export function buildTicketExplanation(decision) {
   if (excluded.length > 0) {
     lines.push(`### Ausgeschlossene Kandidaten (${excluded.length})`);
     for (const e of groupedExcludedCandidates) {
-      const details = [e.shiftCode, e.weekplanRole || e.role].filter(Boolean).join(' | ');
+      const details = [e.shiftCode, e.shiftPlanningDate, e.weekplanRole || e.role].filter(Boolean).join(' | ');
       lines.push(`- ❌ ${e.name || 'ID:' + e.id}${details ? ` [${details}]` : ''}: ${e.reasons.join('; ')}`);
     }
     lines.push('');
@@ -371,7 +757,7 @@ export function buildTicketExplanation(decision) {
     lines.push('Keine Kandidaten übrig.');
   } else {
     for (const c of remaining) {
-      const details = [c.shiftCode, c.weekplanRole || c.role].filter(Boolean).join(' | ');
+      const details = [c.shiftCode, c.shiftPlanningDate, c.weekplanRole || c.role].filter(Boolean).join(' | ');
       lines.push(`- ✅ ${c.name} (ID: ${c.id})${details ? ` [${details}]` : ''}`);
     }
   }
@@ -382,6 +768,16 @@ export function buildTicketExplanation(decision) {
     lines.push('### Auswahl');
     lines.push(`Ausgewählt: **${decision.assignedWorkerName || decision.assigned_worker_name || 'N/A'}**`);
     lines.push(`Begründung: ${decision.selectionReason || decision.selection_reason || 'N/A'}`);
+    lines.push('');
+  }
+
+  if ((traceModel.candidateRanking || []).length > 0) {
+    lines.push(`### Kandidatenranking (${traceModel.candidateRanking.length})`);
+    for (const candidate of traceModel.candidateRanking) {
+      const rankLabel = candidate.finalRank != null ? `#${candidate.finalRank}` : 'außerhalb Ranking';
+      const stateLabel = candidate.selected ? ' [gewählt]' : candidate.selectionBlocked ? ' [blockiert]' : '';
+      lines.push(`- ${rankLabel} ${candidate.employeeName || 'Unbekannt'}${stateLabel}: ${(candidate.rankingFactors || []).join('; ') || 'Keine Rankingfaktoren protokolliert'}`);
+    }
     lines.push('');
   }
 
@@ -433,6 +829,12 @@ export function buildTicketExplanation(decision) {
       ticketSite: decision.ticketSite || decision.ticket_site,
       ticketContext,
       decisionTrace,
+      traceModel,
+      ticketSelection: traceModel.ticketSelection,
+      candidateSummary: traceModel.candidateSummary,
+      candidateRanking: traceModel.candidateRanking,
+      configSnapshot: traceModel.configSnapshot,
+      finalDecision: traceModel.finalDecision,
       normalizationWarnings: warnings,
       initialCandidates: initial,
       excludedCandidates: excluded,

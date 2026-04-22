@@ -501,8 +501,8 @@ export function ShiftplanTable({
                     `}
                     >
                       <td
-                        className={`sticky left-0 border-r border-white/5 p-3 min-w-[220px] bg-[#0f111a] group-hover:bg-[#1a1c23] transition-colors
-                        ${isSelected ? "bg-[#1a1c23] border-indigo-500/30" : ""}
+                        className={`sticky left-0 border-r border-white/5 p-3 min-w-[220px] bg-background transition-colors dark:bg-[#0f111a] group-hover:bg-accent dark:group-hover:bg-[#1a1c23]
+                        ${isSelected ? "border-indigo-500/30 bg-accent dark:bg-[#1a1c23]" : ""}
                         z-30
                       `}
                         onClick={(e) => {
@@ -514,7 +514,7 @@ export function ShiftplanTable({
                         <div className="flex flex-col justify-center min-h-[44px]">
                           {/* Name + Hide Button */}
                           <div className="flex items-center justify-between gap-2">
-                            <span className={`text-[13px] font-semibold tracking-wide ${isSelected ? "text-indigo-400" : "text-white group-hover:text-indigo-300 transition-colors"}`}>{name}</span>
+                            <span className={`text-[13px] font-semibold tracking-wide transition-colors ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-foreground group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300"}`}>{name}</span>
                             <button
                               type="button"
                               className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-1 rounded-md hover:bg-white/10 text-muted-foreground"
@@ -533,11 +533,11 @@ export function ShiftplanTable({
                               {/* Compact Stats */}
                               <div className="flex gap-1.5">
                                 <span title={isGerman ? "Nachtschichten" : "Night shifts"}>N:{getMetric(name)!.night_count}</span>
-                                <span className="opacity-20 text-white/50">|</span>
+                                <span className="opacity-20 text-muted-foreground/50">|</span>
                                 <span title={isGerman ? "Wochenenden" : "Weekends"}>WE:{getMetric(name)!.weekend_count}</span>
-                                <span className="opacity-20 text-white/50">|</span>
+                                <span className="opacity-20 text-muted-foreground/50">|</span>
                                 <span title={isGerman ? "Frühschichten" : "Early shifts"}>E:{getMetric(name)!.early_count ?? 0}</span>
-                                <span className="opacity-20 text-white/50">|</span>
+                                <span className="opacity-20 text-muted-foreground/50">|</span>
                                 <span title={isGerman ? "Spätschichten" : "Late shifts"}>L:{getMetric(name)!.late_count ?? 0}</span>
                               </div>
                             </div>
@@ -554,7 +554,7 @@ export function ShiftplanTable({
                       </td>
 
                       <td
-                        className="border-r border-white/5 p-1 text-center w-8 bg-[#0f111a] group-hover:bg-[#1a1c23] transition-colors cursor-pointer text-muted-foreground/50 hover:text-white"
+                        className="border-r border-white/5 p-1 text-center w-8 bg-background transition-colors cursor-pointer text-muted-foreground/50 hover:text-foreground dark:bg-[#0f111a] group-hover:bg-accent dark:group-hover:bg-[#1a1c23] dark:hover:text-white"
                         onClick={(e) => {
                           e.stopPropagation();
                           setExpandedEmp(prev => prev === name ? null : name);

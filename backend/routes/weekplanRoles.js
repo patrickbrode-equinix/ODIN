@@ -25,6 +25,10 @@ const VALID_ROLES = [
   "support",
 ];
 
+function currentLocalDateKey(base = new Date()) {
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+}
+
 /* ---- Role display labels (for frontend reference) ---- */
 export const ROLE_LABELS = {
   dispatcher: "Dispatcher",
@@ -71,7 +75,7 @@ router.get("/", async (req, res) => {
 /* ------------------------------------------------ */
 router.get("/today", async (_req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = currentLocalDateKey();
     const result = await db.query(
       `SELECT id, employee_name, date, role_key, updated_at, updated_by
        FROM weekplan_roles

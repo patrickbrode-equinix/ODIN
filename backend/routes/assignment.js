@@ -22,6 +22,7 @@ import {
   normalizeLegacyDecisionRow,
   summarizeDecisionResults,
 } from '../assignment/lib/reportCompatibility.js';
+import { triggerAssignmentSchedulerSoon, getAssignmentSchedulerStatus } from '../services/assignmentScheduler.js';
 
 const router = express.Router();
 
@@ -69,12 +70,16 @@ router.get('/health', async (req, res) => {
     const settings = await assignmentSettingsService.getAll();
     const enabled = settings.settings['assignment.enabled'] === 'true';
     const mode = settings.settings['assignment.mode'] || 'shadow';
+    const scheduler = getAssignmentSchedulerStatus();
     res.json({
       ok: true,
       module: 'assignment-engine',
       phase: 1,
       mode,
       enabled,
+      schedulerRunning: scheduler.running,
+      schedulerBusy: scheduler.runInProgress,
+      schedulerIntervalSeconds: Math.round(scheduler.intervalMs / 1000),
       settingsCount: settings.raw.length,
       lastStartedAt: settings.settings['assignment.lastStartedAt'] || null,
       lastStartedBy: settings.settings['assignment.lastStartedBy'] || null,
@@ -134,6 +139,7 @@ router.post('/engine/start', requirePageAccess('settings', 'write'), async (req,
     }
 
     await assignmentSettingsService.update(updates, user);
+    triggerAssignmentSchedulerSoon(1_000);
     const { settings } = await assignmentSettingsService.getAll();
 
     res.json({
@@ -184,7 +190,8 @@ router.post('/runs/execute', requirePageAccess('settings', 'write'), async (req,
     });
     res.json({ ok: true, ...result });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    const status = /already running/i.test(String(err?.message || '')) ? 409 : 500;
+    res.status(status).json({ ok: false, error: err.message });
   }
 });
 
@@ -571,7 +578,7 @@ router.get('/decisions', async (req, res) => {
         : legacyDecisions;
     }
 
-    const shouldFilterLiveQueue = includeHistorical !== 'true';
+    const shouldFilterLiveQueue = includeHistorical !== 'true' && !runId;
     let filteredOutCount = 0;
 
     if (shouldFilterLiveQueue && decisions.length > 0) {

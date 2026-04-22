@@ -34,7 +34,7 @@ export const ROLE_POLICIES = {
     tickets: "view",
     commit_dashboard: "view",
     dispatcher_console: "view",
-    tv_dashboard: "view",
+    tv_dashboard: "none",
     odin_logic: "none",
     settings: "write",
     user_management: "none",

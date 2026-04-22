@@ -2,6 +2,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, shiftTypes } from "../../store/shiftStore";
 import { useEffect, useState } from 'react';
+import { useLanguage } from "../../context/LanguageContext";
 import { fetchSchedule } from "./shiftplan.api";
 import { formatMonthLabel } from "../../utils/dateFormat";
 import { getGermanFederalHolidays, isGermanFederalHoliday } from "../../utils/deHolidays";
@@ -14,6 +15,8 @@ interface StatsProps {
 }
 
 export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: StatsProps) {
+    const { language } = useLanguage();
+    const isGerman = language === "de";
     const [counts, setCounts] = useState<Record<string, number> | null>(null);
     const [holidayCount, setHolidayCount] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -89,7 +92,7 @@ export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: Stat
         load();
     }, [employeeName, year, preloadedPlans]);
 
-    if (loading) return <div className="p-4 text-xs text-muted-foreground">Lade Diagramm...</div>;
+    if (loading) return <div className="p-4 text-xs text-muted-foreground">{isGerman ? "Lade Diagramm..." : "Loading chart..."}</div>;
     if (!counts) return null;
 
     // Prepare for Recharts
@@ -99,14 +102,14 @@ export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: Stat
 
         // Manual overrides for groups
         if (code === "EARLY") {
-            name = "Frühschicht";
+            name = isGerman ? "Frühschicht" : "Early shift";
             // colorCode = "E1"; // borrow color
         } else if (code === "LATE") {
-            name = "Spätschicht";
+            name = isGerman ? "Spätschicht" : "Late shift";
             // colorCode = "L1"; // borrow color
         } else {
             const meta = shiftTypes[code];
-            if (meta) name = meta.name;
+            if (meta) name = translateShiftName(meta.name, isGerman);
         }
 
         return {
@@ -142,10 +145,10 @@ export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: Stat
                 </PieChart>
             </ResponsiveContainer>
             <div className="ml-8 text-sm">
-                <div className="font-bold mb-2">Gesamt: {data.reduce((a, b) => a + b.value, 0)}</div>
+                <div className="font-bold mb-2">{isGerman ? "Gesamt" : "Total"}: {data.reduce((a, b) => a + b.value, 0)}</div>
                 {holidayCount > 0 && (
                     <div className="mt-2 text-xs flex items-center gap-2 text-red-400">
-                        <span>Feiertagsarbeit (Bundesweit):</span>
+                        <span>{isGerman ? "Feiertagsarbeit (Bundesweit):" : "Holiday work (nationwide):"}</span>
                         <span className="font-bold">{holidayCount}</span>
                     </div>
                 )}
@@ -156,6 +159,33 @@ export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: Stat
 
 function apiCode(c: string) {
     return String(c).trim();
+}
+
+function translateShiftName(name: string, isGerman: boolean) {
+    if (isGerman) return name;
+
+    switch (name) {
+        case "Frühschicht":
+            return "Early shift";
+        case "Frühschicht mit Wochenende (Samstag)":
+            return "Early shift with weekend (Saturday)";
+        case "Frühschicht mit Wochenende (Sa/So)":
+            return "Early shift with weekend (Sat/Sun)";
+        case "Spätschicht":
+            return "Late shift";
+        case "Spätschicht mit Wochenende (Sa/So)":
+            return "Late shift with weekend (Sat/Sun)";
+        case "Nachtschicht":
+            return "Night shift";
+        case "Freischicht":
+            return "Off shift";
+        case "Abwesend":
+            return "Absent";
+        case "Seminar":
+            return "Training";
+        default:
+            return name;
+    }
 }
 
 function matchColor(code: string) {

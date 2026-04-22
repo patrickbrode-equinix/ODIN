@@ -350,10 +350,10 @@ export default function Weekplan() {
 
   return (
     <div className="space-y-6 flex flex-col">
-      <div className="p-5 bg-[#0f111a]/80 backdrop-blur-md rounded-2xl border border-white/10 space-y-4 shadow-lg flex-none">
+      <div className="theme-glass-panel rounded-2xl border p-5 shadow-lg space-y-4 flex-none">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-slate-100 tracking-wide">{t("weekplan.title")} {weekNo}</h2>
+            <h2 className="text-xl font-bold text-foreground tracking-wide">{t("weekplan.title")} {weekNo}</h2>
             <div className="text-[13px] font-medium text-muted-foreground mt-1">
               {weekdayAbbrev(weekDays[0])} {weekDays[0].getDate()}.{pad2(weekDays[0].getMonth() + 1)}.{weekDays[0].getFullYear()} – {weekdayAbbrev(weekDays[6])} {weekDays[6].getDate()}.{pad2(weekDays[6].getMonth() + 1)}.{weekDays[6].getFullYear()}
             </div>
@@ -395,10 +395,10 @@ export default function Weekplan() {
           </div>
 
           {canEdit ? (
-            <div className="flex items-center gap-2 border-l border-white/10 pl-4">
+            <div className="flex items-center gap-2 border-l border-border/60 pl-4">
               <Button
                 variant={isEditMode ? "default" : "secondary"}
-                className={isEditMode ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10"}
+                className={isEditMode ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "border border-border bg-background/85 text-foreground hover:bg-accent"}
                 onClick={() => setIsEditMode((v) => !v)}
                 disabled={loading}
               >
@@ -411,7 +411,7 @@ export default function Weekplan() {
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
+        <div className="theme-glass-inset rounded-xl px-3 py-2 text-xs text-muted-foreground">
           {t("weekplan.roleHint")}
         </div>
       </div>
@@ -460,11 +460,11 @@ export default function Weekplan() {
       </Dialog>
 
       {/* TABLE */}
-      <div className="bg-[#0f111a] rounded-2xl border border-white/10 overflow-x-auto shadow-xl flex-1 min-h-0">
+      <div className="theme-glass-panel rounded-2xl border overflow-x-auto shadow-xl flex-1 min-h-0">
         <table className="w-full border-collapse text-left">
-          <thead className="sticky top-0 bg-[#0f111a]/95 backdrop-blur-md z-40 border-b border-white/10 shadow-sm">
+          <thead className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur-md shadow-sm">
             <tr>
-              <th className="sticky left-0 bg-[#0f111a] border-r border-white/5 p-3 text-left min-w-[220px] z-50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t("common.employee")}</th>
+              <th className="sticky left-0 z-50 min-w-[220px] border-r border-border/60 bg-background p-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("common.employee")}</th>
               {weekDays.map((d, idx) => {
                 const key = dateKey(d);
                 const holiday = holidays?.[key];
@@ -474,7 +474,7 @@ export default function Weekplan() {
                 return (
                   <th
                     key={idx}
-                    className={`border-r border-white/5 p-2 text-center min-w-[90px] leading-tight select-none transition-colors ${holiday ? "bg-red-500/10" : ""} ${isWeekend && !holiday ? "bg-white/[0.015]" : ""}`}
+                    className={`min-w-[90px] border-r border-border/50 p-2 text-center leading-tight select-none transition-colors ${holiday ? "bg-red-500/10" : ""} ${isWeekend && !holiday ? "bg-muted/40" : ""}`}
                     title={holiday ? `${t("weekplan.holiday")}: ${holiday}` : undefined}
                   >
                     <div className={`text-[10px] font-bold tracking-widest uppercase ${isWeekend ? 'text-indigo-300/80' : 'text-muted-foreground'}`}>{weekdayAbbrev(d)}</div>
@@ -492,11 +492,11 @@ export default function Weekplan() {
             {employees.map((name, empIdx) => (
               <tr
                 key={name}
-                className={`cursor-pointer transition-colors border-b border-white/5 hover:bg-white/[0.04] group ${name === highlightedEmployee ? "bg-indigo-500/10 ring-1 ring-indigo-500/30 z-10 relative" : ""}`}
+                className={`group relative cursor-pointer border-b border-border/40 transition-colors hover:bg-muted/40 ${name === highlightedEmployee ? "z-10 bg-indigo-500/10 ring-1 ring-indigo-500/30" : ""}`}
               >
-                <td className={`sticky left-0 border-r border-white/5 p-3 min-w-[220px] bg-[#0f111a] group-hover:bg-[#1a1c23] transition-colors z-30 ${name === highlightedEmployee ? "bg-[#1a1c23] border-indigo-500/30" : ""}`}>
+                <td className={`sticky left-0 z-30 min-w-[220px] border-r border-border/50 bg-background p-3 transition-colors group-hover:bg-accent ${name === highlightedEmployee ? "border-indigo-500/30 bg-accent" : ""}`}>
                   <button
-                    className={`text-left w-full transition-colors text-[13px] tracking-wide ${name === highlightedEmployee ? "text-indigo-400 font-bold" : "text-white font-semibold group-hover:text-indigo-300"}`}
+                    className={`w-full text-left text-[13px] tracking-wide transition-colors ${name === highlightedEmployee ? "font-bold text-indigo-600 dark:text-indigo-300" : "font-semibold text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-300"}`}
                     onClick={() => setHighlightedEmployee(prev => prev === name ? null : name)}
                     title={t("weekplan.highlightHint")}
                   >
@@ -513,7 +513,7 @@ export default function Weekplan() {
                   const isSelected = isCellSelected(name, dayIdx);
 
                   // Shift Badge Colors matching ShiftBadge in ShiftplanTable
-                  let colorClass = "bg-white/5 text-muted-foreground border-white/10";
+                  let colorClass = "bg-background/85 text-muted-foreground border-border/70";
                   if (code) {
                     const c = code.toUpperCase();
                     if (c.startsWith("E")) colorClass = "bg-orange-500/15 text-orange-400 border-orange-500/20";
@@ -530,7 +530,7 @@ export default function Weekplan() {
                       tabIndex={canEdit ? 0 : -1}
                       data-week-emp-index={empIdx}
                       data-week-day-index={dayIdx}
-                      className={`border-r border-white/5 p-2 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-white/10" : ""} ${isSelected ? "ring-2 ring-indigo-500 bg-indigo-500/15" : ""}`}
+                      className={`border-r border-border/40 p-2 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-accent/70" : ""} ${isSelected ? "bg-indigo-500/15 ring-2 ring-indigo-500" : ""}`}
                       onKeyDown={(e) => {
                         if (!canEdit) return;
                         if (!e.shiftKey) return;
@@ -581,7 +581,7 @@ export default function Weekplan() {
                             <span className={`inline-flex min-w-[28px] items-center justify-center rounded-md border px-1.5 py-px text-[9px] font-black tracking-wide ${cellRoleDef.color}`}>
                               {cellRoleDef.symbol}
                             </span>
-                            <span className="text-center text-[8px] leading-tight text-slate-400">
+                            <span className="text-center text-[8px] leading-tight text-muted-foreground">
                               {cellRoleDef.shortText}
                             </span>
                           </div>

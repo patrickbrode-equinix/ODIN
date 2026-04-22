@@ -366,7 +366,7 @@ function HelpTooltip({ textKey, t }: { textKey: TranslationKey; t: (key: Transla
         <HelpCircle className="w-3.5 h-3.5" />
       </button>
       {show ? (
-        <div className="absolute left-6 top-0 z-50 w-72 rounded-lg border border-blue-500/30 bg-[#0a0f1e]/95 p-3 text-xs leading-relaxed text-muted-foreground shadow-xl">
+        <div className="theme-popover-surface absolute left-6 top-0 z-50 w-72 rounded-lg border border-blue-500/30 p-3 text-xs leading-relaxed text-muted-foreground shadow-xl">
           {t(textKey)}
         </div>
       ) : null}
@@ -388,7 +388,7 @@ function SectionHelp({ textKey, t }: { textKey: TranslationKey; t: (key: Transla
     >
       <HelpCircle className="w-4 h-4" />
       {show ? (
-        <div className="absolute left-6 top-0 z-50 w-80 rounded-lg border border-blue-500/30 bg-[#0a0f1e]/95 p-3 text-xs leading-relaxed text-left font-normal normal-case tracking-normal text-muted-foreground shadow-xl">
+        <div className="theme-popover-surface absolute left-6 top-0 z-50 w-80 rounded-lg border border-blue-500/30 p-3 text-xs leading-relaxed text-left font-normal normal-case tracking-normal text-muted-foreground shadow-xl">
           {t(textKey)}
         </div>
       ) : null}
@@ -414,24 +414,24 @@ function Section({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/40 shadow-[0_12px_40px_rgba(15,23,42,0.22)] backdrop-blur-sm">
+    <section className="theme-glass-panel overflow-hidden rounded-3xl border shadow-[0_12px_40px_rgba(15,23,42,0.22)] backdrop-blur-sm">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-white/5"
+        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-accent/60"
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-700 dark:text-sky-300">
             <Icon className="h-4 w-4" />
           </div>
           <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-slate-100">{title}</div>
+            <div className="text-sm font-semibold text-foreground">{title}</div>
             {helpKey && t ? <SectionHelp textKey={helpKey} t={t} /> : null}
           </div>
         </div>
-        {open ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
       </button>
-      {open ? <div className="border-t border-white/10 px-5 pb-5 pt-4">{children}</div> : null}
+      {open ? <div className="border-t border-border/60 px-5 pb-5 pt-4">{children}</div> : null}
     </section>
   );
 }
@@ -811,20 +811,20 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
 
       {/* ── Overview cards ── */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-3xl border border-sky-400/20 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-sky-200/70">{t("shiftAdmin.cardDefinitions")}</div>
-          <div className="mt-3 text-3xl font-semibold">{definitions.filter((definition) => definition.is_active).length}</div>
-          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardDefinitionsDesc")}</div>
+        <div className="theme-admin-hero rounded-3xl border border-sky-400/25 p-5 shadow-[0_20px_50px_rgba(2,6,23,0.18)]">
+          <div className="text-xs uppercase tracking-[0.2em] text-sky-700/80 dark:text-sky-200/70">{t("shiftAdmin.cardDefinitions")}</div>
+          <div className="mt-3 text-3xl font-semibold text-foreground">{definitions.filter((definition) => definition.is_active).length}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{t("shiftAdmin.cardDefinitionsDesc")}</div>
         </div>
-        <div className="rounded-3xl border border-fuchsia-400/20 bg-[radial-gradient(circle_at_top_left,rgba(217,70,239,0.16),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-fuchsia-200/70">{t("shiftAdmin.cardDbsPool")}</div>
-          <div className="mt-3 text-3xl font-semibold">{dbsPool.length}</div>
-          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardDbsPoolDesc")}</div>
+        <div className="theme-admin-hero rounded-3xl border border-fuchsia-400/25 p-5 shadow-[0_20px_50px_rgba(2,6,23,0.18)]">
+          <div className="text-xs uppercase tracking-[0.2em] text-fuchsia-700/80 dark:text-fuchsia-200/70">{t("shiftAdmin.cardDbsPool")}</div>
+          <div className="mt-3 text-3xl font-semibold text-foreground">{dbsPool.length}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{t("shiftAdmin.cardDbsPoolDesc")}</div>
         </div>
-        <div className="rounded-3xl border border-amber-400/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-5 text-slate-100 shadow-[0_20px_50px_rgba(2,6,23,0.35)]">
-          <div className="text-xs uppercase tracking-[0.2em] text-amber-200/70">{t("shiftAdmin.cardExclusions")}</div>
-          <div className="mt-3 text-3xl font-semibold">{exclusions.length}</div>
-          <div className="mt-2 text-sm text-slate-300">{t("shiftAdmin.cardExclusionsDesc")}</div>
+        <div className="theme-admin-hero rounded-3xl border border-amber-400/25 p-5 shadow-[0_20px_50px_rgba(2,6,23,0.18)]">
+          <div className="text-xs uppercase tracking-[0.2em] text-amber-700/80 dark:text-amber-200/70">{t("shiftAdmin.cardExclusions")}</div>
+          <div className="mt-3 text-3xl font-semibold text-foreground">{exclusions.length}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{t("shiftAdmin.cardExclusionsDesc")}</div>
         </div>
       </div>
 

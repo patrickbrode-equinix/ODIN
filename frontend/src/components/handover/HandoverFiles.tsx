@@ -4,6 +4,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -24,6 +25,7 @@ interface Props {
 /* ------------------------------------------------ */
 
 function HandoverFilesComponent({ files }: Props) {
+  const { language } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -89,7 +91,7 @@ function HandoverFilesComponent({ files }: Props) {
         variant="outline"
         onClick={toggleOpen}
       >
-        Anhänge ({files.length})
+        {language === "de" ? `Anhänge (${files.length})` : `Attachments (${files.length})`}
       </Button>
 
       {open && (

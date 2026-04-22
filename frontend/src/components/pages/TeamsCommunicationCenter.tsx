@@ -115,7 +115,7 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
     pageTitle: "Teams Communication Center",
     pageSubtitle: "Microsoft Teams Nachrichtensteuerung",
     strapline: "Teams Center Â· transparent, aber operativ nutzbar",
-    tabs: { overview: "Ãœbersicht", diagnostics: "Fehlercenter", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test Center", log: "Verlauf", errors: "Fehler & Retry", settings: "Einstellungen" },
+    tabs: { overview: "Ãœbersicht", diagnostics: "Fehlercenter", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test Center", log: "Verlauf", errors: "Fehler & Retry", verification: "Schicht-Verifizierung", settings: "Einstellungen" },
     summaries: TAB_SUMMARIES_DE,
     statusError: "Status konnte nicht geladen werden",
     diagnosticsError: "Fehlercenter konnte nicht geladen werden",
@@ -172,9 +172,18 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
     failedMessages: "Fehlgeschlagene Nachrichten â€“ manuelles Retry mÃ¶glich",
     noFailedMessages: "Keine fehlgeschlagenen Nachrichten",
     retry: "Retry",
+    remove: "Entfernen",
+    disabledLabel: "deaktiviert",
+    errorsRetryTooltipTitle: "Fehler & Retry",
+    errorsRetryTooltipIntro: "Hier werden alle Nachrichten aufgelistet, deren Zustellung fehlgeschlagen ist. MÃ¶gliche Ursachen:",
+    errorsRetryWebhook: "Die URL ist abgelaufen oder wurde in Teams gelÃ¶scht.",
+    errorsRetryNetwork: "Der Backend-Server konnte die Teams-API nicht erreichen.",
+    errorsRetryToken: "Das OAuth-Token muss erneuert werden.",
+    errorsRetryRateLimit: "Zu viele Nachrichten in kurzer Zeit â€“ Teams drosselt die API.",
+    errorsRetryHelp: "Klicken Sie auf Retry, um die Nachricht erneut zu senden. Bei Erfolg wird sie aus der Liste entfernt und im Log als sent vermerkt.",
     save: "Speichern",
   },
-  en: { pageTitle: "Teams Communication Center", pageSubtitle: "Microsoft Teams message control", strapline: "Teams Center Â· transparent and operational", tabs: { overview: "Overview", diagnostics: "Diagnostics", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test center", log: "History", errors: "Errors & retry", settings: "Settings" }, summaries: TAB_SUMMARIES_EN, statusError: "Status could not be loaded", diagnosticsError: "Diagnostics could not be loaded", refresh: "Refresh", recheck: "Run again", ready: "Ready", blocked: "Blocked", teamsReady: "Teams ready", teamsBlocked: "Teams blocked", sentToday: "Sent today", failedToday: "Failed today", openRetries: "Open retries (24h)", mappedEmployees: "Mapped employees", lastSuccess: "Last successful delivery", lastError: "Last error", time: "Time", type: "Type", recipient: "Recipient", status: "Status", noSend: "No delivery yet", noErrors: "No errors", quickStatus: "Diagnostics quick status", whatChecks: "What diagnostics checks", commonFailures: "Typical failure patterns", operationsUsage: "Operational usage", latestDiagnosis: "Latest diagnosis", asOf: "As of", blockingPoints: "Blocking issues", noBlockingPoints: "No blocking Teams issues were detected.", activeMappings: "Active Teams mappings", linkedUsers: "Linked to ODIN user", manualOverrides: "Manual overrides", employeeMappings: "Employee mappings", filterHint: "Filter by employee name, email or email source.", searchNameOrMail: "Search by name or email", employee: "Employee", teamsMail: "Teams email", mailSource: "Mail source", override: "Override", odinUser: "ODIN user", lastUpdated: "Last updated", manual: "Manual", automatic: "Automatic", notLinked: "Not linked", noEmployees: "No employee mappings match the current filter.", active: "Active", inactive: "Inactive", statusFilterAll: "All statuses", sent: "Sent", failed: "Failed", entriesTotal: "entries total", content: "Content", error: "Error", failedMessages: "Failed messages â€“ manual retry available", noFailedMessages: "No failed messages", retry: "Retry", save: "Save" },
+  en: { pageTitle: "Teams Communication Center", pageSubtitle: "Microsoft Teams message control", strapline: "Teams Center Â· transparent and operational", tabs: { overview: "Overview", diagnostics: "Diagnostics", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test center", log: "History", errors: "Errors & retry", verification: "Shift verification", settings: "Settings" }, summaries: TAB_SUMMARIES_EN, statusError: "Status could not be loaded", diagnosticsError: "Diagnostics could not be loaded", refresh: "Refresh", recheck: "Run again", ready: "Ready", blocked: "Blocked", teamsReady: "Teams ready", teamsBlocked: "Teams blocked", sentToday: "Sent today", failedToday: "Failed today", openRetries: "Open retries (24h)", mappedEmployees: "Mapped employees", lastSuccess: "Last successful delivery", lastError: "Last error", time: "Time", type: "Type", recipient: "Recipient", status: "Status", noSend: "No delivery yet", noErrors: "No errors", quickStatus: "Diagnostics quick status", whatChecks: "What diagnostics checks", commonFailures: "Typical failure patterns", operationsUsage: "Operational usage", latestDiagnosis: "Latest diagnosis", asOf: "As of", blockingPoints: "Blocking issues", noBlockingPoints: "No blocking Teams issues were detected.", activeMappings: "Active Teams mappings", linkedUsers: "Linked to ODIN user", manualOverrides: "Manual overrides", employeeMappings: "Employee mappings", filterHint: "Filter by employee name, email or email source.", searchNameOrMail: "Search by name or email", employee: "Employee", teamsMail: "Teams email", mailSource: "Mail source", override: "Override", odinUser: "ODIN user", lastUpdated: "Last updated", manual: "Manual", automatic: "Automatic", notLinked: "Not linked", noEmployees: "No employee mappings match the current filter.", active: "Active", inactive: "Inactive", statusFilterAll: "All statuses", sent: "Sent", failed: "Failed", entriesTotal: "entries total", content: "Content", error: "Error", failedMessages: "Failed messages â€“ manual retry available", noFailedMessages: "No failed messages", retry: "Retry", remove: "Remove", disabledLabel: "disabled", errorsRetryTooltipTitle: "Errors & retry", errorsRetryTooltipIntro: "All messages whose delivery failed are listed here. Common causes:", errorsRetryWebhook: "The URL expired or was deleted in Teams.", errorsRetryNetwork: "The backend server could not reach the Teams API.", errorsRetryToken: "The OAuth token needs to be renewed.", errorsRetryRateLimit: "Too many messages were sent in a short time, so Teams is throttling the API.", errorsRetryHelp: "Click Retry to send the message again. On success it is removed from the list and marked as sent in the log.", save: "Save" },
 };
 
 function useTeamsUi() {
@@ -1004,22 +1013,22 @@ function RoutingTab() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">Event</label>
               <select value={newRule.event_key} onChange={e => setNewRule(p => ({ ...p, event_key: e.target.value }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-                <option value="">WÃ¤hlen...</option>
+                <option value="">{isGerman ? "Wählen..." : "Select..."}</option>
                 {events.map(e => <option key={e.event_key} value={e.event_key}>{e.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Zieltyp</label>
+              <label className="block text-xs text-gray-500 mb-1">{isGerman ? "Zieltyp" : "Target type"}</label>
               <select value={newRule.target_type} onChange={e => setNewRule(p => ({ ...p, target_type: e.target.value as any }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-                <option value="person">Person</option>
-                <option value="group">Gruppe</option>
-                <option value="role">Rolle</option>
-                <option value="shift">Schicht</option>
+                <option value="person">{isGerman ? "Person" : "Person"}</option>
+                <option value="group">{isGerman ? "Gruppe" : "Group"}</option>
+                <option value="role">{isGerman ? "Rolle" : "Role"}</option>
+                <option value="shift">{isGerman ? "Schicht" : "Shift"}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Zielwert</label>
-              <input value={newRule.target_value} onChange={e => setNewRule(p => ({ ...p, target_value: e.target.value }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800" placeholder="Name / Gruppe / Rolle" />
+              <label className="block text-xs text-gray-500 mb-1">{isGerman ? "Zielwert" : "Target value"}</label>
+              <input value={newRule.target_value} onChange={e => setNewRule(p => ({ ...p, target_value: e.target.value }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800" placeholder={isGerman ? "Name / Gruppe / Rolle" : "Name / group / role"} />
               {newRule.target_type === "group" && groups.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5 max-w-md">
                   {groups.map((group) => (
@@ -1030,7 +1039,7 @@ function RoutingTab() {
                 </div>
               )}
             </div>
-            <button onClick={addRule} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700">Speichern</button>
+            <button onClick={addRule} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700">{isGerman ? "Speichern" : "Save"}</button>
           </div>
         </EnterpriseCard>
       )}
@@ -1049,9 +1058,9 @@ function RoutingTab() {
                       <div className="text-xs text-gray-400">{groups.find((group) => group.name === r.target_value)?.description}</div>
                     )}
                   </div>
-                  {!r.enabled && <span className="text-xs text-gray-400">(deaktiviert)</span>}
+                  {!r.enabled && <span className="text-xs text-gray-400">({copy.disabledLabel})</span>}
                 </div>
-                <button onClick={() => removeRule(r.id)} className="text-red-500 hover:text-red-700 text-xs">Entfernen</button>
+                <button onClick={() => removeRule(r.id)} className="text-red-500 hover:text-red-700 text-xs">{copy.remove}</button>
               </div>
             ))}
           </div>
@@ -1419,15 +1428,15 @@ function ErrorsTab() {
     <TextRepairBoundary>
       <div className="space-y-3">
       <p className="text-sm text-gray-500 mb-4 flex items-center gap-1.5">{copy.failedMessages}
-        <InfoTooltip title="Fehler & Retry" width="w-96">
-          <p>Hier werden alle Nachrichten aufgelistet, deren Zustellung fehlgeschlagen ist. MÃ¶gliche Ursachen:</p>
+        <InfoTooltip title={copy.errorsRetryTooltipTitle} width="w-96">
+          <p>{copy.errorsRetryTooltipIntro}</p>
           <ul className="list-disc ml-4 space-y-0.5">
-            <li><strong>Webhook ungÃ¼ltig:</strong> Die URL ist abgelaufen oder wurde in Teams gelÃ¶scht.</li>
-            <li><strong>Netzwerkfehler:</strong> Der Backend-Server konnte die Teams-API nicht erreichen.</li>
-            <li><strong>Bot-Token abgelaufen:</strong> Das OAuth-Token muss erneuert werden.</li>
-            <li><strong>Rate Limit:</strong> Zu viele Nachrichten in kurzer Zeit â€“ Teams drosselt die API.</li>
+            <li><strong>Webhook:</strong> {copy.errorsRetryWebhook}</li>
+            <li><strong>{isGerman ? "Netzwerkfehler" : "Network error"}:</strong> {copy.errorsRetryNetwork}</li>
+            <li><strong>{isGerman ? "Bot-Token abgelaufen" : "Bot token expired"}:</strong> {copy.errorsRetryToken}</li>
+            <li><strong>Rate limit:</strong> {copy.errorsRetryRateLimit}</li>
           </ul>
-          <p><strong>Retry:</strong> Klicken Sie auf Retry, um die Nachricht erneut zu senden. Bei Erfolg wird sie aus der Liste entfernt und im Log als sent vermerkt.</p>
+          <p><strong>{copy.retry}:</strong> {copy.errorsRetryHelp}</p>
         </InfoTooltip>
       </p>
       {errors.length === 0 ? (

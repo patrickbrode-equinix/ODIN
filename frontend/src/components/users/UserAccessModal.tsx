@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { useLanguage } from "../../context/LanguageContext";
 
 import { UserAccessEditor } from "./UserAccessEditor";
 
@@ -29,6 +30,8 @@ type UserAccessModalProps = {
 /* ———————————————— */
 
 export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
+  const { language, t } = useLanguage();
+
   if (!open || !user) return null;
 
   return (
@@ -36,7 +39,7 @@ export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
       <Card className="w-full max-w-3xl border-border bg-background shadow-xl">
         <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-border/50">
           <div>
-            <CardTitle>User Rechte (Overrides)</CardTitle>
+            <CardTitle>{language === "de" ? `${t("userAccess.title")} (Overrides)` : `${t("userAccess.title")} (overrides)`}</CardTitle>
             <div className="mt-1 text-sm text-muted-foreground">
               {user.email} • {user.group}
               {user.role ? <span> • {user.role}</span> : null}
@@ -48,7 +51,7 @@ export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
             variant="ghost"
             size="icon"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X className="h-5 w-5" />
           </Button>
@@ -60,7 +63,7 @@ export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
 
         <div className="flex justify-end gap-3 border-t border-border/50 p-4">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Schließen
+            {t("common.close")}
           </Button>
         </div>
       </Card>

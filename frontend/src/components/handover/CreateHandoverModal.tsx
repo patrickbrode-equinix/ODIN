@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { HandoverType, HandoverItem } from "./handover.types";
 import { createHandover } from "./handover.api";
 import { useAuth } from "../../context/AuthContext";
+import { getLanguageLocale, useLanguage, type LanguageCode } from "../../context/LanguageContext";
 import { Ticket } from "../../api/queue";
 import { useHandoverStore } from "../../store/handoverStore";
 
@@ -26,6 +27,106 @@ const TEAMS = [
     "OTHERS",
 ];
 
+const CREATE_HANDOVER_COPY: Record<LanguageCode, {
+    handover: string;
+    createdFromTicket: string;
+    creator: string;
+    createdAt: string;
+    system: string;
+    activity: string;
+    commitDate: string;
+    remainingTime: string;
+    workloadComment: string;
+    workloadPlaceholder: string;
+    startTime: string;
+    additionalInfo: string;
+    schedulingReasonPlaceholder: string;
+    targetTeam: string;
+    teamInfo: string;
+    otherTeamPlaceholder: string;
+    cancel: string;
+    create: string;
+    saving: string;
+    close: string;
+    validationComment: string;
+    validationStartTime: string;
+    validationTeamComment: string;
+    confirmCreate: string;
+    createFailed: string;
+    startPlannedPrefix: string;
+    toTeamPrefix: string;
+    typeLabels: Record<HandoverType, string>;
+}> = {
+    de: {
+        handover: "Handover",
+        createdFromTicket: "Erstellt aus Ticket",
+        creator: "Ersteller",
+        createdAt: "Erstellt am",
+        system: "System",
+        activity: "Activity",
+        commitDate: "Commit Date",
+        remainingTime: "Restzeit",
+        workloadComment: "Kommentar / Statusbericht",
+        workloadPlaceholder: "Welche Arbeiten wurden bereits ausgeführt? Was fehlt noch?",
+        startTime: "Startzeitpunkt",
+        additionalInfo: "Zusätzliche Infos",
+        schedulingReasonPlaceholder: "Grund für Terminierung...",
+        targetTeam: "Ziel-Team",
+        teamInfo: "Info an das Team",
+        otherTeamPlaceholder: "Was muss das andere Team wissen?",
+        cancel: "Abbrechen",
+        create: "Erstellen",
+        saving: "Speichern...",
+        close: "Schließen",
+        validationComment: "Bitte Kommentar eingeben.",
+        validationStartTime: "Bitte Startzeit eingeben.",
+        validationTeamComment: "Bitte Team und Kommentar eingeben.",
+        confirmCreate: "Handover wirklich erstellen?",
+        createFailed: "Handover konnte nicht erstellt werden. Details siehe Konsole.",
+        startPlannedPrefix: "Start geplant",
+        toTeamPrefix: "An",
+        typeLabels: {
+            Workload: "Workload",
+            Terminiert: "Terminiert",
+            "Other Teams": "Andere Teams",
+        },
+    },
+    en: {
+        handover: "Handover",
+        createdFromTicket: "Created from ticket",
+        creator: "Created by",
+        createdAt: "Created at",
+        system: "System",
+        activity: "Activity",
+        commitDate: "Commit date",
+        remainingTime: "Remaining time",
+        workloadComment: "Comment / status update",
+        workloadPlaceholder: "Which tasks have already been completed? What is still missing?",
+        startTime: "Start time",
+        additionalInfo: "Additional details",
+        schedulingReasonPlaceholder: "Reason for scheduling...",
+        targetTeam: "Target team",
+        teamInfo: "Info for the team",
+        otherTeamPlaceholder: "What does the other team need to know?",
+        cancel: "Cancel",
+        create: "Create",
+        saving: "Saving...",
+        close: "Close",
+        validationComment: "Please enter a comment.",
+        validationStartTime: "Please enter a start time.",
+        validationTeamComment: "Please enter a team and a comment.",
+        confirmCreate: "Create the handover now?",
+        createFailed: "Failed to create the handover. See console for details.",
+        startPlannedPrefix: "Planned start",
+        toTeamPrefix: "To",
+        typeLabels: {
+            Workload: "Workload",
+            Terminiert: "Scheduled",
+            "Other Teams": "Other teams",
+        },
+    },
+};
+
 export function CreateHandoverModal({
     ticket,
     isOpen,
@@ -33,6 +134,9 @@ export function CreateHandoverModal({
     defaultType = "Workload",
 }: CreateHandoverModalProps) {
     const { user } = useAuth();
+    const { language } = useLanguage();
+    const locale = getLanguageLocale(language);
+    const copy = CREATE_HANDOVER_COPY[language] || CREATE_HANDOVER_COPY.en;
     const loadHandoversFresh = useHandoverStore(s => s.load);
     const [type, setType] = useState<HandoverType>(defaultType);
 
@@ -63,22 +167,22 @@ export function CreateHandoverModal({
 
         // Validation based on type
         if (type === "Workload" && !description.trim()) {
-            alert("Bitte Kommentar eingeben.");
+            alert(copy.validationComment);
             setIsSubmitting(false);
             return;
         }
         if (type === "Terminiert" && !startDatetime) {
-            alert("Bitte Startzeit eingeben.");
+            alert(copy.validationStartTime);
             setIsSubmitting(false);
             return;
         }
         if (type === "Other Teams" && (!targetTeam || !description.trim())) {
-            alert("Bitte Team und Kommentar eingeben.");
+            alert(copy.validationTeamComment);
             setIsSubmitting(false);
             return;
         }
 
-        if (!window.confirm("Handover wirklich erstellen?")) {
+        if (!window.confirm(copy.confirmCreate)) {
             setIsSubmitting(false);
             return;
         }
@@ -111,10 +215,10 @@ export function CreateHandoverModal({
                 payload.description = description;
             } else if (type === "Terminiert") {
                 payload.startDatetime = new Date(startDatetime).toISOString();
-                payload.description = `Start geplant: ${new Date(startDatetime).toLocaleString()} – ${description}`;
+                payload.description = `${copy.startPlannedPrefix}: ${new Date(startDatetime).toLocaleString(locale)} – ${description}`;
             } else if (type === "Other Teams") {
                 payload.targetTeam = targetTeam;
-                payload.description = `[An: ${targetTeam}] ${description}`;
+                payload.description = `[${copy.toTeamPrefix}: ${targetTeam}] ${description}`;
             }
 
             await createHandover(payload as HandoverItem);
@@ -123,7 +227,7 @@ export function CreateHandoverModal({
             onClose();
         } catch (err) {
             console.error("Failed to create handover", err);
-            alert("Failed to create handover. See console.");
+            alert(copy.createFailed);
         } finally {
             setIsSubmitting(false);
         }
@@ -142,14 +246,14 @@ export function CreateHandoverModal({
                         <div>
                             <Dialog.Title className="text-lg font-bold flex items-center gap-2">
                                 <Shield className="w-5 h-5 text-primary" />
-                                {type} Handover
+                                {copy.typeLabels[type]} {copy.handover}
                             </Dialog.Title>
                             <div className="text-xs text-muted-foreground mt-1">
-                                Erstellt aus Ticket {ticket.external_id}
+                                {copy.createdFromTicket} {ticket.external_id}
                             </div>
                         </div>
                         <Dialog.Close asChild>
-                            <button className="text-muted-foreground hover:text-foreground">
+                            <button className="text-muted-foreground hover:text-foreground" aria-label={copy.close}>
                                 <X className="w-5 h-5" />
                             </button>
                         </Dialog.Close>
@@ -161,37 +265,37 @@ export function CreateHandoverModal({
                             {/* READ-ONLY INFO BLOCK */}
                             <div className="grid grid-cols-2 gap-4 text-sm bg-white/5 p-4 rounded-lg border border-white/10">
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">Ersteller</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.creator}</label>
                                     <div className="font-medium flex items-center gap-1">
                                         <User className="w-3 h-3" /> {user?.displayName}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">Erstellt am</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.createdAt}</label>
                                     <div className="font-medium">
-                                        {new Date().toLocaleString()}
+                                        {new Date().toLocaleString(locale)}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">System</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.system}</label>
                                     <div className="font-medium text-blue-300">
                                         {ticket.system_name || "—"}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">Activity</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.activity}</label>
                                     <div className="font-medium truncate" title={ticket.activity || ""}>
                                         {ticket.activity || "—"}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">Commit Date</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.commitDate}</label>
                                     <div className="font-medium">
-                                        {ticket.commit_date ? new Date(ticket.commit_date).toLocaleString() : "—"}
+                                        {ticket.commit_date ? new Date(ticket.commit_date).toLocaleString(locale) : "—"}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-muted-foreground block">Restzeit</label>
+                                    <label className="text-xs text-muted-foreground block">{copy.remainingTime}</label>
                                     <div className={`font-bold ${ticket.remaining_hours && ticket.remaining_hours < 0 ? 'text-red-400' : 'text-green-400'}`}>
                                         {ticket.remaining_time_text || "—"}
                                     </div>
@@ -204,10 +308,10 @@ export function CreateHandoverModal({
                                 {/* WORKLOAD */}
                                 {type === "Workload" && (
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-primary">Kommentar / Statusbericht <span className="text-red-500">*</span></label>
+                                        <label className="text-sm font-bold text-primary">{copy.workloadComment} <span className="text-red-500">*</span></label>
                                         <textarea
                                             className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
-                                            placeholder="Welche Arbeiten wurden bereits ausgeführt? Was fehlt noch?"
+                                            placeholder={copy.workloadPlaceholder}
                                             value={description}
                                             onChange={(e) => setDescription(e.target.value)}
                                             autoFocus
@@ -220,7 +324,7 @@ export function CreateHandoverModal({
                                     <>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-primary flex items-center gap-2">
-                                                <Clock className="w-4 h-4" /> Startzeitpunkt <span className="text-red-500">*</span>
+                                                <Clock className="w-4 h-4" /> {copy.startTime} <span className="text-red-500">*</span>
                                             </label>
                                             <input
                                                 type="datetime-local"
@@ -230,10 +334,10 @@ export function CreateHandoverModal({
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium">Zusätzliche Infos</label>
+                                            <label className="text-sm font-medium">{copy.additionalInfo}</label>
                                             <textarea
                                                 className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
-                                                placeholder="Grund für Terminierung..."
+                                                placeholder={copy.schedulingReasonPlaceholder}
                                                 value={description}
                                                 onChange={(e) => setDescription(e.target.value)}
                                             />
@@ -246,7 +350,7 @@ export function CreateHandoverModal({
                                     <>
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-primary flex items-center gap-2">
-                                                <ArrowRight className="w-4 h-4" /> Ziel-Team <span className="text-red-500">*</span>
+                                                <ArrowRight className="w-4 h-4" /> {copy.targetTeam} <span className="text-red-500">*</span>
                                             </label>
                                             <select
                                                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
@@ -261,10 +365,10 @@ export function CreateHandoverModal({
                                             </select>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium">Info an das Team <span className="text-red-500">*</span></label>
+                                            <label className="text-sm font-medium">{copy.teamInfo} <span className="text-red-500">*</span></label>
                                             <textarea
                                                 className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:ring-1 focus:ring-primary"
-                                                placeholder="Was muss das andere Team wissen?"
+                                                placeholder={copy.otherTeamPlaceholder}
                                                 value={description}
                                                 onChange={(e) => setDescription(e.target.value)}
                                             />
@@ -276,10 +380,10 @@ export function CreateHandoverModal({
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
                                 <Button type="button" variant="ghost" onClick={onClose}>
-                                    Abbrechen
+                                    {copy.cancel}
                                 </Button>
                                 <Button type="submit" disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[120px]">
-                                    {isSubmitting ? "Speichern..." : "Erstellen"}
+                                    {isSubmitting ? copy.saving : copy.create}
                                 </Button>
                             </div>
                         </form>

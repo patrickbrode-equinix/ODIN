@@ -190,11 +190,11 @@ const LOGIC_TREE: TreeNode[] = [
       },
       {
         id: "eligibility",
-        label: "Kandidaten-Filterung (9 Regeln)",
-        description: "Alle verfügbaren Mitarbeiter der aktuellen Schicht werden gegen 9 Berechtigungsregeln geprüft. Nur wer alle 9 Regeln besteht, bleibt als Kandidat übrig.",
+        label: "Kandidaten-Filterung (harte Regeln)",
+        description: "Alle verfügbaren Mitarbeiter der aktuellen Schicht werden gegen die harten Berechtigungsregeln geprüft. Nur wer diese Gates besteht, bleibt als Kandidat übrig; weichere Signale wie Queue Purity greifen erst in der Worker-Auswahl.",
         detail: (
           <>
-            <p><strong>Prinzip:</strong> Jede Regel ist ein Ja/Nein-Gate. Sobald eine Regel fehlschlägt, wird der Mitarbeiter für dieses Ticket <em>komplett</em> ausgeschlossen.</p>
+            <p><strong>Prinzip:</strong> Harte Regeln sind echte Ja/Nein-Gates. Sobald eine solche Regel fehlschlägt, wird der Mitarbeiter für dieses Ticket <em>komplett</em> ausgeschlossen.</p>
             <p><strong>Reihenfolge:</strong> Die Regeln werden in fester Reihenfolge abgearbeitet. Die erste fehlgeschlagene Regel wird im Decision-Log als Ausschlussgrund vermerkt.</p>
           </>
         ),
@@ -234,15 +234,16 @@ const LOGIC_TREE: TreeNode[] = [
           { id: "elig-site", label: "7. Site stimmt überein?", description: "Wenn die Site-Strenge aktiv ist, muss der Mitarbeiter der gleichen Site zugeordnet sein wie das Ticket. Bei inaktiver Site-Strenge wird diese Prüfung übersprungen.", detail: <p>Konfiguration unter Einstellungen → „Site-Strenge“. Deaktivierung ermöglicht site-übergreifende Zuweisung bei Unterbesetzung.</p>, type: "rule" },
           {
             id: "elig-purity",
-            label: "8. Sortenreinheit (Queue Purity)",
-            description: "Prüft, ob die aktuelle Ticketqueue des Mitarbeiters „rein“ ist — also ob das neue Ticket zum Typ der bestehenden Tickets passt.",
+            label: "Info: Sortenreinheit (Queue Purity)",
+            description: "ODIN bewertet, ob die aktuelle Ticketqueue des Mitarbeiters „rein“ bleibt. Dieser Faktor wird später in der Worker-Auswahl bevorzugt, blockiert den Kandidaten aber nicht mehr allein.",
             detail: (
               <>
-                <p><strong>Regel:</strong> SmartHands-Worker dürfen nur SmartHands erhalten. Cross-Connect-Worker nur Cross Connects. Trouble Tickets und Scheduled können gemischt werden.</p>
+                <p><strong>Bevorzugung:</strong> SmartHands- und Cross-Connect-Queues sollen möglichst sauber bleiben. Trouble Tickets und Scheduled können fachlich eher zusammenlaufen.</p>
+                <p><strong>Wichtig:</strong> Wenn nur noch gemischte Kandidaten übrig sind, weist ODIN trotzdem den bestmöglichen Worker zu. Queue Purity ist in V2 ein Ranking-Signal, kein eigener No-Candidate-Block mehr.</p>
                 <p><strong>Ausnahme:</strong> Bei aktiviertem Ressourcenmangel-Flag dürfen CC-Worker zusätzlich TroubleTickets erhalten — aber nur, wenn alle aktuellen CC-Tickets eine Restlaufzeit von mehr als 24 Stunden haben.</p>
               </>
             ),
-            type: "rule",
+            type: "info",
             children: [
               { id: "purity-exception", label: "Ausnahme: Ressourcenmangel + CC > 24h", description: "Nur bei gesetztem Ressourcenmangel-Flag: CC-Worker darf Trouble Tickets erhalten, wenn alle seine aktiven CC-Tickets mehr als 24 Stunden Restlaufzeit haben.", detail: <p><strong>⚠ Offener Punkt:</strong> Die genaue fachliche Definition von „Ressourcenmangel“ ist nicht final spezifiziert. Die Aktivierung erfolgt manuell über die Einstellungen.</p>, type: "info" },
             ],
@@ -253,7 +254,7 @@ const LOGIC_TREE: TreeNode[] = [
       {
         id: "worker-selection",
         label: "Worker-Auswahl (Tie-Breaking)",
-        description: "Aus allen Kandidaten, die sämtliche Berechtigungsregeln bestanden haben, wird der finale Mitarbeiter über ein vierstufiges Tie-Breaking ermittelt.",
+        description: "Aus allen gültigen Kandidaten wird der finale Mitarbeiter über eine fünfstufige Auswahlkaskade ermittelt.",
         detail: (
           <>
             <p><strong>Determinismus:</strong> Bei identischen Eingabedaten führt der Algorithmus immer zum selben Ergebnis. Die Auswahl ist vollständig reproduzierbar und auditierbar.</p>
@@ -276,9 +277,10 @@ const LOGIC_TREE: TreeNode[] = [
             ),
             type: "rule",
           },
-          { id: "tb-purity", label: "2. Queue-Reinheit", description: "Mitarbeiter mit einer „reinen“ Queue (nur ein Tickettyp) werden gegenüber Mitarbeitern mit gemischter Queue bevorzugt. Fördert spezialisierte Bearbeitung.", type: "rule" },
+          { id: "tb-purity", label: "2. Queue-Reinheit", description: "Mitarbeiter mit einer „reinen“ Queue werden vor gemischten Queues bevorzugt. Wenn nur gemischte Kandidaten übrig sind, wird trotzdem weiter entschieden.", type: "rule" },
           { id: "tb-workload", label: "3. Geringste Auslastung", description: "Bei weiterem Gleichstand wird der Mitarbeiter mit den wenigsten aktiven Tickets bevorzugt. Ziel: möglichst gleichmäßige Lastverteilung über die Schicht.", type: "rule" },
-          { id: "tb-id", label: "4. Fallback Tie-Breaker", description: "Letzte Entscheidungsstufe: Entweder die niedrigste Worker-ID (stable-id, deterministisch) oder eine zufällige Auswahl, je nach Konfiguration.", detail: <p>Konfiguration unter Einstellungen → „Fallback Tie-Breaker“. Für maximale Nachvollziehbarkeit wird „stable-id“ empfohlen.</p>, type: "rule" },
+          { id: "tb-colleague", label: "4. Kollegen-Nähe", description: "Spätes weiches Signal aus Preferred-Colleague- bzw. Buddy-Beziehungen. Es greift nur, wenn stärkere Kriterien identisch sind.", type: "rule" },
+          { id: "tb-id", label: "5. Konfigurierter Schluss-Tie-Breaker", description: "Letzte Lauf-Stufe: Wenn alles andere gleich ist, greift die konfigurierte Schlussstrategie. Je nach Policy kann ODIN dann per Round-Robin verteilen, zufällig auflösen oder reproduzierbar über die Worker-Nummer entscheiden.", detail: <p>Die Policy-Badge „Fallback Tie-Breaker“ zeigt den konfigurierten Schlussmodus. Die tatsächliche Run-Badge zeigt anschließend, ob die Entscheidung am Ende durch Round-Robin, Zufall oder die Worker-Nummer aufgelöst wurde.</p>, type: "rule" },
         ],
       },
       {
@@ -342,7 +344,7 @@ const LOGIC_TREE_EN: Record<string, TreeNodeLocalization> = {
   "override-check": { label: "Override check", description: "Checks for manual interventions on the ticket. Overrides always take precedence over automatic logic." },
   "exclusion-check": { label: "Exclusion list (system name)", description: "Checks whether the system name is on the manual exclusion list. Excluded systems are always routed to manual review." },
   "subtype-exclusion": { label: "Exclusion list (subtype / trouble type)", description: "Checks whether the customer trouble type is on the subtype exclusion list. Certain incident types are handled manually only." },
-  "eligibility": { label: "Candidate filtering (9 rules)", description: "All available employees in the current shift are checked against 9 eligibility rules. Only employees passing all 9 remain candidates." },
+  "eligibility": { label: "Candidate filtering (hard rules)", description: "All available employees in the current shift are checked against the hard eligibility gates. Softer signals such as queue purity are evaluated later during worker selection." },
   "elig-auto": { label: "1. Auto assignable?", description: "The employee must be marked as autoAssignable. This is a per-person flag controlled in the dispatcher view." },
   "elig-available": { label: "2. Available (not blocked)?", description: "The employee must not be marked as blocked." },
   "elig-break": { label: "3. Not on break?", description: "Employees on an active break do not receive new tickets." },
@@ -360,14 +362,15 @@ const LOGIC_TREE_EN: Record<string, TreeNodeLocalization> = {
   "role-buddy": { label: "Buddy / new starter", description: "Informal onboarding roles. Currently treated like normal employees, with stricter logic planned later." },
   "role-normal": { label: "Normal", description: "Default role: receives all ticket types according to normal prioritization. No special restrictions or preferences." },
   "elig-site": { label: "7. Site matches?", description: "If site strictness is active, the employee must belong to the same site as the ticket." },
-  "elig-purity": { label: "8. Queue purity", description: "Checks whether the employee's current queue remains type-consistent with the incoming ticket." },
+  "elig-purity": { label: "Info: Queue purity", description: "ODIN evaluates whether the employee's queue stays type-consistent. This is now a later ranking preference, not a standalone exclusion on its own." },
   "purity-exception": { label: "Exception: resource shortage + CC > 24h", description: "If the resource shortage flag is active, CC workers may receive trouble tickets when all active CC tickets still have more than 24 hours remaining." },
   "elig-resp": { label: "9. Responsibility area?", description: "If responsibility strictness is active, the worker must match the ticket's responsibility area." },
-  "worker-selection": { label: "Worker selection (tie-breaking)", description: "The final employee is chosen from all valid candidates through a four-stage tie-break process." },
+  "worker-selection": { label: "Worker selection (tie-breaking)", description: "The final employee is chosen from all valid candidates through a five-stage selection cascade." },
   "tb-grouping": { label: "1. System grouping", description: "Prefers employees who already work on tickets for the same system to improve on-site efficiency." },
-  "tb-purity": { label: "2. Queue purity", description: "Employees with a pure queue are preferred over mixed queues." },
+  "tb-purity": { label: "2. Queue purity", description: "Employees with a pure queue are preferred over mixed queues, but ODIN still assigns the best remaining worker if only mixed candidates are left." },
   "tb-workload": { label: "3. Lowest workload", description: "If there is still a tie, the employee with the fewest active tickets is preferred." },
-  "tb-id": { label: "4. Fallback tie-breaker", description: "Last decision level: either the lowest worker ID or a random pick, depending on configuration." },
+  "tb-colleague": { label: "4. Colleague proximity", description: "Late soft signal from preferred-colleague or buddy relationships. It matters only if stronger criteria are tied." },
+  "tb-id": { label: "5. Configured final tie-breaker", description: "Final run-level stage: if everything else is still tied, ODIN applies the configured closing policy. Depending on that policy the decision can be resolved by round-robin, random choice, or reproducible worker ID fallback." },
   "decision-log": { label: "Log decision", description: "The result of every ticket decision is stored fully in the database, including candidates, exclusion reasons, and scores." },
 };
 

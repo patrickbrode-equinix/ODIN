@@ -12,6 +12,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { fetchTvSlideConfig, updateTvSlideConfig, type TvSlideConfig } from "../../api/tvConfig";
 import { fetchSettingsAudit, type SettingsAuditEntry } from "../../api/settingsAudit";
 import { api } from "../../api/api";
+import { AssignmentSettingsPanel } from "../assignment/AssignmentSettingsPanel";
 import AssignmentRulesEditor from "./AssignmentRulesEditor";
 import { ShiftPlanningSettingsPanel } from "./ShiftAdminSettings";
 import { TeamsCommunicationCenterPanel } from "./TeamsCommunicationCenter";
@@ -282,11 +283,11 @@ export default function AdminSettings() {
     <EnterprisePageShell>
       <EnterpriseHeader title={t('admin.title')} subtitle={t('admin.subtitle')} />
 
-      <div className="mb-6 rounded-4xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.88))] p-6 text-slate-100 shadow-[0_24px_60px_rgba(2,6,23,0.35)]">
+      <div className="theme-admin-hero mb-6 rounded-4xl p-6">
         <div className="max-w-3xl">
-          <div className="text-xs uppercase tracking-[0.28em] text-sky-200/70">{t('admin.controlCenter')}</div>
+          <div className="text-xs uppercase tracking-[0.28em] text-sky-700 dark:text-sky-200/70">{t('admin.controlCenter')}</div>
           <h2 className="mt-3 text-2xl font-semibold">{t('admin.allSettings')}</h2>
-          <p className="mt-2 text-sm text-slate-300">
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             {t('admin.tilesDescription')}
           </p>
         </div>
@@ -300,27 +301,27 @@ export default function AdminSettings() {
             onClick={() => selectTab(tab.id)}
             className={`group rounded-[28px] border p-5 text-left transition-all duration-200 ${
               activeTab === tab.id
-                ? "border-sky-300/40 bg-slate-950 text-slate-100 shadow-[0_20px_50px_rgba(14,165,233,0.16)]"
-                : "border-white/10 bg-slate-950/55 text-slate-300 hover:border-sky-300/20 hover:bg-slate-950/75 hover:text-slate-100"
+                ? "theme-admin-tile-active"
+                : "theme-admin-tile hover:border-sky-300/30 hover:shadow-[0_18px_40px_rgba(14,165,233,0.10)]"
             }`}
           >
-            <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${tab.accent} ${activeTab === tab.id ? "text-sky-200" : "text-slate-300 group-hover:text-sky-200"}`}>
+            <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${tab.accent} ${activeTab === tab.id ? "text-sky-700 dark:text-sky-200" : "text-slate-600 dark:text-slate-300 group-hover:text-sky-700 dark:group-hover:text-sky-200"}`}>
               <tab.icon className="h-5 w-5" />
             </div>
             <div className="text-base font-semibold">{tab.label}</div>
-            <div className="mt-2 text-sm text-slate-400 group-hover:text-slate-300">{tab.description}</div>
+            <div className="mt-2 text-sm text-slate-600 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300">{tab.description}</div>
           </button>
         ))}
       </div>
 
-      <div className="mb-6 rounded-[28px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_16px_45px_rgba(2,6,23,0.22)]">
+      <div className="theme-glass-panel mb-6 rounded-[28px] p-5">
         <div className="flex items-start gap-4">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${activeMeta.accent} text-sky-200`}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${activeMeta.accent} text-sky-700 dark:text-sky-200`}>
             <activeMeta.icon className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-lg font-semibold text-slate-100">{activeMeta.label}</div>
-            <div className="mt-1 text-sm text-slate-400">{activeMeta.description}</div>
+            <div className="text-lg font-semibold text-foreground">{activeMeta.label}</div>
+            <div className="mt-1 text-sm text-muted-foreground">{activeMeta.description}</div>
           </div>
         </div>
       </div>
@@ -477,6 +478,15 @@ function OdinRulesTab() {
           </p>
         </div>
       </EnterpriseCard>
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 px-1">
+          <h3 className="text-sm font-semibold">{isGerman ? 'Engine-Zeitfenster & Schichtmodus' : 'Engine time window & shift mode'}</h3>
+          <InfoTooltip title={isGerman ? 'Engine-Zeitfenster & Schichtmodus' : 'Engine time window & shift mode'} side="right" align="start" width="w-96">
+            <p>{isGerman ? 'Hier steuerst du, wie weit ODIN in die Zukunft assignieren darf und ob ausschließlich die aktuelle Schichtinstanz zugelassen wird.' : 'Control here how far into the future ODIN may assign tickets and whether only the current shift instance is allowed.'}</p>
+          </InfoTooltip>
+        </div>
+        <AssignmentSettingsPanel />
+      </div>
       <EnterpriseCard>
         <AssignmentRulesEditor embedded />
       </EnterpriseCard>
@@ -1022,9 +1032,18 @@ function FeedbackTab() {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {entry.screenshotName ? (
-                        <span className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300">
-                          Screenshot: {entry.screenshotName}
-                        </span>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await api.get(`/feedback/entries/${entry.id}/screenshot`, { responseType: 'blob' });
+                              const url = URL.createObjectURL(res.data);
+                              window.open(url, '_blank');
+                            } catch { toast.error(isGerman ? 'Screenshot konnte nicht geladen werden' : 'Could not load screenshot'); }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-indigo-400/25 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-300 hover:bg-indigo-500/20 transition cursor-pointer"
+                        >
+                          📎 {entry.screenshotName}
+                        </button>
                       ) : null}
                       {/* Status buttons */}
                       {entry.status !== 'in_progress' ? (
@@ -1260,7 +1279,14 @@ function FairnessPanel() {
     try {
       const res = await api.get('/admin/fairness-settings');
       if (res.data?.settings) {
-        setSettings({ ...FAIRNESS_DEFAULTS, ...res.data.settings });
+        const raw = res.data.settings;
+        setSettings({
+          ...FAIRNESS_DEFAULTS,
+          ...raw,
+          variety_weight: parseFloat(raw.variety_weight) || FAIRNESS_DEFAULTS.variety_weight,
+          consecutive_category_limit: parseInt(raw.consecutive_category_limit) || FAIRNESS_DEFAULTS.consecutive_category_limit,
+          last_assignment_memory_days: parseInt(raw.last_assignment_memory_days) || FAIRNESS_DEFAULTS.last_assignment_memory_days,
+        });
       }
     } catch { /* first use */ }
     setLoading(false);

@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { useLanguage } from "../../context/LanguageContext";
 
 import { GroupAccessEditor } from "./GroupAccessEditor";
 
@@ -23,6 +24,8 @@ type GroupAccessModalProps = {
 /* ———————————————— */
 
 export function GroupAccessModal({ open, onClose }: GroupAccessModalProps) {
+  const { language, t } = useLanguage();
+
   if (!open) return null;
 
   return (
@@ -36,9 +39,11 @@ export function GroupAccessModal({ open, onClose }: GroupAccessModalProps) {
       >
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Abteilung Access (Pages)</CardTitle>
+            <CardTitle className="text-2xl font-bold">{t("groupAccess.title")}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Lege pro Abteilung fest, welche Seiten sichtbar sind und welches Level gilt.
+              {language === "de"
+                ? "Lege pro Abteilung fest, welche Seiten sichtbar sind und welches Level gilt."
+                : "Define which pages are visible for each department and which access level applies."}
             </p>
           </div>
 
@@ -47,7 +52,7 @@ export function GroupAccessModal({ open, onClose }: GroupAccessModalProps) {
             variant="ghost"
             size="icon"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X className="h-5 w-5" />
           </Button>
@@ -59,7 +64,7 @@ export function GroupAccessModal({ open, onClose }: GroupAccessModalProps) {
 
         <div className="flex justify-end gap-3 border-t border-border/50 p-4">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Schließen
+            {t("common.close")}
           </Button>
         </div>
       </Card>

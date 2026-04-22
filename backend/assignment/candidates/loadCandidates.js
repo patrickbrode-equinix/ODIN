@@ -49,6 +49,15 @@ const SHIFT_WINDOWS = {
   N: { startHour: 21, startMinute: 15, endHour: 6, endMinute: 45 },
 };
 
+const LATEST_OVERNIGHT_END_MINUTES = Object.values(SHIFT_WINDOWS).reduce((max, window) => {
+  const start = window.startHour * 60 + window.startMinute;
+  const end = window.endHour * 60 + window.endMinute;
+  if (end <= start) {
+    return Math.max(max, end);
+  }
+  return max;
+}, -1);
+
 export function resolveEffectiveWorkerRole(weekplanRole, assignmentRole) {
   if (weekplanRole) {
     const normalizedWeekplanRole = String(weekplanRole || '').trim().toLowerCase();
@@ -66,12 +75,64 @@ function toLocalDateString(now = new Date()) {
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 }
 
+function parseLocalDateString(value) {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function normalizePlanningDateKey(value) {
+  if (!value) return null;
+  if (value instanceof Date) return toLocalDateString(value);
+
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const parsed = new Date(text);
+  if (isNaN(parsed.getTime())) return null;
+  return toLocalDateString(parsed);
+}
+
 function getTodayPlanningContext(now = new Date()) {
   return {
     today: toLocalDateString(now),
     day: now.getDate(),
     monthLabel: `${GERMAN_MONTHS[now.getMonth()]} ${now.getFullYear()}`,
   };
+}
+
+export function getPlanningContextsForMoment(now = new Date(), { includeFuture = false, lookaheadHours = 0 } = {}) {
+  const current = new Date(now);
+  const contexts = [getTodayPlanningContext(current)];
+  const minutesNow = current.getHours() * 60 + current.getMinutes();
+
+  if (LATEST_OVERNIGHT_END_MINUTES >= 0 && minutesNow <= LATEST_OVERNIGHT_END_MINUTES) {
+    const previous = new Date(now);
+    previous.setDate(previous.getDate() - 1);
+    contexts.push(getTodayPlanningContext(previous));
+  }
+
+  if (includeFuture && Number.isFinite(Number(lookaheadHours)) && Number(lookaheadHours) > 0) {
+    const horizon = new Date(current.getTime() + Number(lookaheadHours) * 60 * 60 * 1000);
+    const cursor = new Date(current.getFullYear(), current.getMonth(), current.getDate());
+    const horizonDate = new Date(horizon.getFullYear(), horizon.getMonth(), horizon.getDate());
+
+    cursor.setDate(cursor.getDate() + 1);
+    while (cursor.getTime() <= horizonDate.getTime()) {
+      contexts.push(getTodayPlanningContext(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  return contexts.filter((context, index) => contexts.findIndex((entry) => entry.today === context.today) === index);
 }
 
 function normalizeDisplayName(value) {
@@ -139,26 +200,93 @@ export function isShiftCodeActiveNow(shiftCode, now = new Date()) {
   return minutesNow >= start && minutesNow <= end;
 }
 
+export function getShiftWindowForPlanEntry(shiftCode, planningDate) {
+  const code = String(shiftCode || '').trim().toUpperCase();
+  const baseDate = parseLocalDateString(planningDate);
+
+  if (!code || !baseDate || !isWorkingShiftCode(code)) {
+    return {
+      shiftCode: code || null,
+      planningDate: normalizePlanningDateKey(planningDate),
+      start: null,
+      end: null,
+      working: false,
+    };
+  }
+
+  const window = SHIFT_WINDOWS[code];
+  const start = new Date(baseDate);
+  const end = new Date(baseDate);
+
+  if (!window) {
+    start.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() + 1);
+    end.setHours(0, 0, 0, 0);
+    return {
+      shiftCode: code,
+      planningDate: toLocalDateString(baseDate),
+      start,
+      end,
+      working: true,
+    };
+  }
+
+  start.setHours(window.startHour, window.startMinute, 0, 0);
+  end.setHours(window.endHour, window.endMinute, 0, 0);
+
+  const startMinutes = window.startHour * 60 + window.startMinute;
+  const endMinutes = window.endHour * 60 + window.endMinute;
+  if (endMinutes <= startMinutes) {
+    end.setDate(end.getDate() + 1);
+  }
+
+  return {
+    shiftCode: code,
+    planningDate: toLocalDateString(baseDate),
+    start,
+    end,
+    working: true,
+  };
+}
+
+export function isMomentInShiftWindow(moment, shiftWindow) {
+  if (!shiftWindow?.start || !shiftWindow?.end) return false;
+
+  const current = moment instanceof Date ? moment : new Date(moment);
+  if (isNaN(current.getTime())) return false;
+
+  return current.getTime() >= shiftWindow.start.getTime() && current.getTime() <= shiftWindow.end.getTime();
+}
+
 /**
- * Load candidate workers from today's weekly plan (shifts) and enrich with user metadata.
- * The weekly plan is the source of truth for who is planned today; users only provide metadata.
- * Role-based assignment restrictions are only active when today's weekplan carries a role.
+ * Load candidate workers from the relevant weekly-plan contexts and enrich with user metadata.
+ * The weekly plan is the source of truth for who is planned; users only provide metadata.
+ * Role-based assignment restrictions are only active when the weekplan carries a role.
  *
  * Returns an array of worker objects:
  * { id, name, email, group, site, responsibility, role, weekplanRole, shiftActive, onBreak, absent, autoAssignable, blocked }
  */
-export async function loadCandidateWorkers() {
+export async function loadCandidateWorkers(settings = {}) {
   const now = new Date();
-  const { today, day, monthLabel } = getTodayPlanningContext(now);
+  const currentShiftOnly = settings?.currentShiftOnly !== false && settings?.currentShiftOnly !== 'false';
+  const lookaheadHours = Number(settings?.planningWindowHours) || 0;
+  const planningContexts = getPlanningContextsForMoment(now, {
+    includeFuture: !currentShiftOnly,
+    lookaheadHours,
+  });
 
-  const [shiftRes, userRes, roleRes] = await Promise.all([
+  const shiftQueries = planningContexts.map((context) => (
     pool.query(
       `SELECT employee_name, shift_code
        FROM shifts
        WHERE month = $1 AND day = $2
        ORDER BY employee_name ASC`,
-      [monthLabel, day]
-    ),
+      [context.monthLabel, context.day]
+    )
+  ));
+
+  const [shiftResults, userRes, roleRes] = await Promise.all([
+    Promise.all(shiftQueries),
     pool.query(`
       SELECT
         u.id,
@@ -179,20 +307,24 @@ export async function loadCandidateWorkers() {
       ORDER BY u.id
     `),
     pool.query(
-      `SELECT employee_name, role_key
+      `SELECT employee_name, date, role_key
        FROM weekplan_roles
-       WHERE date = $1`,
-      [today]
+       WHERE date = ANY($1::date[])`,
+      [planningContexts.map((context) => context.today)]
     ),
   ]);
 
-  // Load verification status map for today (non-blocking — feature may be disabled)
-  let verificationMap = new Map();
-  try {
-    verificationMap = await getVerificationStatusMap(now);
-  } catch (err) {
-    console.warn('[CANDIDATES] Failed to load verification status map:', err?.message || err);
-  }
+  const verificationEntries = await Promise.all(
+    planningContexts.map(async (context) => {
+      try {
+        return [context.today, await getVerificationStatusMap(context.today)];
+      } catch (err) {
+        console.warn(`[CANDIDATES] Failed to load verification status map for ${context.today}:`, err?.message || err);
+        return [context.today, new Map()];
+      }
+    })
+  );
+  const verificationMapsByDate = new Map(verificationEntries);
 
   const userRows = userRes.rows.map(row => ({
     ...row,
@@ -202,18 +334,32 @@ export async function loadCandidateWorkers() {
   const userLookup = buildLookup(
     userRows.map(row => ({ employee_name: row.display_name, ...row }))
   );
-  const roleLookup = buildLookup(roleRes.rows);
+  const roleLookupsByDate = new Map(
+    planningContexts.map((context) => {
+      const rowsForDate = roleRes.rows.filter((row) => normalizePlanningDateKey(row.date) === context.today);
+      return [context.today, buildLookup(rowsForDate)];
+    })
+  );
 
-  return shiftRes.rows.map((shiftRow, index) => {
+  const shiftRows = shiftResults.flatMap((result, index) => (
+    result.rows.map((row) => ({
+      ...row,
+      planningDate: planningContexts[index].today,
+    }))
+  ));
+
+  return shiftRows.map((shiftRow, index) => {
     const plannedEmployeeName = normalizeDisplayName(shiftRow.employee_name);
     const shiftCode = String(shiftRow.shift_code || '').trim().toUpperCase() || null;
     const matchedUser = findLookupMatch(plannedEmployeeName, userLookup);
-    const matchedRoleRow = findLookupMatch(plannedEmployeeName, roleLookup);
+    const matchedRoleRow = findLookupMatch(plannedEmployeeName, roleLookupsByDate.get(shiftRow.planningDate));
     const weekplanRole = matchedRoleRow?.role_key || null;
     const engineRole = resolveEffectiveWorkerRole(
       weekplanRole,
       matchedUser?.assignment_role || null
     );
+    const shiftWindow = getShiftWindowForPlanEntry(shiftCode, shiftRow.planningDate);
+    const verificationMap = verificationMapsByDate.get(shiftRow.planningDate) || new Map();
 
     return {
       id: matchedUser?.id ?? -(index + 1),
@@ -226,7 +372,10 @@ export async function loadCandidateWorkers() {
       userRole: matchedUser?.assignment_role || null,
       weekplanRole,
       shiftCode,
-      shiftActive: isShiftCodeActiveNow(shiftCode, now),
+      shiftPlanningDate: shiftRow.planningDate,
+      shiftStart: shiftWindow.start ? shiftWindow.start.toISOString() : null,
+      shiftEnd: shiftWindow.end ? shiftWindow.end.toISOString() : null,
+      shiftActive: isMomentInShiftWindow(now, shiftWindow),
       onBreak: !!matchedUser?.on_break,
       absent: !!matchedUser?.absent || shiftCode === 'ABW',
       autoAssignable: matchedUser ? matchedUser.auto_assignable !== false : true,
@@ -278,6 +427,7 @@ export async function loadWorkerCurrentTickets(candidates) {
       SELECT
         qi.id,
         qi.external_id,
+        qi.assigned_worker_id,
         qi.queue_type AS type,
         qi.status,
         qi.severity AS priority,
@@ -291,14 +441,18 @@ export async function loadWorkerCurrentTickets(candidates) {
       FROM queue_items qi
       WHERE qi.active = true
         AND qi.queue_type = ANY($1::text[])
-        AND qi.owner IS NOT NULL
-        AND qi.owner <> ''
+        AND (
+          qi.assigned_worker_id IS NOT NULL
+          OR (qi.owner IS NOT NULL AND qi.owner <> '')
+        )
       ORDER BY qi.id
     `, [SUPPORTED_QUEUE_ITEM_TYPES]);
 
     for (const row of rows) {
       const ownerKey = normalizeName(row.owner);
-      const workerId = nameToId.get(ownerKey);
+      const workerId = map.has(row.assigned_worker_id)
+        ? row.assigned_worker_id
+        : nameToId.get(ownerKey);
       if (workerId != null && map.has(workerId)) {
         // Create a lightweight normalized ticket for grouping/purity checks
         const { mapType } = await import('../normalization/normalizeTicket.js');
@@ -307,6 +461,7 @@ export async function loadWorkerCurrentTickets(candidates) {
           id: String(row.id),
           externalId: row.external_id,
           type: typeResult.value,
+          priority: row.priority || null,
           systemName: row.system_name || null,
           dueAt: row.due_at ? new Date(row.due_at).toISOString() : null,
           scheduledStart: row.scheduled_start ? new Date(row.scheduled_start).toISOString() : null,

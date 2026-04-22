@@ -14,6 +14,33 @@ import { routeHandover } from '../rules/handoverRouter.js';
 import { analyticsTracker } from '../analytics/tracker.js';
 import { notifyDispatcherManualReview } from '../../services/teamsMessaging.js';
 
+function isExplicitlyEnabled(value) {
+  return value === true || String(value || '').trim().toLowerCase() === 'true';
+}
+
+function buildDecisionConfigSnapshot(settings = {}) {
+  return {
+    mode: settings.mode || settings.executionMode || null,
+    currentShiftOnly: settings.currentShiftOnly ?? null,
+    planningWindowHours: settings.planningWindowHours ?? null,
+    siteStrictness: settings.siteStrictness ?? null,
+    responsibilityStrictness: settings.responsibilityStrictness ?? null,
+    enableRotationTieBreaker: settings.enableRotationTieBreaker ?? null,
+    fallbackTieBreaker: settings.fallbackTieBreaker ?? null,
+    insufficientResources: settings.insufficientResources ?? null,
+    verificationEnabled: settings.verificationEnabled ?? null,
+    pendingBlocksAssignment: settings.pendingBlocksAssignment ?? null,
+  };
+}
+
+function createDecisionTraceInput(traceContext, settings, overrides = {}) {
+  return {
+    ticketSelection: traceContext?.ticketSelection || null,
+    configSnapshot: traceContext?.configSnapshot || buildDecisionConfigSnapshot(settings),
+    ...overrides,
+  };
+}
+
 function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
   if (initialCandidates.length === 0) {
     return 'Keine Mitarbeiter aus der Wochenplanung für das aktuelle Zeitfenster gefunden';
@@ -25,15 +52,18 @@ function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
     return 'Mitarbeiter aus der Wochenplanung konnten keinem freigegebenen ODIN-Benutzer zugeordnet werden';
   }
 
-  if (rules.size === 1 && rules.has('checkRole')) {
+  if (rules.size === 1 && rules.has('roleFilter')) {
     return `Für Tickettyp ${ticket.type} blieb nach Rollenprüfung kein zulässiger Kandidat übrig`;
   }
 
   if (rules.size === 1 && rules.has('isShiftActive')) {
-    return 'Alle Mitarbeiter aus der Wochenplanung liegen außerhalb des aktuellen Schichtfensters';
+    if (excludedCandidates.some((candidate) => String(candidate.reason || '').includes('Schichtinstanz'))) {
+      return 'Das Ticket liegt außerhalb der aktuell aktiven Schichtinstanz; zukünftige Schichten werden hart ausgeschlossen';
+    }
+    return 'Alle Mitarbeiter aus der Wochenplanung liegen außerhalb der aktuell aktiven Schichtinstanz';
   }
 
-  if (rules.has('hasUserMapping') && rules.has('checkRole')) {
+  if (rules.has('hasUserMapping') && rules.has('roleFilter')) {
     return 'Rollen- oder Benutzermapping aus der Wochenplanung ist unvollständig';
   }
 
@@ -49,8 +79,8 @@ function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
  *   3. Check manual overrides
  *   4. Check exclusion list (system name)
  *   5. Route handover (Workload/Terminated/OtherTeams)
- *   6. Apply eligibility rules (incl. role filter, queue purity)
- *   7. Select worker (system grouping → purity → workload → ID)
+ *   6. Apply hard eligibility rules (role, shift, site, responsibility, capacity)
+ *   7. Select worker (system grouping → queue purity → workload → colleague signal → worker ID)
  *   8. Build decision log
  *   9. Persist decision + analytics
  *
@@ -63,7 +93,7 @@ function buildNoCandidateReason(ticket, initialCandidates, excludedCandidates) {
  * @param {string[]} subtypeExclusionList - Subtypes (customer_trouble_type) to exclude
  * @returns {object} Decision log
  */
-export async function processTicket(ticket, candidatePool, settings, runId, workerTicketsMap = new Map(), exclusionList = [], subtypeExclusionList = []) {
+export async function processTicket(ticket, candidatePool, settings, runId, workerTicketsMap = new Map(), exclusionList = [], subtypeExclusionList = [], traceContext = null) {
   const now = Date.now();
   const insufficientResources = settings.insufficientResources === 'true' || settings.insufficientResources === true;
 
@@ -80,6 +110,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -97,6 +128,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -116,6 +148,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
           initialCandidates: [],
           excludedCandidates: [],
           remainingCandidates: [],
+          decisionTraceInput: createDecisionTraceInput(traceContext, settings),
         });
         await persistTicketDecision(runId, log);
         return log;
@@ -130,6 +163,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
           initialCandidates: [],
           excludedCandidates: [],
           remainingCandidates: [],
+          decisionTraceInput: createDecisionTraceInput(traceContext, settings),
         });
         await persistTicketDecision(runId, log);
         return log;
@@ -149,6 +183,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings),
       });
       await persistTicketDecision(runId, log);
       try {
@@ -189,6 +224,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
           initialCandidates: [],
           excludedCandidates: [],
           remainingCandidates: [],
+          decisionTraceInput: createDecisionTraceInput(traceContext, settings),
         });
         await persistTicketDecision(runId, log);
         try {
@@ -217,6 +253,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -238,6 +275,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates: candidatePool.map(c => ({ id: c.id, name: c.name })),
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -246,22 +284,26 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
     // 6. Candidates
     const initialCandidates = [...candidatePool];
 
+    const emptyPoolReason = buildNoCandidateReason(ticket, initialCandidates, []);
     if (initialCandidates.length === 0) {
       const log = buildDecisionLog({
         ticket,
         result: 'no_candidate',
         assignedWorker: null,
-        selectionReason: buildNoCandidateReason(ticket, initialCandidates, []),
+        selectionReason: emptyPoolReason,
         rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check', 'candidates'],
         initialCandidates: [],
         excludedCandidates: [],
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings, {
+          noAssignmentReason: emptyPoolReason,
+        }),
       });
       await persistTicketDecision(runId, log);
       return log;
     }
 
-    // 7. Apply eligibility rules (includes role filter + queue purity)
+    // 7. Apply hard eligibility rules before ranking begins
     const excludedCandidates = [];
     const eligibleCandidates = [];
     const allRulesChecked = [];
@@ -297,16 +339,20 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
       'eligibility', ...new Set(allRulesChecked),
     ];
 
+    const noCandidateReason = buildNoCandidateReason(ticket, initialCandidates, excludedCandidates);
     if (eligibleCandidates.length === 0) {
       const log = buildDecisionLog({
         ticket,
         result: 'no_candidate',
         assignedWorker: null,
-        selectionReason: buildNoCandidateReason(ticket, initialCandidates, excludedCandidates),
+        selectionReason: noCandidateReason,
         rulePath,
         initialCandidates,
         excludedCandidates,
         remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings, {
+          noAssignmentReason: noCandidateReason,
+        }),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -325,6 +371,9 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
         initialCandidates,
         excludedCandidates,
         remainingCandidates: eligibleCandidates,
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings, {
+          candidateRanking: selection.ranking || [],
+        }),
       });
       await persistTicketDecision(runId, log);
       return log;
@@ -343,6 +392,10 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
       initialCandidates,
       excludedCandidates,
       remainingCandidates: eligibleCandidates,
+      decisionTraceInput: createDecisionTraceInput(traceContext, settings, {
+        candidateRanking: selection.ranking || [],
+        selectionTieBreaker: selection.tieBreaker || null,
+      }),
     });
 
     // Persist decision
@@ -354,6 +407,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
       id: ticket.id,
       externalId: ticket.externalId,
       type: ticket.type,
+      priority: ticket.priority,
       systemName: ticket.systemName,
       dueAt: ticket.dueAt,
       scheduledStart: ticket.scheduledStart,
@@ -361,7 +415,15 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
     workerTicketsMap.set(selection.worker.id, workerTickets);
 
     // Apply live assignment (no-op in shadow mode)
-    await applyLiveAssignment(ticket, selection.worker, settings.mode);
+    const liveAssignment = await applyLiveAssignment(ticket, selection.worker, settings.mode);
+
+    if (settings.mode === 'live' && liveAssignment?.applied && isExplicitlyEnabled(settings.enableRotationTieBreaker)) {
+      try {
+        await persistWorkerRotation(ticket.site || selection.worker.site || '_global', selection.worker.id);
+      } catch (_) {
+        // Rotation persistence is best effort and must not break the assignment itself.
+      }
+    }
 
     // Track analytics
     try {
@@ -388,6 +450,7 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
       excludedCandidates: [],
       remainingCandidates: [],
       errorMessage: err.message,
+      decisionTraceInput: createDecisionTraceInput(traceContext, settings),
     });
     try { await persistTicketDecision(runId, log); } catch (_) { /* best effort */ }
     return log;

@@ -106,15 +106,28 @@ const SETTING_DEFS: SettingDef[] = [
   },
   {
     key: 'assignment.planningWindowHours',
-    label: 'Planungsfenster (Std.)',
+    label: 'Zuweisungsfenster (Std.)',
     type: 'number',
     tooltip: (
       <>
-        <p><strong>Bedeutung:</strong> Legt fest, wie weit in die Zukunft die Engine bei der Ticketverarbeitung vorausschaut (in Stunden).</p>
-        <p><strong>Auswirkung:</strong> Tickets mit einer Commit-Time, die weiter als dieses Fenster in der Zukunft liegt, werden in diesem Lauf nicht berücksichtigt, sondern erst in einem späteren Lauf verarbeitet.</p>
-        <p><strong>Wichtig:</strong> Tickets, die bereits überfällig sind (Commit-Time in der Vergangenheit), werden unabhängig vom Planungsfenster <em>immer</em> als dringend behandelt.</p>
-        <p><strong>Zu kleiner Wert:</strong> Tickets werden erst kurz vor der Deadline eingeplant, was zu Engpässen führen kann.</p>
-        <p><strong>Zu großer Wert:</strong> Tickets aus weit entfernter Zukunft konkurrieren mit akut dringenden Tickets.</p>
+        <p><strong>Bedeutung:</strong> Legt fest, wie weit in die Zukunft ODIN Tickets für die automatische Verarbeitung betrachtet.</p>
+        <p><strong>Referenz:</strong> Bei Scheduled-Tickets wird der geplante Start genutzt, sonst die Commit-/Due-Time.</p>
+        <p><strong>Auswirkung:</strong> Tickets außerhalb dieses Fensters bleiben für spätere Läufe liegen und konkurrieren noch nicht mit akuteren Tickets.</p>
+        <p><strong>Wenn „Nur aktuelle Schicht" deaktiviert ist:</strong> ODIN lädt zusätzlich zukünftige Planungszeiträume innerhalb dieses Fensters und kann Tickets gezielt an die geplante Folgeschicht vergeben.</p>
+        <p><strong>Wenn „Nur aktuelle Schicht" aktiviert ist:</strong> Das Fenster begrenzt weiterhin die Ticket-Relevanz, zugewiesen wird aber nur innerhalb der aktuell aktiven Schichtinstanz.</p>
+      </>
+    ),
+  },
+  {
+    key: 'assignment.currentShiftOnly',
+    label: 'Nur aktuelle Schicht',
+    type: 'boolean',
+    tooltip: (
+      <>
+        <p><strong>Bedeutung:</strong> Erzwingt, dass ODIN Tickets nur an Personen in der aktuell aktiven Schichtinstanz vergibt.</p>
+        <p><strong>Aktiv:</strong> Zukunftsschichten werden für die tatsächliche Zuweisung ausgeschlossen. Das ist der sichere Standard für operative Sofortverteilung.</p>
+        <p><strong>Inaktiv:</strong> Scheduled-Tickets dürfen innerhalb des konfigurierten Zuweisungsfensters bereits an die geplante spätere Schicht vergeben werden, sofern die Wochenplanung diese Schicht kennt.</p>
+        <p><strong>Empfehlung:</strong> Im normalen Dispatch-Betrieb aktiviert lassen. Nur deaktivieren, wenn bewusst vorgeplant in spätere Schichten assigniert werden soll.</p>
       </>
     ),
   },
@@ -174,7 +187,7 @@ const SETTING_DEFS: SettingDef[] = [
 ];
 
 export function AssignmentSettingsPanel() {
-  const { settings, settingsSaving, updateSettings, fetchSettings } = useAssignmentStore();
+  const { settings, loading, settingsSaving, updateSettings, fetchSettings } = useAssignmentStore();
   const [local, setLocal] = useState<Record<string, string>>({});
 
   const ticketTypeOptions = ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
@@ -184,6 +197,12 @@ export function AssignmentSettingsPanel() {
     'assignment.planningWindowHours': { min: 1, max: 168, step: 1 },
     'assignment.maxTicketsPerRun': { min: 25, max: 1000, step: 25 },
   };
+
+  useEffect(() => {
+    if (!settings) {
+      fetchSettings();
+    }
+  }, [settings, fetchSettings]);
 
   useEffect(() => {
     if (settings) {
@@ -216,6 +235,14 @@ export function AssignmentSettingsPanel() {
   const handleSave = async () => {
     await updateSettings(local as Partial<AssignmentSettings>);
   };
+
+  if (!settings && loading) {
+    return (
+      <div className="rounded-lg border border-border/40 bg-card/60 p-6 text-sm text-muted-foreground">
+        Einstellungen werden geladen...
+      </div>
+    );
+  }
 
   const renderNumberControl = (def: SettingDef) => {
     const config = sliderConfig[def.key];

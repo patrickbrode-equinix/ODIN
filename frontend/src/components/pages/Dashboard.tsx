@@ -48,7 +48,7 @@ import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
 import { api } from "../../api/api"; // Added missing import
 import { useCrawlerStaleness } from "../../hooks/useCrawlerStaleness";
 import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
-import { useLanguage, type LanguageCode } from "../../context/LanguageContext";
+import { getLanguageLocale, useLanguage, type LanguageCode } from "../../context/LanguageContext";
 
 /* UI */
 import { DateTimeBadge } from "../ui/DateTimeBadge";
@@ -88,6 +88,16 @@ const DASHBOARD_COPY: Partial<Record<LanguageCode, {
   warnings: string;
   criticalOnly: string;
   noShifts: string;
+  activity: string;
+  owner: string;
+  employeesLabel: string;
+  activeLabel: string;
+  inactiveLabel: string;
+  removeRole: string;
+  remainingTime: string;
+  systemName: string;
+  scheduled: string;
+  revisedCommit: string;
   assignCategory: string;
   projectCategory: string;
   dbsProjectCategory: string;
@@ -125,6 +135,16 @@ const DASHBOARD_COPY: Partial<Record<LanguageCode, {
     warnings: "Warnungen",
     criticalOnly: "Nur Kritische",
     noShifts: "Keine Schichten verfügbar",
+    activity: "Aktivität",
+    owner: "Owner",
+    employeesLabel: "MA",
+    activeLabel: "AKTIV",
+    inactiveLabel: "INAKTIV",
+    removeRole: "ROLLE ENTFERNEN",
+    remainingTime: "Restzeit",
+    systemName: "Systemname",
+    scheduled: "Terminiert",
+    revisedCommit: "Geänderter Commit",
     assignCategory: "Kategorie zuweisen",
     projectCategory: "Projekt",
     dbsProjectCategory: "DBS Projekt",
@@ -162,6 +182,16 @@ const DASHBOARD_COPY: Partial<Record<LanguageCode, {
     warnings: "Warnings",
     criticalOnly: "Critical only",
     noShifts: "No shifts available",
+    activity: "Activity",
+    owner: "Owner",
+    employeesLabel: "Employees",
+    activeLabel: "ACTIVE",
+    inactiveLabel: "INACTIVE",
+    removeRole: "REMOVE ROLE",
+    remainingTime: "Remaining time",
+    systemName: "System name",
+    scheduled: "Scheduled",
+    revisedCommit: "Revised commit",
     assignCategory: "Assign category",
     projectCategory: "Project",
     dbsProjectCategory: "DBS project",
@@ -310,7 +340,7 @@ function EmployeeItem({
           <div>ID</div>
           <div>{language === 'de' ? 'System' : 'System'}</div>
           <div>{copy.activity}</div>
-          <div className="text-right">Restzeit</div>
+          <div className="text-right">{copy.remainingTime}</div>
         </div>
 
         {/* Ticket Rows */}
@@ -379,10 +409,10 @@ function EmployeeItem({
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger>
-        <div className="group rounded-xl bg-[#0a1228]/80 backdrop-blur-md border border-indigo-500/20 px-4 py-3 select-none hover:border-indigo-500/50 hover:bg-[#0f172a] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] hover:shadow-[0_8px_24px_rgba(59,130,246,0.15)] transition-all">
+        <div className="theme-glass-panel group rounded-xl border border-indigo-500/20 px-4 py-3 select-none transition-all hover:border-indigo-500/50 hover:bg-accent/70 hover:shadow-[0_8px_24px_rgba(59,130,246,0.15)]">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="text-[1.05em] font-bold text-slate-100 group-hover:text-white transition-colors tracking-wide">{employee.name}</div>
+              <div className="text-[1.05em] font-bold text-foreground transition-colors tracking-wide">{employee.name}</div>
               {currentCategory && (
                 <div className="bg-indigo-500/20 text-indigo-300 text-[0.65em] px-1.5 py-0.5 rounded-sm uppercase tracking-wider font-extrabold border border-indigo-500/30">
                   {currentCategoryLabel}
@@ -394,8 +424,8 @@ function EmployeeItem({
                 </div>
               )}
             </div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Tickets <span className="text-white/90 bg-white/10 px-1.5 py-0.5 rounded ml-1">{owned.length}</span>
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              Tickets <span className="theme-glass-inset ml-1 rounded px-1.5 py-0.5 text-foreground">{owned.length}</span>
             </div>
           </div>
           {renderOwnerTickets()}
@@ -403,16 +433,16 @@ function EmployeeItem({
       </ContextMenu.Trigger>
 
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-45 bg-sky-950 text-white rounded-md border border-white/20 p-1 shadow-md animate-in fade-in-80 z-50">
+        <ContextMenu.Content className="theme-popover-surface min-w-45 rounded-md border p-1 shadow-md animate-in fade-in-80 z-50">
           <ContextMenu.Label className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
             {copy.assignCategory}
           </ContextMenu.Label>
-          <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+          <ContextMenu.Separator className="theme-divider my-1 h-px" />
 
           {categoryOptions.map((cat) => (
             <ContextMenu.Item
               key={cat.value}
-              className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+              className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 pl-8 text-[0.9em] outline-none focus:bg-accent focus:text-foreground"
               onSelect={() => setCategory(employee.name, cat.value === currentCategory ? "" : cat.value)}
             >
               {currentCategory === cat.value && (
@@ -424,9 +454,9 @@ function EmployeeItem({
             </ContextMenu.Item>
           ))}
 
-          <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+          <ContextMenu.Separator className="theme-divider my-1 h-px" />
           <ContextMenu.Item
-            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 pl-8 text-[0.9em] outline-none focus:bg-accent focus:text-foreground"
             onSelect={() => setCategory(employee.name, "")}
           >
             {currentCategory === "" || !currentCategory ? (
@@ -440,16 +470,16 @@ function EmployeeItem({
           {/* ROLLE ZUWEISEN */}
           {todayDateStr && (
             <>
-              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+              <ContextMenu.Separator className="theme-divider my-1 h-px" />
               <ContextMenu.Label className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                 ROLLE ZUWEISEN
               </ContextMenu.Label>
-              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+              <ContextMenu.Separator className="theme-divider my-1 h-px" />
 
               {WEEKPLAN_ROLES.map((role) => (
                 <ContextMenu.Item
                   key={role.key}
-                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 pl-8 text-[0.9em] outline-none focus:bg-accent focus:text-foreground"
                   onSelect={() => {
                     if (currentRole === role.key) {
                       removeRole(employee.name, todayDateStr);
@@ -467,9 +497,9 @@ function EmployeeItem({
                 </ContextMenu.Item>
               ))}
 
-              <ContextMenu.Separator className="h-px bg-white/10 my-1" />
+                <ContextMenu.Separator className="theme-divider my-1 h-px" />
               <ContextMenu.Item
-                className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-[0.9em] outline-none focus:bg-white/10 focus:text-white pl-8"
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 pl-8 text-[0.9em] outline-none focus:bg-accent focus:text-foreground"
                 onSelect={() => {
                   if (currentRole) removeRole(employee.name, todayDateStr);
                 }}
@@ -479,7 +509,7 @@ function EmployeeItem({
                     <Check className="h-4 w-4" />
                   </span>
                 ) : null}
-                ROLLE ENTFERNEN
+                {copy.removeRole}
               </ContextMenu.Item>
             </>
           )}
@@ -520,18 +550,18 @@ function ShiftCodeGroup({
   );
 
   return (
-    <div className="rounded-lg bg-black/20 border border-white/10 overflow-hidden flex flex-col">
-      <div className="px-2 py-1.5 flex items-center justify-between text-left border-b border-white/5 flex-none">
+    <div className="theme-glass-panel rounded-lg border overflow-hidden flex flex-col">
+      <div className="flex flex-none items-center justify-between border-b border-border/50 bg-background/70 px-2 py-1.5 text-left">
         <div className="flex items-center gap-2 min-w-0">
           <span
-            className={`px-2 py-0.5 rounded-md text-[0.85em] font-semibold text-white ${info?.color ?? "bg-slate-600"}`}
+            className={`rounded-md px-2 py-0.5 text-[0.85em] font-semibold text-foreground ${info?.color ?? "bg-slate-600"}`}
           >
             {code}
           </span>
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{timerLabel(now, range, copy)}</span>
           {showOnlyActiveShifts ? null : (
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              {active ? "• AKTIV" : "• INAKTIV"}
+              {active ? `• ${copy.activeLabel}` : `• ${copy.inactiveLabel}`}
             </span>
           )}
         </div>
@@ -545,7 +575,7 @@ function ShiftCodeGroup({
 
       <div className="px-2 pb-2 space-y-1 mt-1">
         {(employees?.length ?? 0) === 0 ? (
-          <div className="text-[13px] text-[#4b5563] py-1">{copy.noData}</div>
+          <div className="py-1 text-[13px] text-muted-foreground">{copy.noData}</div>
         ) : (
           (employees ?? []).map((e: any) => (
             <EmployeeItem
@@ -583,6 +613,8 @@ function ShiftGroup({
   crawlerStale?: boolean;
   todayDateStr?: string;
 }) {
+  const { language } = useLanguage();
+  const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
   const groupEmployees = group.items.reduce((acc: number, it: any) => acc + (it.employees?.length ?? 0), 0);
   const groupTickets = group.items.reduce(
     (acc: number, it: any) =>
@@ -596,7 +628,7 @@ function ShiftGroup({
         <div style={ENT_SECTION_TITLE} className="mb-0! uppercase tracking-wider">{group.title}</div>
         <div className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-2">
           <Clock className="w-3.5 h-3.5" />
-          <span>{groupEmployees} MA</span>
+          <span>{groupEmployees} {copy.employeesLabel}</span>
           <span className="text-white/20">•</span>
           <span>{groupTickets} Tickets</span>
         </div>
@@ -635,11 +667,11 @@ function KpiTile({ icon, title, count, children, className }: {
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={`rounded-xl bg-white/5 border border-white/10 overflow-hidden flex flex-col ${className ?? ""}`}>
+    <div className={`theme-glass-panel rounded-xl border overflow-hidden flex flex-col ${className ?? ""}`}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors cursor-pointer text-left flex-none"
+        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-accent/60 flex-none"
       >
         <div className="text-[0.8em] text-muted-foreground flex items-center gap-2">
           {icon}
@@ -651,7 +683,7 @@ function KpiTile({ icon, title, count, children, className }: {
         </div>
       </button>
       {open && children && (
-        <div className="px-4 pb-3 space-y-1 border-t border-white/5 flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-border/50 px-4 pb-3">
           {children}
         </div>
       )}
@@ -704,10 +736,10 @@ const CustomTooltip = ({ active, payload }: any) => {
     const percent = ((val / total) * 100).toFixed(0);
 
     return (
-      <div className="bg-slate-900 border border-white/10 p-2 rounded shadow-xl text-[0.85em] z-50">
-        <div className="font-semibold text-white mb-1">{data.name}</div>
-        <div className="text-white/80">
-          {val} <span className="text-white/40">({percent}%)</span>
+      <div className="theme-popover-surface z-50 rounded border p-2 text-[0.85em] shadow-xl">
+        <div className="mb-1 font-semibold text-foreground">{data.name}</div>
+        <div className="text-foreground">
+          {val} <span className="text-muted-foreground">({percent}%)</span>
         </div>
       </div>
     );
@@ -854,6 +886,7 @@ function StatisticsPanel() {
 export default function Dashboard() {
   const { language } = useLanguage();
   const copy = DASHBOARD_COPY[language] || DASHBOARD_COPY.en!;
+  const locale = getLanguageLocale(language);
   const { user } = useAuth();
   const displayName = getUserDisplayName(user);
   const { isHidden } = useHiddenEmployees();
@@ -1436,7 +1469,7 @@ export default function Dashboard() {
         {/* Header Row */}
         <EnterpriseHeader
           icon={<ChartIcon style={{ width: 18, height: 18, color: "#818cf8" }} />}
-          title={<>{copy.greeting}, <span style={{ color: "#e2e8f0" }}>{displayName}</span></>}
+          title={<>{copy.greeting}, <span className="text-foreground">{displayName}</span></>}
           rightContent={
             <div className="flex items-center gap-2">
               <DateTimeBadge />
@@ -1451,8 +1484,8 @@ export default function Dashboard() {
                       {understaffToday.count > 0 && <span className="ml-1 bg-red-500/20 px-1 rounded text-[0.7em] font-bold">{understaffToday.count}</span>}
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-80 p-0 bg-slate-900 border-white/20 text-white shadow-xl backdrop-blur-md" align="end">
-                    <div className="p-3 font-medium border-b border-white/10 flex items-center justify-between">
+                  <PopoverContent className="theme-popover-surface w-80 p-0 shadow-xl backdrop-blur-md" align="end">
+                    <div className="flex items-center justify-between border-b border-border/60 p-3 font-medium">
                       <span>{copy.understaffingDetails}</span>
                       <span className="text-xs text-muted-foreground">{copy.today}</span>
                     </div>
@@ -1465,7 +1498,7 @@ export default function Dashboard() {
                       ) : (
                         <div className="space-y-1">
                           {understaffToday.labels.map((label, i) => (
-                            <div key={i} className="flex items-start gap-2 p-2 rounded hover:bg-white/5 text-sm">
+                            <div key={i} className="flex items-start gap-2 rounded p-2 text-sm hover:bg-accent/70">
                               <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
                               <div>
                                 <div className="font-semibold text-red-300">{copy.warning}</div>
@@ -1484,20 +1517,20 @@ export default function Dashboard() {
         />
 
         {/* COMMIT ≤72h / HEUTE – Full Width */}
-        <div className="stat-card rounded-2xl border border-indigo-500/30 bg-[#070b19]/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.05)] hover:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_24px_rgba(79,70,229,0.15)] transition-all flex flex-col" style={{ maxHeight: '40vh', animationDelay: '120ms' }}>
-          <div className="px-5 py-3 flex items-center justify-between border-b border-white/10 bg-indigo-500/5 flex-none rounded-t-2xl">
+        <div className="theme-glass-panel stat-card flex flex-col rounded-2xl border border-indigo-500/30 transition-all hover:shadow-[0_8px_32px_rgba(79,70,229,0.15)]" style={{ maxHeight: '40vh', animationDelay: '120ms' }}>
+          <div className="flex flex-none items-center justify-between rounded-t-2xl border-b border-border/60 bg-indigo-500/10 px-5 py-3">
             <div className="flex items-center gap-5">
-              <div className="uppercase tracking-widest text-[12px] font-extrabold flex items-center gap-2 text-indigo-300 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]">
+              <div className="flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
                 <Clock className="w-4 h-4 text-indigo-400" />
                 {copy.commitTodayTitle}
               </div>
 
               {/* SUMMARY BADGES */}
-              <div className="flex items-center gap-3 text-[0.75em] font-bold text-slate-300">
-                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-indigo-200">{copy.commitToday}: <span className="text-white font-mono">{stats.termToday}</span></span>
-                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-blue-300">SH: <span className="text-white font-mono">{stats.sh}</span></span>
-                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-red-400">TT: <span className="text-white font-mono">{stats.tt}</span></span>
-                <span className="bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm flex items-center gap-1.5 text-amber-400">CC: <span className="text-white font-mono">{stats.cc}</span></span>
+              <div className="flex items-center gap-3 text-[0.75em] font-bold text-muted-foreground">
+                <span className="theme-glass-inset flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-indigo-700 dark:text-indigo-200">{copy.commitToday}: <span className="font-mono text-foreground">{stats.termToday}</span></span>
+                <span className="theme-glass-inset flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-blue-700 dark:text-blue-300">SH: <span className="font-mono text-foreground">{stats.sh}</span></span>
+                <span className="theme-glass-inset flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-red-600 dark:text-red-400">TT: <span className="font-mono text-foreground">{stats.tt}</span></span>
+                <span className="theme-glass-inset flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-amber-700 dark:text-amber-400">CC: <span className="font-mono text-foreground">{stats.cc}</span></span>
               </div>
             </div>
 
@@ -1513,20 +1546,20 @@ export default function Dashboard() {
                 <div className="text-[13px] text-muted-foreground">{language === 'de' ? 'Ticket-Daten werden ausgeblendet, da keine aktuellen Crawler-Daten vorliegen.' : 'Ticket data is hidden because no recent crawler data is available.'}</div>
               </div>
             ) : urgentTickets.length === 0 ? (
-              <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">{copy.noData}</div>
+              <div className="flex items-center justify-center p-8 text-[13px] text-muted-foreground">{copy.noData}</div>
             ) : (
               <div className="min-w-275 w-full flex flex-col h-full relative">
                 {/* HEADERS */}
                 <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_100px_100px_1.2fr_1.2fr_120px] gap-4 px-4 py-2 text-[11px] font-extrabold text-indigo-300/80 uppercase tracking-wider border-b border-indigo-500/20 bg-indigo-500/5 sticky top-0 z-10 shadow-sm backdrop-blur-sm">
                   <div>{copy.activity}</div>
-                  <div>Systemname</div>
+                  <div>{copy.systemName}</div>
                   <div>Status</div>
                   <div>{copy.owner}</div>
-                  <div className="text-center">Terminiert</div>
+                  <div className="text-center">{copy.scheduled}</div>
                   <div className="text-center">Expedite</div>
                   <div className="text-right">{language === 'de' ? 'Geplanter Start' : 'Scheduled start'}</div>
-                  <div className="text-right">{language === 'de' ? 'Geänderter Commit' : 'Revised commit'}</div>
-                  <div className="text-right">Restzeit</div>
+                  <div className="text-right">{copy.revisedCommit}</div>
+                  <div className="text-right">{copy.remainingTime}</div>
                 </div>
 
                 {/* ROWS */}
@@ -1540,7 +1573,7 @@ export default function Dashboard() {
                     const ownerInitials = ownerFull.split(' ')[0];
                     const rcd = t.revised_commit_date ?? t.revisedCommitDate ?? t.commitDate ?? null;
                     const rcdFormat = rcd && !Number.isNaN(new Date(rcd).getTime())
-                      ? new Date(rcd).toLocaleString('de-DE', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      ? new Date(rcd).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                       : "—";
 
                     const ms = t._remainingMs;
@@ -1554,7 +1587,7 @@ export default function Dashboard() {
 
                     const ss = t.sched_start || t.schedStart;
                     const ssFormat = ss && !Number.isNaN(new Date(ss).getTime())
-                      ? new Date(ss).toLocaleString('de-DE', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      ? new Date(ss).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                       : "—";
 
                     const rawExpedite = t.expedite ?? t.Expedite;
@@ -1640,28 +1673,28 @@ export default function Dashboard() {
 
         {/* TAGESGESCHÄFT – FULL HEIGHT FILLER */}
         <div className="flex-1 min-h-0 flex flex-col mt-2">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between px-5 py-4 border-b border-indigo-500/20 bg-[#070b19]/90 backdrop-blur-md flex-none rounded-t-2xl shadow-[0_4px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] z-10">
-            <div className="text-[13px] font-extrabold tracking-[0.15em] text-indigo-300 uppercase drop-shadow-[0_0_8px_rgba(99,102,241,0.5)] flex items-center gap-2">
+          <div className="theme-glass-panel z-10 flex flex-none flex-col rounded-t-2xl border-b border-indigo-500/20 bg-indigo-500/10 px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-[0.15em] text-indigo-700 dark:text-indigo-300">
               {copy.serviceToday}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant={showOnlyOwnersWithTickets ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyOwnersWithTickets ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleOwners}>
+              <Button variant={showOnlyOwnersWithTickets ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyOwnersWithTickets ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`} onClick={toggleOwners}>
                 {copy.ownersOnly}
               </Button>
-              <Button variant={showOnlyActiveShifts ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyActiveShifts ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleActive}>
+              <Button variant={showOnlyActiveShifts ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyActiveShifts ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`} onClick={toggleActive}>
                 {copy.activeOnly}
               </Button>
-              <Button variant={showWarnings ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showWarnings ? (understaffToday.count > 0 ? 'bg-red-600/80 hover:bg-red-600 text-white border-transparent' : 'bg-emerald-600/80 hover:bg-emerald-600 text-white border-transparent') : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleWarnings}>
+              <Button variant={showWarnings ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showWarnings ? (understaffToday.count > 0 ? 'bg-red-600/80 hover:bg-red-600 text-white border-transparent' : 'bg-emerald-600/80 hover:bg-emerald-600 text-white border-transparent') : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`} onClick={toggleWarnings}>
                 {copy.warnings}{understaffToday.count > 0 ? ` (${understaffToday.count})` : ""}
               </Button>
-              <Button variant={showOnlyCritical ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyCritical ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'bg-white/5 hover:bg-white/10 text-[#9ca3af] border border-white/10 shadow-sm'}`} onClick={toggleCritical}>
+              <Button variant={showOnlyCritical ? "default" : "secondary"} size="sm" className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showOnlyCritical ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`} onClick={toggleCritical}>
                 {copy.criticalOnly}
               </Button>
             </div>
           </div>
 
           {grouped.length === 0 ? (
-            <div className="p-8 flex items-center justify-center text-[13px] text-[#4b5563]">{copy.noShifts}</div>
+            <div className="flex items-center justify-center p-8 text-[13px] text-muted-foreground">{copy.noShifts}</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0">
               {grouped.map((g) => (

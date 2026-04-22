@@ -4,6 +4,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, X, Loader2, Datab
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import { useLanguage } from "../../context/LanguageContext";
 import { parseShiftplanExcel } from "../../utils/shiftplanExcelImporter";
 import { normalizePlansByMonth } from "./shiftplan.months";
 import { api } from "../../api/api";
@@ -88,7 +89,103 @@ interface Props {
   onImportSuccess?: () => void;
 }
 
+const SHIFT_IMPORT_COPY = {
+  de: {
+    trigger: "Update Import",
+    title: "Shiftplan Import",
+    analyzeError: "Fehler beim Analysieren der Datei.",
+    importFailedPrefix: "Import fehlgeschlagen: ",
+    success: "Import erfolgreich!",
+    months: "Monate",
+    employees: "Mitarbeiter",
+    entries: "Einträge",
+    createdUsers: "User neu",
+    updatedUsers: "User aktualisiert",
+    deletedEmployees: "DB-Löschungen",
+    deletedUsers: "User gelöscht",
+    excludedEmployees: "Nicht übernommen",
+    close: "Schließen",
+    analyzing: "Analysiere Datei…",
+    dropFile: "Excel-Datei hierher ziehen",
+    clickSelect: "oder klicken zum Auswählen (.xls, .xlsx, .xlsm)",
+    overwriteHeader: "Folgende Monate werden überschrieben",
+    unknownCodeSingle: "unbekannter Code",
+    unknownCodePlural: "unbekannte Codes",
+    unknownCodeHint: "Diese Codes werden als Rohwerte importiert. Fachliche Abstimmung ggf. nötig.",
+    employeeReviewRequired: "Mitarbeiterabgleich erforderlich",
+    employeeReviewDescription: "Es werden nur Mitarbeiter angezeigt, die in der Excel-Datei vorkommen. Sobald du einen Eintrag abwählst, wird dieser aus dem Dienstplan entfernt und vorhandene Mitarbeiterdaten inklusive passendem ODIN-User werden bereinigt, soweit das zulässig ist.",
+    excelEmployees: "Mitarbeiter aus der Excel",
+    overwriteExisting: "Excel-Einträge überschreiben bestehende Dienste in den Zielmonaten.",
+    importNew: "Excel-Einträge werden neu in den Dienstplan übernommen.",
+    foundOdinUser: "Gefundener ODIN-User",
+    noOdinUser: "Noch kein passender ODIN-User gefunden",
+    alreadyExists: "Bereits vorhanden",
+    new: "Neu",
+    includeInSchedule: "In Dienstplan übernehmen",
+    createOdinUser: "ODIN-User anlegen",
+    odinUserExists: "ODIN-User existiert bereits",
+    removeWarning: "Dieser Mitarbeiter wird vollständig aus Dienstplan und Mitarbeiterdaten entfernt.",
+    removeWarningDeleteUser: "Der gefundene ODIN-User wird dabei ebenfalls gelöscht.",
+    noEmployeeReview: "Kein Mitarbeiterabgleich nötig",
+    noEmployeeReviewDescription: "In der importierten Excel wurden keine Mitarbeiter mit Dienst-Einträgen erkannt.",
+    otherMonthsUntouched: "Alle anderen Monate bleiben unberührt.",
+    cancel: "Abbrechen",
+    importing: "Importiere…",
+    overwriteNow: "Jetzt überschreiben",
+    skippedSheetsSingle: "Sheet übersprungen",
+    skippedSheetsPlural: "Sheets übersprungen",
+  },
+  en: {
+    trigger: "Update import",
+    title: "Shiftplan import",
+    analyzeError: "Failed to analyze the file.",
+    importFailedPrefix: "Import failed: ",
+    success: "Import completed successfully!",
+    months: "Months",
+    employees: "Employees",
+    entries: "Entries",
+    createdUsers: "New users",
+    updatedUsers: "Updated users",
+    deletedEmployees: "DB deletions",
+    deletedUsers: "Deleted users",
+    excludedEmployees: "Excluded",
+    close: "Close",
+    analyzing: "Analyzing file…",
+    dropFile: "Drop Excel file here",
+    clickSelect: "or click to select (.xls, .xlsx, .xlsm)",
+    overwriteHeader: "The following months will be overwritten",
+    unknownCodeSingle: "unknown code",
+    unknownCodePlural: "unknown codes",
+    unknownCodeHint: "These codes are imported as raw values. Functional review may still be required.",
+    employeeReviewRequired: "Employee review required",
+    employeeReviewDescription: "Only employees found in the Excel file are shown here. If you deselect an entry, it will be removed from the shiftplan and matching employee data including the linked ODIN user will be cleaned up where allowed.",
+    excelEmployees: "Employees from Excel",
+    overwriteExisting: "Excel entries overwrite existing shifts in the target months.",
+    importNew: "Excel entries will be imported into the shiftplan as new records.",
+    foundOdinUser: "Matched ODIN user",
+    noOdinUser: "No matching ODIN user found yet",
+    alreadyExists: "Already exists",
+    new: "New",
+    includeInSchedule: "Include in shiftplan",
+    createOdinUser: "Create ODIN user",
+    odinUserExists: "ODIN user already exists",
+    removeWarning: "This employee will be fully removed from the shiftplan and employee data.",
+    removeWarningDeleteUser: "The matched ODIN user will also be deleted.",
+    noEmployeeReview: "No employee review required",
+    noEmployeeReviewDescription: "No employees with shift entries were detected in the imported Excel file.",
+    otherMonthsUntouched: "All other months remain unchanged.",
+    cancel: "Cancel",
+    importing: "Importing…",
+    overwriteNow: "Overwrite now",
+    skippedSheetsSingle: "sheet skipped",
+    skippedSheetsPlural: "sheets skipped",
+  },
+} as const;
+
 export function ShiftImportDialog({ onImportSuccess }: Props) {
+  const { language } = useLanguage();
+  const isGerman = language === "de";
+  const copy = isGerman ? SHIFT_IMPORT_COPY.de : SHIFT_IMPORT_COPY.en;
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -150,7 +247,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
       setImportReview(reviewRes.data?.review || null);
     } catch (err) {
       console.error("Analysis Error", err);
-      alert("Fehler beim Analysieren der Datei.");
+      alert(copy.analyzeError);
       reset();
     } finally {
       setAnalyzing(false);
@@ -207,7 +304,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
       onImportSuccess?.();
     } catch (err: any) {
       console.error("Upload Error", err);
-      alert("Import fehlgeschlagen: " + (err.response?.data?.error || err.message));
+      alert(copy.importFailedPrefix + (err.response?.data?.error || err.message));
     } finally {
       setUploading(false);
     }
@@ -235,16 +332,16 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
       <DialogTrigger asChild>
-        <Button className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-white/5 hover:bg-white/10 text-white/70 border border-white/10 shadow-sm">
+        <Button className="h-7 border border-border bg-background/85 px-3 text-[11px] font-bold tracking-wider uppercase text-foreground shadow-sm hover:bg-accent">
           <Upload className="w-3.5 h-3.5 mr-1.5" />
-          Update Import
+          {copy.trigger}
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-lg rounded-2xl bg-[#080c1c] border border-blue-500/15 shadow-[0_32px_80px_rgba(0,0,0,0.7)]">
+      <DialogContent className="theme-modal-surface max-w-lg rounded-2xl border border-blue-500/15 shadow-[0_32px_80px_rgba(0,0,0,0.7)]">
         <DialogHeader>
-          <DialogTitle className="text-base font-black tracking-wider uppercase text-white/90">
-            Shiftplan Import
+          <DialogTitle className="text-base font-black tracking-wider uppercase text-foreground">
+            {copy.title}
           </DialogTitle>
         </DialogHeader>
 
@@ -253,15 +350,15 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
           {importResult ? (
             <div className="flex flex-col items-center gap-3 py-6 text-center">
               <CheckCircle2 className="w-12 h-12 text-green-400 drop-shadow-[0_0_12px_rgba(34,197,94,0.6)]" />
-              <p className="text-lg font-bold text-green-300">Import erfolgreich!</p>
+              <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{copy.success}</p>
               <div className="grid grid-cols-3 gap-3 w-full mt-2">
                 {[
-                  { label: "Monate", value: importResult.months },
-                  { label: "Mitarbeiter", value: importResult.employees },
-                  { label: "Einträge", value: importResult.changes },
+                  { label: copy.months, value: importResult.months },
+                  { label: copy.employees, value: importResult.employees },
+                  { label: copy.entries, value: importResult.changes },
                 ].map(s => (
-                  <div key={s.label} className="bg-white/5 rounded-xl py-3 px-2 text-center border border-white/10">
-                    <div className="text-2xl font-black text-white">{s.value}</div>
+                  <div key={s.label} className="theme-glass-inset rounded-xl border py-3 px-2 text-center">
+                    <div className="text-2xl font-black text-foreground">{s.value}</div>
                     <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">{s.label}</div>
                   </div>
                 ))}
@@ -269,20 +366,20 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
               {(importResult.createdUsers > 0 || importResult.updatedUsers > 0 || importResult.deletedEmployees > 0 || importResult.deletedUsers > 0 || importResult.excludedEmployees > 0) && (
                 <div className="grid grid-cols-2 gap-3 w-full mt-2">
                   {[
-                    { label: "User neu", value: importResult.createdUsers },
-                    { label: "User aktualisiert", value: importResult.updatedUsers },
-                    { label: "DB-Löschungen", value: importResult.deletedEmployees },
-                    { label: "User gelöscht", value: importResult.deletedUsers },
-                    { label: "Nicht übernommen", value: importResult.excludedEmployees },
+                    { label: copy.createdUsers, value: importResult.createdUsers },
+                    { label: copy.updatedUsers, value: importResult.updatedUsers },
+                    { label: copy.deletedEmployees, value: importResult.deletedEmployees },
+                    { label: copy.deletedUsers, value: importResult.deletedUsers },
+                    { label: copy.excludedEmployees, value: importResult.excludedEmployees },
                   ].filter((item) => item.value > 0).map((item) => (
-                    <div key={item.label} className="bg-white/5 rounded-xl py-3 px-2 text-center border border-white/10">
-                      <div className="text-xl font-black text-white">{item.value}</div>
+                    <div key={item.label} className="theme-glass-inset rounded-xl border py-3 px-2 text-center">
+                      <div className="text-xl font-black text-foreground">{item.value}</div>
                       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">{item.label}</div>
                     </div>
                   ))}
                 </div>
               )}
-              <Button onClick={() => setOpen(false)} className="mt-2 bg-green-600/80 hover:bg-green-600 text-white">Schließen</Button>
+              <Button onClick={() => setOpen(false)} className="mt-2 bg-green-600/80 hover:bg-green-600 text-white">{copy.close}</Button>
             </div>
           ) : !parsedData ? (
             /* DROPZONE */
@@ -292,20 +389,20 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`flex flex-col items-center justify-center gap-3 py-10 px-6 rounded-xl border-2 border-dashed cursor-pointer transition-all
-                ${dragOver ? "border-indigo-400/60 bg-indigo-500/10" : "border-white/10 hover:border-white/25 bg-white/2"}`}
+                ${dragOver ? "border-indigo-400/60 bg-indigo-500/10" : "border-border bg-background/70 hover:border-border/80 hover:bg-accent/60"}`}
             >
               <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.xlsm" onChange={handleFileChange} className="hidden" disabled={analyzing} />
               {analyzing ? (
                 <>
                   <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-                  <p className="text-sm text-muted-foreground">Analysiere Datei…</p>
+                  <p className="text-sm text-muted-foreground">{copy.analyzing}</p>
                 </>
               ) : (
                 <>
                   <FileSpreadsheet className="w-10 h-10 text-indigo-400/70" />
                   <div className="text-center">
-                    <p className="text-sm font-semibold text-white/80">Excel-Datei hierher ziehen</p>
-                    <p className="text-xs text-muted-foreground mt-1">oder klicken zum Auswählen (.xls, .xlsx, .xlsm)</p>
+                    <p className="text-sm font-semibold text-foreground">{copy.dropFile}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{copy.clickSelect}</p>
                   </div>
                 </>
               )}
@@ -314,7 +411,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
             /* SUMMARY */
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white/80">
+                <p className="text-sm font-semibold text-foreground">
                   <FileSpreadsheet className="w-4 h-4 inline mr-1.5 text-indigo-400" />
                   {file?.name}
                 </p>
@@ -326,15 +423,15 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <p className="text-xs font-bold text-amber-300 uppercase tracking-wide">Folgende Monate werden überschrieben</p>
+                  <p className="text-xs font-bold text-amber-300 uppercase tracking-wide">{copy.overwriteHeader}</p>
                 </div>
                 <div className="space-y-1.5">
                   {monthSummaries.map(s => (
-                    <div key={s.label} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg bg-white/5 border border-white/5">
-                      <span className="font-semibold text-white/90">{s.label}</span>
+                    <div key={s.label} className="theme-glass-inset flex items-center justify-between rounded-lg border px-2 py-1.5 text-xs">
+                      <span className="font-semibold text-foreground">{s.label}</span>
                       <div className="flex gap-3 text-muted-foreground">
-                        <span>{s.employees} Mitarbeiter</span>
-                        <span>{s.shifts} Einträge</span>
+                        <span>{s.employees} {copy.employees}</span>
+                        <span>{s.shifts} {copy.entries}</span>
                       </div>
                     </div>
                   ))}
@@ -345,13 +442,13 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
                   <div className="flex items-center gap-2 mb-2">
                     <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
                     <p className="text-xs font-bold text-orange-300 uppercase tracking-wide">
-                      {skippedSheets.length} Sheet{skippedSheets.length > 1 ? "s" : ""} übersprungen
+                      {skippedSheets.length} {skippedSheets.length > 1 ? copy.skippedSheetsPlural : copy.skippedSheetsSingle}
                     </p>
                   </div>
                   <div className="space-y-1">
                     {skippedSheets.map(s => (
-                      <div key={s.sheet} className="flex items-start justify-between text-xs px-2 py-1 rounded bg-white/5 border border-white/5 gap-2">
-                        <span className="font-semibold text-white/80 shrink-0">{s.sheet}</span>
+                      <div key={s.sheet} className="theme-glass-inset flex items-start justify-between gap-2 rounded border px-2 py-1 text-xs">
+                        <span className="shrink-0 font-semibold text-foreground">{s.sheet}</span>
                         <span className="text-orange-300/80 text-right">{s.reason}</span>
                       </div>
                     ))}
@@ -363,7 +460,7 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
                   <div className="flex items-center gap-2 mb-2">
                     <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
                     <p className="text-xs font-bold text-yellow-300 uppercase tracking-wide">
-                      {unknownCodes.length} unbekannte{unknownCodes.length > 1 ? " Codes" : "r Code"}
+                      {unknownCodes.length} {unknownCodes.length > 1 ? copy.unknownCodePlural : copy.unknownCodeSingle}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -371,38 +468,38 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
                       <span key={c} className="text-xs px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 font-mono">{c}</span>
                     ))}
                   </div>
-                  <p className="text-[10px] text-yellow-300/60 mt-1.5">Diese Codes werden als Rohwerte importiert. Fachliche Abstimmung ggf. nötig.</p>
+                  <p className="text-[10px] text-yellow-300/60 mt-1.5">{copy.unknownCodeHint}</p>
                 </div>
               )}
               {importReview && importReview.importedEmployees.length > 0 && (
                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 space-y-3">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-blue-300 shrink-0" />
-                    <p className="text-xs font-bold text-blue-200 uppercase tracking-wide">Mitarbeiterabgleich erforderlich</p>
+                    <p className="text-xs font-bold text-blue-200 uppercase tracking-wide">{copy.employeeReviewRequired}</p>
                   </div>
                   <p className="text-[11px] text-blue-100/70 leading-relaxed">
-                    Es werden nur Mitarbeiter angezeigt, die in der Excel-Datei vorkommen. Sobald du einen Eintrag abwählst, wird dieser aus dem Dienstplan entfernt und vorhandene Mitarbeiterdaten inklusive passendem ODIN-User werden bereinigt, soweit das zulässig ist.
+                    {copy.employeeReviewDescription}
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-blue-300">
                       <Database className="w-3.5 h-3.5" />
-                      Mitarbeiter aus der Excel ({importReview.importedEmployees.length})
+                      {copy.excelEmployees} ({importReview.importedEmployees.length})
                     </div>
                     <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                       {importReview.importedEmployees.map((item) => (
-                        <div key={item.name} className="rounded-lg border border-white/10 bg-white/5 p-2.5 space-y-2">
+                        <div key={item.name} className="theme-glass-inset rounded-lg border p-2.5 space-y-2">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-white/90">{item.name}</p>
+                              <p className="text-sm font-semibold text-foreground">{item.name}</p>
                               <p className="text-[11px] text-muted-foreground">
                                 {item.existsInTargetMonths
-                                  ? `${item.importedShiftCount} Excel-Einträge überschreiben bestehende Dienste in den Zielmonaten.`
-                                  : `${item.importedShiftCount} Excel-Einträge werden neu in den Dienstplan übernommen.`}
+                                  ? `${item.importedShiftCount} ${copy.overwriteExisting}`
+                                  : `${item.importedShiftCount} ${copy.importNew}`}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
                                 {item.user
-                                  ? `Gefundener ODIN-User: ${item.user.displayName || item.user.email || item.user.username}`
-                                  : 'Noch kein passender ODIN-User gefunden'}
+                                  ? `${copy.foundOdinUser}: ${item.user.displayName || item.user.email || item.user.username}`
+                                  : copy.noOdinUser}
                               </p>
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -410,39 +507,39 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
                                 ? 'border-blue-500/20 bg-blue-500/10 text-blue-300'
                                 : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
                               }`}>
-                                {item.existsInTargetMonths ? 'Bereits vorhanden' : 'Neu'}
+                                {item.existsInTargetMonths ? copy.alreadyExists : copy.new}
                               </span>
                               {item.user && (
-                                <span className="text-[10px] px-2 py-0.5 rounded border border-white/10 bg-black/20 text-white/65 uppercase tracking-wide">
+                                <span className="rounded border border-border bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                                   Match {item.user.match}
                                 </span>
                               )}
                             </div>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs text-white/85">
+                            <label className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-2.5 py-2 text-xs text-foreground">
                               <Checkbox
                                 checked={item.includeInImport}
                                 onCheckedChange={(checked) => updateImportedEmployee(item.name, { includeInImport: checked === true })}
                               />
-                              <span>In Dienstplan übernehmen</span>
+                              <span>{copy.includeInSchedule}</span>
                             </label>
                             {!item.existsInTargetMonths && (
-                              <label className={`flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs ${item.canCreateUser ? 'text-white/85' : 'text-white/35'}`}>
+                              <label className={`flex items-center gap-2 rounded-lg border border-border bg-background/80 px-2.5 py-2 text-xs ${item.canCreateUser ? 'text-foreground' : 'text-muted-foreground/70'}`}>
                                 <Checkbox
                                   checked={item.createUser}
                                   disabled={!item.canCreateUser}
                                   onCheckedChange={(checked) => updateImportedEmployee(item.name, { createUser: checked === true })}
                                 />
-                                <span>{item.canCreateUser ? 'ODIN-User anlegen' : 'ODIN-User existiert bereits'}</span>
+                                <span>{item.canCreateUser ? copy.createOdinUser : copy.odinUserExists}</span>
                               </label>
                             )}
                           </div>
                           {!item.includeInImport && (
                             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-2 text-[11px] text-amber-100/80">
-                              Dieser Mitarbeiter wird vollständig aus Dienstplan und Mitarbeiterdaten entfernt.
+                              {copy.removeWarning}
                               {item.canDeleteUser
-                                ? ' Der gefundene ODIN-User wird dabei ebenfalls gelöscht.'
+                                ? ` ${copy.removeWarningDeleteUser}`
                                 : item.deleteUserReason
                                 ? ` ${item.deleteUserReason}.`
                                 : ''}
@@ -456,24 +553,24 @@ export function ShiftImportDialog({ onImportSuccess }: Props) {
               )}
               {importReview && importReview.importedEmployees.length === 0 && (
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                  <p className="text-xs font-bold text-emerald-300 uppercase tracking-wide">Kein Mitarbeiterabgleich nötig</p>
+                  <p className="text-xs font-bold text-emerald-300 uppercase tracking-wide">{copy.noEmployeeReview}</p>
                   <p className="text-[11px] text-emerald-100/70 mt-1">
-                    In der importierten Excel wurden keine Mitarbeiter mit Dienst-Einträgen erkannt.
+                    {copy.noEmployeeReviewDescription}
                   </p>
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground">Alle anderen Monate bleiben unberührt.</p>
+              <p className="text-[11px] text-muted-foreground">{copy.otherMonthsUntouched}</p>
             </div>
           )}
         </div>
 
         {!importResult && (
           <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">Abbrechen</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">{copy.cancel}</Button>
             {parsedData && (
               <Button onClick={handleConfirm} disabled={uploading}
                 className="bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold">
-                {uploading ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Importiere…</> : "Jetzt überschreiben"}
+                {uploading ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />{copy.importing}</> : copy.overwriteNow}
               </Button>
             )}
           </DialogFooter>

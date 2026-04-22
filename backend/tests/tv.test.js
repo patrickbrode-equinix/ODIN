@@ -84,12 +84,31 @@ function createTvRouter(mockQuery) {
     try {
       const result = await mockQuery(`shifts-today`);
       const early = [], late = [], night = [];
+      let roleMap = new Map();
+      try {
+        const roleResult = await mockQuery(`weekplan-roles-today`);
+        roleMap = new Map(
+          (roleResult.rows || [])
+            .filter((row) => row?.employee_name && row?.role_key)
+            .flatMap((row) => {
+              const rawName = String(row.employee_name).trim();
+              const normalizedName = rawName.replace(",", "").trim();
+              return [
+                [rawName, row.role_key],
+                [normalizedName, row.role_key],
+              ];
+            })
+        );
+      } catch {
+        roleMap = new Map();
+      }
       for (const row of result.rows) {
         const code = row.shift_code;
         const info = TV_SHIFT_TYPES[code];
         if (!info) continue;
         const name = String(row.employee_name ?? "").replace(",", "").trim();
-        const entry = { name, shift: code, time: info.time, info };
+        const weekplanRole = roleMap.get(String(row.employee_name ?? "").trim()) || roleMap.get(name) || null;
+        const entry = { name, shift: code, time: info.time, info, weekplanRole };
         if (code === "E1" || code === "E2") early.push(entry);
         else if (code === "L1" || code === "L2") late.push(entry);
         else if (code === "N") night.push(entry);
@@ -314,6 +333,33 @@ describe("GET /api/tv/* — public kiosk endpoints", () => {
     assert.ok(body.early.some(e => e.name === "Mustermann Max"));
     assert.ok(body.late.some(e  => e.name === "Schmidt Anna"));
     assert.ok(body.night.some(e => e.name === "Weber Klaus"));
+  });
+
+  test("GET /api/tv/schedules/today → includes today's weekplan role in employee entries", async () => {
+    mockQuery = async (sql) => {
+      if (sql === "shifts-today") {
+        return {
+          rows: [
+            { employee_name: "Mustermann, Max", shift_code: "E1" },
+          ],
+        };
+      }
+
+      if (sql === "weekplan-roles-today") {
+        return {
+          rows: [
+            { employee_name: "Mustermann, Max", role_key: "lead" },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    };
+
+    const res = await fetch(`${baseUrl}/api/tv/schedules/today`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.early[0]?.weekplanRole, "lead");
   });
 
   test("GET /api/tv/schedules/today → 200 + dataFresh:false when DB throws", async () => {
