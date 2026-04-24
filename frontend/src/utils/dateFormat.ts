@@ -1,6 +1,28 @@
 /* ------------------------------------------------ */
 /* GLOBAL DATE & TIME FORMAT HELPERS                */
+/* Timezone-safe: always displays in OPS_TZ         */
 /* ------------------------------------------------ */
+
+/** Operational timezone – all display times use this */
+export const OPS_TIMEZONE = "Europe/Berlin";
+
+const tsFmt = new Intl.DateTimeFormat("de-DE", {
+  timeZone: OPS_TIMEZONE,
+  day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+  hour12: false,
+});
+
+const dateFmt = new Intl.DateTimeFormat("de-DE", {
+  timeZone: OPS_TIMEZONE,
+  day: "2-digit", month: "2-digit", year: "numeric",
+});
+
+const timeFmt = new Intl.DateTimeFormat("de-DE", {
+  timeZone: OPS_TIMEZONE,
+  hour: "2-digit", minute: "2-digit",
+  hour12: false,
+});
 
 /**
  * Wandelt ISO- oder DB-Timestamp in deutsches Format um:
@@ -8,17 +30,7 @@
  */
 export const formatTimestamp = (ts: string | Date) => {
   if (!ts) return "";
-  const date = new Date(ts);
-
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-
-  return `${day}.${month}.${year}, ${hours}:${minutes}:${seconds}`;
+  return tsFmt.format(new Date(ts));
 };
 
 /**
@@ -38,13 +50,7 @@ export const formatCommit = (dateStr: string, timeStr: string) => {
  * Ergebnis: "19.12.2025"
  */
 export const formatDate = (ts: string | Date) => {
-  const date = new Date(ts);
-
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-
-  return `${day}.${month}.${year}`;
+  return dateFmt.format(new Date(ts));
 };
 
 /**
@@ -52,12 +58,7 @@ export const formatDate = (ts: string | Date) => {
  * Ergebnis: "03:12"
  */
 export const formatTime = (ts: string | Date) => {
-  const date = new Date(ts);
-
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-
-  return `${hours}:${minutes}`;
+  return timeFmt.format(new Date(ts));
 };
 
 /* ------------------------------------------------ */

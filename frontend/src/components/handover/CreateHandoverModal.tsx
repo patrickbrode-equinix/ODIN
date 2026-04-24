@@ -89,6 +89,8 @@ const CREATE_HANDOVER_COPY: Record<LanguageCode, {
             Workload: "Workload",
             Terminiert: "Terminiert",
             "Other Teams": "Andere Teams",
+            Task: "Aufgabe",
+            Manual: "Manuell",
         },
     },
     en: {
@@ -123,6 +125,8 @@ const CREATE_HANDOVER_COPY: Record<LanguageCode, {
             Workload: "Workload",
             Terminiert: "Scheduled",
             "Other Teams": "Other teams",
+            Task: "Task",
+            Manual: "Manual",
         },
     },
 };
@@ -215,7 +219,7 @@ export function CreateHandoverModal({
                 payload.description = description;
             } else if (type === "Terminiert") {
                 payload.startDatetime = new Date(startDatetime).toISOString();
-                payload.description = `${copy.startPlannedPrefix}: ${new Date(startDatetime).toLocaleString(locale)} – ${description}`;
+                payload.description = `${copy.startPlannedPrefix}: ${new Date(startDatetime).toLocaleString(locale, { timeZone: 'Europe/Berlin' })} – ${description}`;
             } else if (type === "Other Teams") {
                 payload.targetTeam = targetTeam;
                 payload.description = `[${copy.toTeamPrefix}: ${targetTeam}] ${description}`;
@@ -273,7 +277,7 @@ export function CreateHandoverModal({
                                 <div>
                                     <label className="text-xs text-muted-foreground block">{copy.createdAt}</label>
                                     <div className="font-medium">
-                                        {new Date().toLocaleString(locale)}
+                                        {new Date().toLocaleString(locale, { timeZone: 'Europe/Berlin' })}
                                     </div>
                                 </div>
                                 <div>
@@ -291,7 +295,7 @@ export function CreateHandoverModal({
                                 <div>
                                     <label className="text-xs text-muted-foreground block">{copy.commitDate}</label>
                                     <div className="font-medium">
-                                        {ticket.commit_date ? new Date(ticket.commit_date).toLocaleString(locale) : "—"}
+                                        {ticket.commit_date ? new Date(ticket.commit_date).toLocaleString(locale, { timeZone: 'Europe/Berlin' }) : "—"}
                                     </div>
                                 </div>
                                 <div>

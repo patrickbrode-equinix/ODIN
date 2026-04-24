@@ -46,7 +46,7 @@ export function AssignmentStatusCards({ health, lastRun }: Props) {
       label: isGerman ? 'Letzter Lauf' : 'Last run',
       icon: Clock,
       value: lastRun
-        ? new Date(lastRun.started_at).toLocaleString(locale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+        ? new Date(lastRun.started_at).toLocaleString(locale, { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
         : '–',
     },
     {

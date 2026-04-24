@@ -8,6 +8,7 @@ import multer from "multer";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import db from "../db.js";
+import { config } from "../config/index.js";
 
 const router = express.Router();
 
@@ -109,7 +110,7 @@ router.post(
       // User-Kontext
       const senderName = req.user?.displayName || req.user?.email || "Unbekannt";
       const senderEmail = req.user?.email || "unbekannt@local";
-      const timestamp = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
+      const timestamp = new Date().toLocaleString("de-DE", { timeZone: config.OPERATIONAL_TIMEZONE });
 
       const settings = await getFeedbackSettings();
       if (settings.enabled === 'false') {

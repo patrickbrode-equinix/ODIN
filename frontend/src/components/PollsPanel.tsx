@@ -127,6 +127,7 @@ function canManage(poll: Poll | PollDetail, user: { id: number; email: string } 
 function formatDeadline(endsAt: string, lang: LanguageCode) {
   const d = new Date(endsAt);
   return d.toLocaleDateString(lang === "de" ? "de-DE" : "en-US", {
+    timeZone: "Europe/Berlin",
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }

@@ -55,7 +55,7 @@ router.get("/", async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT id, employee_name, date, role_key, updated_at, updated_by
+      `SELECT id, employee_name, date, role_key, comment, updated_at, updated_by
        FROM weekplan_roles
        WHERE date >= $1 AND date <= $2
        ORDER BY employee_name, date`,
@@ -77,7 +77,7 @@ router.get("/today", async (_req, res) => {
   try {
     const today = currentLocalDateKey();
     const result = await db.query(
-      `SELECT id, employee_name, date, role_key, updated_at, updated_by
+      `SELECT id, employee_name, date, role_key, comment, updated_at, updated_by
        FROM weekplan_roles
        WHERE date = $1
        ORDER BY employee_name`,
@@ -98,7 +98,7 @@ router.get("/today", async (_req, res) => {
 /* ------------------------------------------------ */
 router.put("/", async (req, res) => {
   try {
-    const { employee_name, date, role_key } = req.body;
+    const { employee_name, date, role_key, comment } = req.body;
 
     if (!employee_name || !date || !role_key) {
       return res.status(400).json({ message: "employee_name, date, and role_key required" });
@@ -109,14 +109,15 @@ router.put("/", async (req, res) => {
     }
 
     const userEmail = req.user?.email ?? "unknown";
+    const safeComment = typeof comment === 'string' ? comment.trim().slice(0, 200) : null;
 
     const result = await db.query(
-      `INSERT INTO weekplan_roles (employee_name, date, role_key, updated_by)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO weekplan_roles (employee_name, date, role_key, comment, updated_by)
+       VALUES ($1, $2, $3, $5, $4)
        ON CONFLICT (employee_name, date)
-       DO UPDATE SET role_key = $3, updated_at = NOW(), updated_by = $4
+       DO UPDATE SET role_key = $3, comment = $5, updated_at = NOW(), updated_by = $4
        RETURNING *`,
-      [employee_name.trim(), date, role_key, userEmail]
+      [employee_name.trim(), date, role_key, userEmail, safeComment]
     );
 
     res.json(result.rows[0]);

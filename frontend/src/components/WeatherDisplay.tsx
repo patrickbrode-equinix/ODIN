@@ -60,7 +60,7 @@ function getWeatherIcon(code: number) {
 
 function getDayName(dateStr: string, locale: string) {
     const date = new Date(dateStr);
-    return date.toLocaleDateString(locale, { weekday: "short" });
+    return date.toLocaleDateString(locale, { timeZone: 'Europe/Berlin', weekday: "short" });
 }
 
 /* ------------------------------------------------ */

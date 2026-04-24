@@ -105,7 +105,7 @@ function HandoverItemComponent({
         </div>
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
-          {handover.createdAt && <span>{new Date(handover.createdAt).toLocaleString()}</span>}
+          {handover.createdAt && <span>{new Date(handover.createdAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}</span>}
           <HandoverFiles files={handover.files ?? []} />
         </div>
       </div>
@@ -156,7 +156,7 @@ function HandoverItemComponent({
             {handover.startDatetime && (
               <div className="flex items-center gap-1 text-purple-400">
                 <Calendar className="w-4 h-4" />
-                <span>Start: {new Date(handover.startDatetime).toLocaleString()}</span>
+                <span>Start: {new Date(handover.startDatetime).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}</span>
               </div>
             )}
 
@@ -178,7 +178,7 @@ function HandoverItemComponent({
             {handover.dueDatetime && (
               <div className="flex items-center gap-1 text-red-400">
                 <Clock className="w-4 h-4" />
-                <span>Due: {new Date(handover.dueDatetime).toLocaleString()}</span>
+                <span>Due: {new Date(handover.dueDatetime).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}</span>
               </div>
             )}
             {handover.recurrence && (

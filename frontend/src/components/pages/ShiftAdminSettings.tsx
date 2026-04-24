@@ -150,6 +150,10 @@ interface DbsConfig {
 interface OvertimeConfig {
   maxOvertimeHours: number;
   overtimeMode: 'show' | 'warn' | 'hard';
+  maxDailyHours: number;
+  maxWeeklyHours: number;
+  dailyMode: 'off' | 'warn' | 'block';
+  weeklyMode: 'off' | 'warn' | 'block';
 }
 
 interface SkillMatrixProfile extends EmployeeSkills {
@@ -201,6 +205,10 @@ const DEFAULT_DBS_CONFIG: DbsConfig = {
 const DEFAULT_OVERTIME_CONFIG: OvertimeConfig = {
   maxOvertimeHours: 0,
   overtimeMode: 'show',
+  maxDailyHours: 10,
+  maxWeeklyHours: 48,
+  dailyMode: 'warn',
+  weeklyMode: 'warn',
 };
 
 /* ── parsers / normalizers ── */
@@ -260,6 +268,10 @@ function extractOvertimeConfig(settings: Record<string, string>): OvertimeConfig
   return {
     maxOvertimeHours: parseNumberSetting(settings['shiftplan.max_overtime_hours'], DEFAULT_OVERTIME_CONFIG.maxOvertimeHours),
     overtimeMode: (settings['shiftplan.overtime_mode'] as OvertimeConfig['overtimeMode']) || DEFAULT_OVERTIME_CONFIG.overtimeMode,
+    maxDailyHours: parseNumberSetting(settings['shiftplan.max_daily_hours'], DEFAULT_OVERTIME_CONFIG.maxDailyHours),
+    maxWeeklyHours: parseNumberSetting(settings['shiftplan.max_weekly_hours'], DEFAULT_OVERTIME_CONFIG.maxWeeklyHours),
+    dailyMode: (settings['shiftplan.daily_mode'] as OvertimeConfig['dailyMode']) || DEFAULT_OVERTIME_CONFIG.dailyMode,
+    weeklyMode: (settings['shiftplan.weekly_mode'] as OvertimeConfig['weeklyMode']) || DEFAULT_OVERTIME_CONFIG.weeklyMode,
   };
 }
 
@@ -548,6 +560,10 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       await api.put('/app-settings', {
         'shiftplan.max_overtime_hours': overtimeConfig.maxOvertimeHours,
         'shiftplan.overtime_mode': overtimeConfig.overtimeMode,
+        'shiftplan.max_daily_hours': overtimeConfig.maxDailyHours,
+        'shiftplan.max_weekly_hours': overtimeConfig.maxWeeklyHours,
+        'shiftplan.daily_mode': overtimeConfig.dailyMode,
+        'shiftplan.weekly_mode': overtimeConfig.weeklyMode,
       });
       showToast(t("shiftAdmin.toastRotationSaved"));
     } catch (error: any) {
@@ -1176,6 +1192,42 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
               </div>
             </div>
 
+            {/* ── Daily / Weekly hour limits sub-section ── */}
+            <div className="mt-2 rounded-2xl border border-sky-400/15 bg-sky-500/5 p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+                <Clock className="h-4 w-4" />
+                {isGerman ? "Arbeitszeitgrenzen" : "Working Time Limits"}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="text-xs text-slate-400">{isGerman ? "Max. Stunden / Tag" : "Max hours / day"}</label>
+                  <input type="number" min="0" max="24" step="0.5" value={overtimeConfig.maxDailyHours} onChange={(e) => setOvertimeConfig({ ...overtimeConfig, maxDailyHours: Math.max(0, Math.min(24, parseFloat(e.target.value) || 0)) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{isGerman ? "0 = kein Limit" : "0 = no limit"}</div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">{isGerman ? "Modus (Tag)" : "Mode (daily)"}</label>
+                  <select value={overtimeConfig.dailyMode} onChange={(e) => setOvertimeConfig({ ...overtimeConfig, dailyMode: e.target.value as OvertimeConfig['dailyMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                    <option value="off">{isGerman ? "Aus" : "Off"}</option>
+                    <option value="warn">{isGerman ? "Warnung" : "Warning"}</option>
+                    <option value="block">{isGerman ? "Sperre" : "Block"}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">{isGerman ? "Max. Stunden / Woche" : "Max hours / week"}</label>
+                  <input type="number" min="0" max="168" step="0.5" value={overtimeConfig.maxWeeklyHours} onChange={(e) => setOvertimeConfig({ ...overtimeConfig, maxWeeklyHours: Math.max(0, Math.min(168, parseFloat(e.target.value) || 0)) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{isGerman ? "0 = kein Limit" : "0 = no limit"}</div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">{isGerman ? "Modus (Woche)" : "Mode (weekly)"}</label>
+                  <select value={overtimeConfig.weeklyMode} onChange={(e) => setOvertimeConfig({ ...overtimeConfig, weeklyMode: e.target.value as OvertimeConfig['weeklyMode'] })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                    <option value="off">{isGerman ? "Aus" : "Off"}</option>
+                    <option value="warn">{isGerman ? "Warnung" : "Warning"}</option>
+                    <option value="block">{isGerman ? "Sperre" : "Block"}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end">
               <button onClick={saveRotation} disabled={saving === 'rotation'} className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400 disabled:opacity-50">
                 <Save className="h-4 w-4" />
@@ -1502,7 +1554,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
               <div key={exclusion.id} className="flex flex-col gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <div className="text-sm font-medium text-slate-100">{exclusion.employee_name}</div>
-                  <div className="text-xs text-slate-400">{t("shiftAdmin.exclCreatedBy")} {exclusion.created_by} {isGerman ? 'am' : 'on'} {new Date(exclusion.created_at).toLocaleDateString(isGerman ? 'de-DE' : 'en-US')}</div>
+                  <div className="text-xs text-slate-400">{t("shiftAdmin.exclCreatedBy")} {exclusion.created_by} {isGerman ? 'am' : 'on'} {new Date(exclusion.created_at).toLocaleDateString(isGerman ? 'de-DE' : 'en-US', { timeZone: 'Europe/Berlin' })}</div>
                 </div>
                 <button onClick={() => void removeExclusion(exclusion.id)} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20">
                   <Plus className="h-4 w-4" />

@@ -1093,6 +1093,11 @@ export type TranslationKey =
   | "shiftContext.competencies"
   | "shiftContext.changeHistory"
   | "shiftContext.manageRules"
+  | "shiftContext.halfShifts"
+  | "shiftContext.halfEarly1"
+  | "shiftContext.halfEarly2"
+  | "shiftContext.halfLate1"
+  | "shiftContext.halfLate2"
   /* ── Shiftplan extras ── */
   | "shiftplan.warningsTooltip"
   | "shiftplan.warningsOn"
@@ -2244,6 +2249,11 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "shiftContext.competencies": { de: "Kompetenzen", en: "Competencies" },
   "shiftContext.changeHistory": { de: "Änderungshistorie", en: "Change history" },
   "shiftContext.manageRules": { de: "Regeln verwalten", en: "Manage rules" },
+  "shiftContext.halfShifts": { de: "Halbe Schichten", en: "Half shifts" },
+  "shiftContext.halfEarly1": { de: "HE1 – Halbe Früh (06:30–10:30)", en: "HE1 – Half early (06:30–10:30)" },
+  "shiftContext.halfEarly2": { de: "HE2 – Halbe Früh (07:00–11:00)", en: "HE2 – Half early (07:00–11:00)" },
+  "shiftContext.halfLate1": { de: "HL1 – Halbe Spät (13:00–17:30)", en: "HL1 – Half late (13:00–17:30)" },
+  "shiftContext.halfLate2": { de: "HL2 – Halbe Spät (15:00–19:30)", en: "HL2 – Half late (15:00–19:30)" },
 
   /* ── Shiftplan extras ── */
   "shiftplan.warningsTooltip": { de: "Warnungen – Links: rote Markierungen, Rechts: Details", en: "Warnings – left: red markers, right: details" },

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Input } from "../ui/input";
 import { useAuth } from "../../context/AuthContext";
 import {
   ContextMenu,
@@ -53,6 +54,7 @@ export default function Weekplan() {
   const { canWrite } = useAuth();
   const canEdit = canWrite("shiftplan");
   const { language, t } = useLanguage();
+  const de = language === 'de';
   const locale = getLanguageLocale(language) as "de-DE" | "en-US";
 
   const weekdayAbbrev = (date: Date) => {
@@ -120,13 +122,30 @@ export default function Weekplan() {
   const [selectedCells, setSelectedCells] = useState<{ employee: string; dayIndices: Set<number> } | null>(null);
 
   // Role store
-  const { fetchRoles, getRole, setRole, setBulkRoles, removeRole } = useWeekplanRoleStore();
+  const { fetchRoles, getRole, getRoleComment, setRole, setBulkRoles, removeRole, updateComment } = useWeekplanRoleStore();
 
   // Edit dialog (set code)
   const EMPTY = "__EMPTY__";
   const [editOpen, setEditOpen] = useState(false);
   const [editValue, setEditValue] = useState<string>(EMPTY);
   const [editTarget, setEditTarget] = useState<null | { employeeName: string; date: Date; current: string }>(null);
+
+  // Comment dialog for role annotations
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentValue, setCommentValue] = useState("");
+  const [commentTarget, setCommentTarget] = useState<null | { employeeName: string; date: string; roleKey: string }>(null);
+
+  const openCommentDialog = useCallback((employeeName: string, dateStr: string, roleKey: string, currentComment?: string | null) => {
+    setCommentTarget({ employeeName, date: dateStr, roleKey });
+    setCommentValue(currentComment || "");
+    setCommentOpen(true);
+  }, []);
+
+  const applyComment = useCallback(async () => {
+    if (!commentTarget) return;
+    await updateComment(commentTarget.employeeName, commentTarget.date, commentValue.trim());
+    setCommentOpen(false);
+  }, [commentTarget, commentValue, updateComment]);
 
   const holidays = useMemo(() => {
     // union of years (week can cross year)
@@ -459,6 +478,33 @@ export default function Weekplan() {
         </DialogContent>
       </Dialog>
 
+      {/* COMMENT DIALOG */}
+      <Dialog open={commentOpen} onOpenChange={setCommentOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{de ? 'Kommentar bearbeiten' : 'Edit Comment'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {commentTarget && (
+              <div className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">{commentTarget.employeeName}</span> — {commentTarget.roleKey}
+              </div>
+            )}
+            <Input
+              value={commentValue}
+              onChange={(e) => setCommentValue(e.target.value)}
+              maxLength={200}
+              placeholder={de ? 'z.B. Projektname oder Buddy-Ziel...' : 'e.g. project name or buddy target...'}
+            />
+            <div className="text-[10px] text-muted-foreground text-right">{commentValue.length}/200</div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setCommentOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={applyComment}>{t("weekplan.apply")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* TABLE */}
       <div className="theme-glass-panel rounded-2xl border overflow-x-auto shadow-xl flex-1 min-h-0">
         <table className="w-full border-collapse text-left">
@@ -510,6 +556,7 @@ export default function Weekplan() {
                   const cellDateStr = dateKey(d);
                   const cellRole = getRole(name, cellDateStr);
                   const cellRoleDef = cellRole ? getRoleDef(cellRole) : null;
+                  const cellComment = getRoleComment(name, cellDateStr);
                   const isSelected = isCellSelected(name, dayIdx);
 
                   // Shift Badge Colors matching ShiftBadge in ShiftplanTable
@@ -577,12 +624,12 @@ export default function Weekplan() {
                           isEditMode ? <div className="text-[10px] text-muted-foreground/30">—</div> : null
                         )}
                         {cellRoleDef && (
-                          <div className="mt-0.5 flex max-w-[84px] flex-col items-center gap-0.5">
+                          <div className="mt-0.5 flex max-w-[84px] flex-col items-center gap-0.5" title={cellComment || undefined}>
                             <span className={`inline-flex min-w-[28px] items-center justify-center rounded-md border px-1.5 py-px text-[9px] font-black tracking-wide ${cellRoleDef.color}`}>
                               {cellRoleDef.symbol}
                             </span>
                             <span className="text-center text-[8px] leading-tight text-muted-foreground">
-                              {cellRoleDef.shortText}
+                              {cellComment || cellRoleDef.shortText}
                             </span>
                           </div>
                         )}
@@ -630,6 +677,11 @@ export default function Weekplan() {
                           {cellRole && targetDayIndices.length === 1 && (
                             <>
                               <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => openCommentDialog(name, cellDateStr, cellRole, cellComment)}
+                              >
+                                {de ? 'Kommentar bearbeiten' : 'Edit Comment'}
+                              </ContextMenuItem>
                               <ContextMenuItem
                                 onClick={() => removeRoleFromCell(name, dayIdx)}
                                 className="text-red-400"

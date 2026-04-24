@@ -3,7 +3,7 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon } from "lucide-react";
+import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon, CalendarHeart } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
 
 import {
@@ -44,6 +44,7 @@ interface User {
   isRoot?: boolean;
   provisionedFromShiftplan?: boolean;
   provisionedEmployeeName?: string | null;
+  hasShiftPreferences?: boolean;
   createdAt: string;
   lastLogin: string | null;
 }
@@ -115,6 +116,9 @@ const USERS_COPY = {
     deleteConfirm: "User wirklich loeschen?",
     deleteFinal: "Dieser Vorgang ist endgueltig.",
     adminToggle: "Admin",
+    shiftPrefs: "Dienstwünsche",
+    shiftPrefsYes: "Konfiguriert",
+    shiftPrefsNo: "Nicht konfiguriert",
   },
   en: {
     title: "USER MANAGEMENT",
@@ -150,6 +154,9 @@ const USERS_COPY = {
     deleteConfirm: "Delete user now?",
     deleteFinal: "This action is permanent.",
     adminToggle: "Admin",
+    shiftPrefs: "Shift preferences",
+    shiftPrefsYes: "Configured",
+    shiftPrefsNo: "Not configured",
   },
   ro: {
     title: "USER MANAGEMENT",
@@ -185,6 +192,9 @@ const USERS_COPY = {
     deleteConfirm: "Stergi acest utilizator?",
     deleteFinal: "Aceasta actiune este definitiva.",
     adminToggle: "Admin",
+    shiftPrefs: "Preferinte ture",
+    shiftPrefsYes: "Configurat",
+    shiftPrefsNo: "Neconfigurat",
   },
   ar: {
     title: "إدارة المستخدمين",
@@ -220,6 +230,9 @@ const USERS_COPY = {
     deleteConfirm: "هل تريد حذف هذا المستخدم؟",
     deleteFinal: "هذا الإجراء نهائي.",
     adminToggle: "Admin",
+    shiftPrefs: "تفضيلات الورديات",
+    shiftPrefsYes: "مُعَد",
+    shiftPrefsNo: "غير مُعَد",
   },
 } as const;
 
@@ -374,6 +387,7 @@ export default function Users() {
                 <TableHead>{copy.department}</TableHead>
                 <TableHead>{copy.source}</TableHead>
                 <TableHead>{copy.competence}</TableHead>
+                <TableHead>{copy.shiftPrefs}</TableHead>
                 <TableHead>{copy.login}</TableHead>
                 <TableHead>{copy.role}</TableHead>
                 <TableHead>{copy.status}</TableHead>
@@ -384,13 +398,13 @@ export default function Users() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-[13px] text-[#4b5563]">
+                  <TableCell colSpan={10} className="text-center py-8 text-[13px] text-[#4b5563]">
                     {copy.loading}
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-[13px] text-[#4b5563]">
+                  <TableCell colSpan={10} className="text-center py-8 text-[13px] text-[#4b5563]">
                     {copy.empty}
                   </TableCell>
                 </TableRow>
@@ -456,6 +470,19 @@ export default function Users() {
                             <span className="text-[11px] text-muted-foreground">{copy.profile}: {competenceTarget}</span>
                           </div>
                         </div>
+                      </TableCell>
+
+                      <TableCell>
+                        {user.hasShiftPreferences ? (
+                          <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-400">
+                            <CalendarHeart className="w-3 h-3 mr-1" />
+                            {copy.shiftPrefsYes}
+                          </Badge>
+                        ) : (
+                          <Badge className="border-slate-500/30 bg-slate-500/15 text-slate-400">
+                            {copy.shiftPrefsNo}
+                          </Badge>
+                        )}
                       </TableCell>
 
                       <TableCell>

@@ -93,7 +93,7 @@ function getWeekBounds(offset: number, locale: string): { from: string; to: stri
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
-    const fmt = (d: Date) => d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
+    const fmt = (d: Date) => d.toLocaleDateString(locale, { timeZone: 'Europe/Berlin', day: "2-digit", month: "2-digit" });
     return {
         from: monday.toISOString().split("T")[0],
         to: sunday.toISOString().split("T")[0],
@@ -103,7 +103,7 @@ function getWeekBounds(offset: number, locale: string): { from: string; to: stri
 
 function fmtDay(v: string, locale: string) {
     const d = new Date(v);
-    return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
+    return d.toLocaleDateString(locale, { timeZone: 'Europe/Berlin', day: "2-digit", month: "2-digit" });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -595,7 +595,7 @@ export default function DashboardStatistik() {
                             animation: "dotPulse 1.8s ease-in-out infinite",
                         }} />
                         <span style={{ fontSize: "11px", color: "#4b5563" }}>
-                            {loading ? t("stats.refreshing") : `${t("stats.lastLabel")}: ${lastRefresh.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
+                            {loading ? t("stats.refreshing") : `${t("stats.lastLabel")}: ${lastRefresh.toLocaleTimeString(locale, { timeZone: 'Europe/Berlin', hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
                         </span>
                     </>
                 }

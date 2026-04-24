@@ -472,7 +472,7 @@ function buildSelectedDetail(decision: AssignmentDecision | null, explanation: T
   };
 }
 
-function StageBadge({ decision, isGerman, copy }: { decision: AssignmentDecision; isGerman: boolean; copy: typeof CONTROL_COPY.de }) {
+function StageBadge({ decision, isGerman, copy }: { decision: AssignmentDecision; isGerman: boolean; copy: Record<string, string> }) {
   const label = decision.result === 'assigned'
     ? copy.stageAssigned
     : decision.result === 'not_relevant' || decision.result === 'blocked'
@@ -544,7 +544,7 @@ export default function AssignmentControlCenter({ runs }: Props) {
   const { language } = useLanguage();
   const isGerman = language === 'de';
   const glossaryLanguage = isGerman ? 'de' : 'en';
-  const copy = CONTROL_COPY[isGerman ? 'de' : 'en'];
+  const copy = CONTROL_COPY[isGerman ? 'de' : 'en'] as typeof CONTROL_COPY['en'];
 
   const [selectedRunId, setSelectedRunId] = useState<number | null>(runs[0]?.id ?? null);
   const [decisions, setDecisions] = useState<AssignmentDecision[]>([]);
@@ -583,7 +583,7 @@ export default function AssignmentControlCenter({ runs }: Props) {
       setError(null);
 
       try {
-        const loaded = await AssignmentApi.getDecisions({ runId: selectedRunId, limit: 1000 });
+        const loaded = await AssignmentApi.getDecisions({ runId: selectedRunId!, limit: 1000 });
         if (!active) return;
 
         const sorted = sortDecisionsForAudit(Array.isArray(loaded) ? loaded : []);
@@ -623,13 +623,14 @@ export default function AssignmentControlCenter({ runs }: Props) {
       return;
     }
 
+    const ticketId = selectedDecision.ticket_id;
     let active = true;
 
     async function loadExplanation() {
       setDetailLoading(true);
 
       try {
-        const explanation = await AssignmentApi.getTicketExplanation(selectedDecision.ticket_id, selectedRunId);
+        const explanation = await AssignmentApi.getTicketExplanation(ticketId, selectedRunId!);
         if (active) {
           setSelectedExplanation(explanation);
         }

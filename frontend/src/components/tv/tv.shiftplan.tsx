@@ -128,7 +128,16 @@ function EmployeeCard({
   const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
   const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
   const shiftRemaining = getShiftRemainingLabel(shift);
-  const roleBadge = weekplanRole ? TV_WEEKPLAN_ROLE_BADGES[weekplanRole] ?? { label: weekplanRole, className: "bg-white/10 text-white border-white/20" } : null;
+
+  // Parse weekplanRole — backend sends "role_key|comment" when comment exists
+  let parsedRoleKey = weekplanRole;
+  let parsedComment: string | null = null;
+  if (weekplanRole && weekplanRole.includes('|')) {
+    const idx = weekplanRole.indexOf('|');
+    parsedRoleKey = weekplanRole.slice(0, idx);
+    parsedComment = weekplanRole.slice(idx + 1);
+  }
+  const roleBadge = parsedRoleKey ? TV_WEEKPLAN_ROLE_BADGES[parsedRoleKey] ?? { label: parsedRoleKey, className: "bg-white/10 text-white border-white/20" } : null;
   const vBadge = verificationStatus ? VERIFICATION_BADGES[verificationStatus] : null;
 
   return (
@@ -140,8 +149,8 @@ function EmployeeCard({
         </span>
         <span className="flex-1 font-bold text-base wrap-break-word whitespace-normal leading-tight">{name}</span>
         {roleBadge && (
-          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${roleBadge.className}`}>
-            {roleBadge.label}
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${roleBadge.className}`} title={parsedComment || undefined}>
+            {roleBadge.label}{parsedComment ? ` · ${parsedComment}` : ''}
           </span>
         )}
         {vBadge && (

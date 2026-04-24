@@ -167,7 +167,7 @@ router.get("/schedules/today", async (_req, res) => {
     let roleMap = new Map();
     try {
       const roleResult = await query(
-        `SELECT employee_name, role_key
+        `SELECT employee_name, role_key, comment
          FROM weekplan_roles
          WHERE date = $1`,
         [todayKey]
@@ -179,9 +179,10 @@ router.get("/schedules/today", async (_req, res) => {
           .flatMap((row) => {
             const rawName = String(row.employee_name).trim();
             const normalizedName = rawName.replace(",", "").trim();
+            const value = row.comment ? `${row.role_key}|${row.comment}` : row.role_key;
             return [
-              [rawName, row.role_key],
-              [normalizedName, row.role_key],
+              [rawName, value],
+              [normalizedName, value],
             ];
           })
       );

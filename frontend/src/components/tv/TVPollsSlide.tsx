@@ -30,6 +30,7 @@ type TvPoll = {
 function formatDeadline(endsAt: string) {
   const d = new Date(endsAt);
   return d.toLocaleDateString("de-DE", {
+    timeZone: "Europe/Berlin",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

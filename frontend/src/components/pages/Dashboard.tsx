@@ -1573,7 +1573,7 @@ export default function Dashboard() {
                     const ownerInitials = ownerFull.split(' ')[0];
                     const rcd = t.revised_commit_date ?? t.revisedCommitDate ?? t.commitDate ?? null;
                     const rcdFormat = rcd && !Number.isNaN(new Date(rcd).getTime())
-                      ? new Date(rcd).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      ? new Date(rcd).toLocaleString(locale, { timeZone: 'Europe/Berlin', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                       : "—";
 
                     const ms = t._remainingMs;
@@ -1587,7 +1587,7 @@ export default function Dashboard() {
 
                     const ss = t.sched_start || t.schedStart;
                     const ssFormat = ss && !Number.isNaN(new Date(ss).getTime())
-                      ? new Date(ss).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      ? new Date(ss).toLocaleString(locale, { timeZone: 'Europe/Berlin', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                       : "—";
 
                     const rawExpedite = t.expedite ?? t.Expedite;

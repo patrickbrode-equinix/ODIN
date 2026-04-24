@@ -140,6 +140,7 @@ function HeaderBar({
   visible: boolean;
 }) {
   const decidedTime = new Date(trace.decidedAt).toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -281,6 +282,7 @@ function TicketCard({
           <span>
             Geplant:{" "}
             {new Date(t.schedStart).toLocaleDateString("de-DE", {
+              timeZone: "Europe/Berlin",
               day: "2-digit",
               month: "2-digit",
               hour: "2-digit",

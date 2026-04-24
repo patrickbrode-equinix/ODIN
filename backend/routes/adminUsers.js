@@ -60,24 +60,26 @@ router.get(
       const result = await db.query(
         `
         SELECT
-          id,
-          first_name AS "firstName",
-          last_name  AS "lastName",
-          email,
-          ibx,
-          department,
-          user_group AS "group",
-          approved,
-          is_admin   AS "isAdmin",
-          is_root    AS "isRoot",
-          last_login AS "lastLogin",
-          must_change_password AS "mustChangePassword",
-          provisioned_from_shiftplan AS "provisionedFromShiftplan",
-          provisioned_employee_name AS "provisionedEmployeeName",
-          created_at AS "createdAt"
-        FROM users
-        WHERE is_root = false
-        ORDER BY id ASC
+          u.id,
+          u.first_name AS "firstName",
+          u.last_name  AS "lastName",
+          u.email,
+          u.ibx,
+          u.department,
+          u.user_group AS "group",
+          u.approved,
+          u.is_admin   AS "isAdmin",
+          u.is_root    AS "isRoot",
+          u.last_login AS "lastLogin",
+          u.must_change_password AS "mustChangePassword",
+          u.provisioned_from_shiftplan AS "provisionedFromShiftplan",
+          u.provisioned_employee_name AS "provisionedEmployeeName",
+          u.created_at AS "createdAt",
+          CASE WHEN ep.id IS NOT NULL THEN true ELSE false END AS "hasShiftPreferences"
+        FROM users u
+        LEFT JOIN employee_preferences ep ON ep.user_id = u.id
+        WHERE u.is_root = false
+        ORDER BY u.id ASC
         `
       );
 

@@ -150,7 +150,13 @@ router.post('/engine/start', requirePageAccess('settings', 'write'), async (req,
       lastStartedBy: settings['assignment.lastStartedBy'],
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    const isLiveModeGate = /enableLiveMode/i.test(err?.message || '');
+    const status = isLiveModeGate ? 409 : 500;
+    res.status(status).json({
+      ok: false,
+      error: err.message,
+      code: isLiveModeGate ? 'LIVE_MODE_NOT_ENABLED' : 'ENGINE_START_FAILED',
+    });
   }
 });
 

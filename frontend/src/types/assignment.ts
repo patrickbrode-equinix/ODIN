@@ -29,6 +29,9 @@ export interface AssignmentSettings {
   'assignment.enableLiveMode': string;
   'assignment.enabled': string;
   'assignment.insufficientResources': string;
+  'assignment.cutoffMinutesBeforeShiftEnd': string;
+  'assignment.maxSameSystemSmartHands': string;
+  'assignment.maxSameSystemCrossConnect': string;
   [key: string]: string;
 }
 
@@ -222,6 +225,11 @@ export interface AssignmentTicketContext {
   customerTroubleType: string | null;
   customerName: string | null;
   mode: AssignmentMode | null | string;
+  /** Aliases used by getDecisionContext / UI rendering */
+  queue?: string | null;
+  category?: string | null;
+  owner?: string | null;
+  remainingTime?: string | null;
 }
 
 export interface AssignmentDecision {

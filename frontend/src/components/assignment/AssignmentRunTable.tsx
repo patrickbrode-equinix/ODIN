@@ -65,6 +65,7 @@ function formatRunTimestamp(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '–';
   return date.toLocaleString('de-DE', {
+    timeZone: 'Europe/Berlin',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -286,7 +287,7 @@ export function AssignmentRunTable({ runs }: Props) {
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {new Date(run.started_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(run.started_at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-3 py-2 text-right">{run.total_tickets}</td>
                   <td className="px-3 py-2 text-right text-green-400">{run.assigned}</td>

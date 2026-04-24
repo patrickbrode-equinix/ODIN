@@ -1058,9 +1058,9 @@ function RoutingTab() {
                       <div className="text-xs text-gray-400">{groups.find((group) => group.name === r.target_value)?.description}</div>
                     )}
                   </div>
-                  {!r.enabled && <span className="text-xs text-gray-400">({copy.disabledLabel})</span>}
+                  {!r.enabled && <span className="text-xs text-gray-400">({isGerman ? "deaktiviert" : "disabled"})</span>}
                 </div>
-                <button onClick={() => removeRule(r.id)} className="text-red-500 hover:text-red-700 text-xs">{copy.remove}</button>
+                <button onClick={() => removeRule(r.id)} className="text-red-500 hover:text-red-700 text-xs">{isGerman ? "Entfernen" : "Remove"}</button>
               </div>
             ))}
           </div>
@@ -1400,7 +1400,8 @@ function LogTab() {
 /* ================================================ */
 
 function ErrorsTab() {
-  const { copy, locale } = useTeamsUi();
+  const { copy, locale, language } = useTeamsUi();
+  const isGerman = language === "de";
   const [errors, setErrors] = useState<TeamsMessageLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<number | null>(null);
@@ -1540,6 +1541,54 @@ function SettingsTab() {
   return (
     <TextRepairBoundary>
       <div className="space-y-4">
+
+      {/* Communication Mode Section */}
+      <EnterpriseCard>
+        <div className="px-1 pb-2">
+          <h3 className="text-sm font-semibold text-foreground mb-1">
+            {isGerman ? "Kommunikationsmodus" : "Communication Mode"}
+          </h3>
+          <p className="text-xs text-muted-foreground mb-3">
+            {isGerman
+              ? "Legt fest, wie ODIN mit Microsoft Teams kommuniziert. Aktuell ist die Webhook-basierte Einwegkommunikation aktiv, da Azure Admin Consent für den Bot noch aussteht."
+              : "Determines how ODIN communicates with Microsoft Teams. Currently, webhook-based one-way communication is active because Azure Admin Consent for the bot is still pending."}
+          </p>
+          <div className="grid gap-2 md:grid-cols-3 mb-3">
+            {(["webhook", "bot", "disabled"] as const).map((mode) => {
+              const active = (settings["teams.communicationMode"] || "webhook") === mode;
+              const labels: Record<string, { de: string; en: string; desc_de: string; desc_en: string }> = {
+                webhook: { de: "Webhook / Power Automate", en: "Webhook / Power Automate", desc_de: "Einwegkommunikation über Webhook-URL. Ideal für Power Automate Flows.", desc_en: "One-way communication via webhook URL. Ideal for Power Automate flows." },
+                bot: { de: "Bot-basiert (zukünftig)", en: "Bot-based (future)", desc_de: "Vollständiger Teams-Bot mit bidirektionaler Kommunikation. Erfordert Azure Admin Consent.", desc_en: "Full Teams bot with bidirectional communication. Requires Azure Admin Consent." },
+                disabled: { de: "Deaktiviert", en: "Disabled", desc_de: "Kein Teams-Versand aktiv.", desc_en: "No Teams delivery active." },
+              };
+              const l = labels[mode];
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => updateValue("teams.communicationMode", mode)}
+                  className={`rounded-lg border px-3 py-2.5 text-left transition ${active
+                    ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                    : "border-border/40 bg-background/50 hover:border-primary/40"
+                  }`}
+                >
+                  <div className="text-sm font-medium">{isGerman ? l.de : l.en}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{isGerman ? l.desc_de : l.desc_en}</div>
+                </button>
+              );
+            })}
+          </div>
+          {(settings["teams.communicationMode"] || "webhook") === "bot" && (
+            <div className="rounded-md bg-amber-500/10 border border-amber-400/20 px-3 py-2 text-xs text-amber-200">
+              ⚠ {isGerman
+                ? "Bot-Modus erfordert Azure Admin Consent. Solange dieser nicht erteilt ist, werden alle Nachrichten über den Webhook-Fallback gesendet."
+                : "Bot mode requires Azure Admin Consent. Until granted, all messages are sent via the webhook fallback."}
+            </div>
+          )}
+        </div>
+      </EnterpriseCard>
+
+      {/* Quick Summary */}
       <EnterpriseCard>
         <div className="grid gap-4 md:grid-cols-3">
           <SettingsSummaryTile title={t('teams.dispatcherReview')} value={`${enabledLabel(settings.dispatcher_manual_review_notify_systems)} / ${enabledLabel(settings.dispatcher_manual_review_notify_subtypes)}`} hint={t('teams.systemSubtypeExclusions')} />

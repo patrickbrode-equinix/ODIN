@@ -99,6 +99,12 @@ export const SETTINGS_KEYS = {
   CRAWLER_MAX_AGE: 'assignment.crawlerMaxAgeMinutes',
   ENABLE_LIVE: 'assignment.enableLiveMode',
   INSUFFICIENT_RESOURCES: 'assignment.insufficientResources',
+  /* Shift-end cutoff: minutes before shift end to stop new assignments */
+  CUTOFF_MINUTES_BEFORE_SHIFT_END: 'assignment.cutoffMinutesBeforeShiftEnd',
+  /* Max tickets with same system_name per worker — SmartHands */
+  MAX_SAME_SYSTEM_SMART_HANDS: 'assignment.maxSameSystemSmartHands',
+  /* Max tickets with same system_name per worker — CrossConnect */
+  MAX_SAME_SYSTEM_CROSS_CONNECT: 'assignment.maxSameSystemCrossConnect',
   /* Engine status keys */
   ENABLED: 'assignment.enabled',
   LAST_STARTED_AT: 'assignment.lastStartedAt',

@@ -3,10 +3,53 @@
 /* Pure date parsing functions for queue ingestion. */
 /* Supports: DE (DD.MM.YYYY), US (M/d/yyyy h:mm),  */
 /* ISO-like strings.                                */
+/*                                                  */
+/* All ambiguous (no-offset) dates are interpreted  */
+/* in OPERATIONAL_TIMEZONE, NOT the system timezone. */
 /* ------------------------------------------------ */
 
+import { config } from "../config/index.js";
+
+const OPS_TZ = config.OPERATIONAL_TIMEZONE || "Europe/Berlin";
+
 /**
- * Parse a date string (DE, US, or ISO) to milliseconds.
+ * Convert date components (year, month0, day, hour, min, sec) expressed
+ * in the operational timezone to a UTC millisecond timestamp.
+ *
+ * Uses Intl.DateTimeFormat to determine the UTC offset of OPS_TZ at the
+ * given point in time, making this robust against DST transitions.
+ */
+function datePartsToUtcMs(year, month0, day, hour, min, sec) {
+  // Step 1: treat the face values as if they were UTC
+  const faceUtcMs = Date.UTC(year, month0, day, hour, min, sec);
+
+  // Step 2: format that UTC instant in OPS_TZ to see what date/time it maps to
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: OPS_TZ,
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "numeric", second: "numeric",
+    hourCycle: "h23",
+  });
+  const parts = {};
+  for (const { type, value } of fmt.formatToParts(new Date(faceUtcMs))) {
+    if (type !== "literal") parts[type] = parseInt(value, 10);
+  }
+
+  // Step 3: the OPS_TZ representation of faceUtcMs, back as UTC face
+  const tzViewUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day,
+                               parts.hour, parts.minute, parts.second);
+
+  // Step 4: offset = how far ahead OPS_TZ is from UTC at this moment
+  const offsetMs = tzViewUtcMs - faceUtcMs;
+
+  // Step 5: we want the UTC instant where OPS_TZ local = our input
+  //         local = utc + offset → utc = local - offset = faceUtcMs - offsetMs
+  return faceUtcMs - offsetMs;
+}
+
+/**
+ * Parse a date string (DE, US, or ISO) to milliseconds (UTC).
+ * Ambiguous formats (no timezone info) are interpreted in OPERATIONAL_TIMEZONE.
  * Returns null if unparseable.
  */
 export function parseCommitDateToMs(v) {
@@ -25,8 +68,8 @@ export function parseCommitDateToMs(v) {
     const hh   = Number(de[4] || 0);
     const mi   = Number(de[5] || 0);
     const ss   = Number(de[6] || 0);
-    const d    = new Date(yyyy, mm - 1, dd, hh, mi, ss);
-    return Number.isFinite(d.getTime()) ? d.getTime() : null;
+    const ms   = datePartsToUtcMs(yyyy, mm - 1, dd, hh, mi, ss);
+    return Number.isFinite(ms) ? ms : null;
   }
 
   // US: M/d/yyyy, h:mm[:ss] AM/PM  (Jarvis EMEA sends this format)
@@ -43,8 +86,8 @@ export function parseCommitDateToMs(v) {
     const ampm = (us[7] || "").toUpperCase();
     if (ampm === "PM" && hh < 12) hh += 12;
     if (ampm === "AM" && hh === 12) hh = 0;
-    const d = new Date(yyyy, mm - 1, dd, hh, mi, ss);
-    return Number.isFinite(d.getTime()) ? d.getTime() : null;
+    const ms = datePartsToUtcMs(yyyy, mm - 1, dd, hh, mi, ss);
+    return Number.isFinite(ms) ? ms : null;
   }
 
   // US date-only: M/d/yyyy (no time)
@@ -53,13 +96,33 @@ export function parseCommitDateToMs(v) {
     const mm   = Number(usDateOnly[1]);
     const dd   = Number(usDateOnly[2]);
     const yyyy = Number(usDateOnly[3]);
-    const d    = new Date(yyyy, mm - 1, dd);
+    const ms   = datePartsToUtcMs(yyyy, mm - 1, dd, 0, 0, 0);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // ISO with explicit offset or Z → use native parser (already TZ-aware)
+  if (/[Zz]|[+-]\d{2}:\d{2}/.test(txt)) {
+    const d = new Date(txt);
     return Number.isFinite(d.getTime()) ? d.getTime() : null;
   }
 
-  // ISO-like: YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS]
-  const iso = txt.replace(" ", "T");
-  const d   = new Date(iso);
+  // ISO-like without offset: YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS]
+  const isoMatch = txt.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (isoMatch) {
+    const yyyy = Number(isoMatch[1]);
+    const mm   = Number(isoMatch[2]);
+    const dd   = Number(isoMatch[3]);
+    const hh   = Number(isoMatch[4] || 0);
+    const mi   = Number(isoMatch[5] || 0);
+    const ss   = Number(isoMatch[6] || 0);
+    const ms   = datePartsToUtcMs(yyyy, mm - 1, dd, hh, mi, ss);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // Fallback: native Date parser
+  const d = new Date(txt);
   return Number.isFinite(d.getTime()) ? d.getTime() : null;
 }
 

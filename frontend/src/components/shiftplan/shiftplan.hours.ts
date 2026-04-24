@@ -1,5 +1,5 @@
 /* ------------------------------------------------ */
-/* SHIFTPLAN – HOURS CALCULATION (2027+)            */
+/* SHIFTPLAN – HOURS CALCULATION                    */
 /* ------------------------------------------------ */
 
 import { shiftTypes } from "../../store/shiftStore";
@@ -10,13 +10,39 @@ import type { HolidayMap } from "../../utils/deHolidays";
  */
 export const SOLL_HOURS = 174;
 export const HOLIDAY_CREDIT_HOURS = 8;
+/** 1 hour break deducted per working day */
+export const BREAK_HOURS = 1;
+
+export type HourLimitsConfig = {
+    maxDailyHours: number;   // 0 = no limit
+    maxWeeklyHours: number;  // 0 = no limit
+    dailyMode: 'off' | 'warn' | 'block';
+    weeklyMode: 'off' | 'warn' | 'block';
+};
+
+export type DayHourInfo = {
+    hours: number;
+    exceeded: boolean;
+    mode: 'off' | 'warn' | 'block';
+};
+
+export type WeekHourInfo = {
+    weekNo: number;
+    totalHours: number;
+    exceeded: boolean;
+    mode: 'off' | 'warn' | 'block';
+};
 
 export type EmployeeMonthlyStats = {
     name: string;
     soll: number;
     ist: number;
     diff: number;
-    warnings: string[]; // "Under", "Over"
+    warnings: string[];
+    /** Hours per day (1-indexed: dayHours[1] = day 1) */
+    dayHours: Record<number, DayHourInfo>;
+    /** Hours per ISO week */
+    weekHours: Record<number, WeekHourInfo>;
 };
 
 /**
@@ -36,62 +62,88 @@ export type EmployeeMonthlyStats = {
  */
 export function calculateEmployeeHours(
     employeeName: string,
-    schedule: Record<number, string>, // Day -> Code
+    schedule: Record<number, string>,
     year: number,
     monthIndex1: number,
     daysInMonth: number,
-    holidays: HolidayMap
+    holidays: HolidayMap,
+    limits?: HourLimitsConfig
 ): EmployeeMonthlyStats {
     let ist = 0;
+    const dayHours: Record<number, DayHourInfo> = {};
+    const weekBuckets: Record<number, number> = {};
 
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, monthIndex1 - 1, day);
         const dayKey = `${year}-${String(monthIndex1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        const dow = date.getDay(); // 0=Sun, 6=Sat
+        const dow = date.getDay();
         const isWeekend = dow === 0 || dow === 6;
 
-        // Get shift
         const code = schedule[day];
         const type = code ? shiftTypes[code] : null;
+        let h = 0;
 
         if (type) {
-            // Worked hours
-            // Parse duration from type.time? "06:00-14:30" -> 8.5? or use hardcoded map?
-            // shiftTypes usually has no 'hours' field in the provided snippets. 
-            // We might need to approximate or parse.
-            // E1/L1/N often 8h or 8.5h. 
-            // Let's check shiftTypes definition in store.
-            // Fallback: If we can't parse, assume 8h for standard shifts?
-            // User didn't specify duration logic, implies it might exist or we parse range.
-            // Let's try to parse range.
-            ist += parseHoursFromRange(type.time);
+            h = parseHoursFromRange(type.time);
+            // Deduct 1h break per working day
+            if (h > 0) h = Math.max(0, h - BREAK_HOURS);
         } else {
-            // No shift (OFF)
-            // Holiday Logic
             const holidayName = holidays[dayKey];
             if (holidayName && !isWeekend) {
-                ist += HOLIDAY_CREDIT_HOURS;
+                h = HOLIDAY_CREDIT_HOURS;
             }
         }
+
+        ist += h;
+
+        // Daily limit check
+        const dailyExceeded = limits && limits.dailyMode !== 'off' && limits.maxDailyHours > 0 && h > limits.maxDailyHours;
+        dayHours[day] = {
+            hours: Math.round(h * 100) / 100,
+            exceeded: !!dailyExceeded,
+            mode: limits?.dailyMode ?? 'off',
+        };
+
+        // Accumulate weekly
+        const wk = isoWeekNumber(date);
+        weekBuckets[wk] = (weekBuckets[wk] || 0) + h;
     }
 
-    const diff = ist - SOLL_HOURS;
-    const warnings: string[] = [];
+    // Build weekly info
+    const weekHours: Record<number, WeekHourInfo> = {};
+    for (const [wkStr, total] of Object.entries(weekBuckets)) {
+        const wk = Number(wkStr);
+        const weeklyExceeded = limits && limits.weeklyMode !== 'off' && limits.maxWeeklyHours > 0 && total > limits.maxWeeklyHours;
+        weekHours[wk] = {
+            weekNo: wk,
+            totalHours: Math.round(total * 100) / 100,
+            exceeded: !!weeklyExceeded,
+            mode: limits?.weeklyMode ?? 'off',
+        };
+    }
 
-    // Warning Logic
-    // "Warnings list: employees under/over Soll"
-    // Let's add a tolerance? Or strict?
-    // User just said "under/over".
+    const diff = Math.round((ist - SOLL_HOURS) * 100) / 100;
+    const warnings: string[] = [];
     if (ist < SOLL_HOURS) warnings.push("Under");
     if (ist > SOLL_HOURS) warnings.push("Over");
 
     return {
         name: employeeName,
         soll: SOLL_HOURS,
-        ist,
+        ist: Math.round(ist * 100) / 100,
         diff,
-        warnings
+        warnings,
+        dayHours,
+        weekHours,
     };
+}
+
+function isoWeekNumber(date: Date): number {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 function parseHoursFromRange(range: string): number {

@@ -219,7 +219,7 @@ function HelpTip({ text }: { text: string }) {
 function WillingnessSelect({ value, onChange, copy }: {
   value: WillingnessLevel;
   onChange: (v: WillingnessLevel) => void;
-  copy: typeof COPY['en'];
+  copy: Record<string, string>;
 }) {
   const options: { value: WillingnessLevel; label: string }[] = [
     { value: 'always', label: copy.willingnessAlways },

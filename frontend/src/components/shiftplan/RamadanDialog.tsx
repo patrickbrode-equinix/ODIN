@@ -66,7 +66,7 @@ export function RamadanDialog({ open, onClose, data, timings, loading }: Props) 
         try {
             const d = new Date(dStr);
             if (isNaN(d.getTime())) return dStr;
-            return d.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: 'long' });
+            return d.toLocaleDateString(locale, { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: 'long' });
         } catch (e) {
             return dStr;
         }

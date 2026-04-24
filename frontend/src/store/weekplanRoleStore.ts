@@ -29,6 +29,7 @@ export interface WeekplanRoleEntry {
   employee_name: string;
   date: string; // YYYY-MM-DD
   role_key: WeekplanRoleKey;
+  comment?: string | null;
 }
 
 /** Lookup role definition by key */
@@ -36,9 +37,14 @@ export function getRoleDef(key: string) {
   return WEEKPLAN_ROLES.find((r) => r.key === key);
 }
 
+interface RoleValue {
+  role_key: WeekplanRoleKey;
+  comment?: string | null;
+}
+
 interface WeekplanRoleState {
-  /** Map: "employeeName|YYYY-MM-DD" → role_key */
-  roles: Record<string, WeekplanRoleKey>;
+  /** Map: "employeeName|YYYY-MM-DD" → { role_key, comment } */
+  roles: Record<string, RoleValue>;
   /** Loading state */
   loading: boolean;
 
@@ -51,11 +57,17 @@ interface WeekplanRoleState {
   /** Get role for employee on a specific date */
   getRole: (employeeName: string, date: string) => WeekplanRoleKey | undefined;
 
+  /** Get comment for employee role on a specific date */
+  getRoleComment: (employeeName: string, date: string) => string | null | undefined;
+
   /** Set role for employee on a specific date (persists to DB) */
-  setRole: (employeeName: string, date: string, roleKey: WeekplanRoleKey) => Promise<void>;
+  setRole: (employeeName: string, date: string, roleKey: WeekplanRoleKey, comment?: string | null) => Promise<void>;
 
   /** Set role for employee on multiple dates (persists to DB) */
   setBulkRoles: (employeeName: string, dates: string[], roleKey: WeekplanRoleKey) => Promise<void>;
+
+  /** Update just the comment for an existing role assignment */
+  updateComment: (employeeName: string, date: string, comment: string) => Promise<void>;
 
   /** Remove role for employee on a specific date */
   removeRole: (employeeName: string, date: string) => Promise<void>;
@@ -74,10 +86,10 @@ export const useWeekplanRoleStore = create<WeekplanRoleState>()((set, get) => ({
       set({ loading: true });
       const res = await api.get("/weekplan-roles", { params: { from, to } });
       const rows: WeekplanRoleEntry[] = Array.isArray(res.data) ? res.data : [];
-      const map: Record<string, WeekplanRoleKey> = { ...get().roles };
+      const map: Record<string, RoleValue> = { ...get().roles };
       for (const r of rows) {
         const dateStr = typeof r.date === "string" ? r.date.split("T")[0] : r.date;
-        map[makeKey(r.employee_name, dateStr)] = r.role_key as WeekplanRoleKey;
+        map[makeKey(r.employee_name, dateStr)] = { role_key: r.role_key as WeekplanRoleKey, comment: r.comment };
       }
       set({ roles: map, loading: false });
     } catch (err) {
@@ -91,10 +103,10 @@ export const useWeekplanRoleStore = create<WeekplanRoleState>()((set, get) => ({
       set({ loading: true });
       const res = await api.get("/weekplan-roles/today");
       const rows: WeekplanRoleEntry[] = Array.isArray(res.data) ? res.data : [];
-      const map: Record<string, WeekplanRoleKey> = { ...get().roles };
+      const map: Record<string, RoleValue> = { ...get().roles };
       for (const r of rows) {
         const dateStr = typeof r.date === "string" ? r.date.split("T")[0] : r.date;
-        map[makeKey(r.employee_name, dateStr)] = r.role_key as WeekplanRoleKey;
+        map[makeKey(r.employee_name, dateStr)] = { role_key: r.role_key as WeekplanRoleKey, comment: r.comment };
       }
       set({ roles: map, loading: false });
     } catch (err) {
@@ -104,13 +116,17 @@ export const useWeekplanRoleStore = create<WeekplanRoleState>()((set, get) => ({
   },
 
   getRole: (employeeName: string, date: string) => {
-    return get().roles[makeKey(employeeName, date)];
+    return get().roles[makeKey(employeeName, date)]?.role_key;
   },
 
-  setRole: async (employeeName: string, date: string, roleKey: WeekplanRoleKey) => {
+  getRoleComment: (employeeName: string, date: string) => {
+    return get().roles[makeKey(employeeName, date)]?.comment;
+  },
+
+  setRole: async (employeeName: string, date: string, roleKey: WeekplanRoleKey, comment?: string | null) => {
     // Optimistic update
     set((state) => ({
-      roles: { ...state.roles, [makeKey(employeeName, date)]: roleKey },
+      roles: { ...state.roles, [makeKey(employeeName, date)]: { role_key: roleKey, comment: comment ?? null } },
     }));
 
     try {
@@ -118,6 +134,7 @@ export const useWeekplanRoleStore = create<WeekplanRoleState>()((set, get) => ({
         employee_name: employeeName,
         date,
         role_key: roleKey,
+        comment: comment ?? null,
       });
     } catch (err) {
       console.error("[weekplanRoleStore] setRole failed:", err);
@@ -130,12 +147,34 @@ export const useWeekplanRoleStore = create<WeekplanRoleState>()((set, get) => ({
     }
   },
 
+  updateComment: async (employeeName: string, date: string, comment: string) => {
+    const existing = get().roles[makeKey(employeeName, date)];
+    if (!existing) return;
+    // Optimistic
+    set((state) => ({
+      roles: { ...state.roles, [makeKey(employeeName, date)]: { ...existing, comment } },
+    }));
+    try {
+      await api.put("/weekplan-roles", {
+        employee_name: employeeName,
+        date,
+        role_key: existing.role_key,
+        comment,
+      });
+    } catch (err) {
+      console.error("[weekplanRoleStore] updateComment failed:", err);
+      set((state) => ({
+        roles: { ...state.roles, [makeKey(employeeName, date)]: existing },
+      }));
+    }
+  },
+
   setBulkRoles: async (employeeName: string, dates: string[], roleKey: WeekplanRoleKey) => {
     // Optimistic update
     set((state) => {
       const next = { ...state.roles };
       for (const d of dates) {
-        next[makeKey(employeeName, d)] = roleKey;
+        next[makeKey(employeeName, d)] = { role_key: roleKey, comment: null };
       }
       return { roles: next };
     });

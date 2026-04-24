@@ -9,7 +9,7 @@ import { shiftTypes } from "../../store/shiftStore";
 import { EmployeeYearlyStats } from "./EmployeeYearlyChart"; // [NEW]
 import type { HolidayMap } from "../../utils/deHolidays";
 import type { UnderstaffWarning } from "./shiftplan.warnings";
-import { EmployeeMonthlyStats } from "./shiftplan.hours"; // [NEW]
+import { EmployeeMonthlyStats, DayHourInfo, WeekHourInfo } from "./shiftplan.hours";
 import { WellbeingConfig, WellbeingMetric } from "../../api/wellbeing"; // [NEW]
 import { ShiftViolation, ViolationType } from "../../api/shiftValidation"; // [NEW]
 
@@ -174,7 +174,7 @@ export function ShiftplanTable({
         if (time > maxTime) maxTime = time;
       }
     }
-    return maxTime > 0 ? new Date(maxTime).toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+    return maxTime > 0 ? new Date(maxTime).toLocaleString(locale, { timeZone: 'Europe/Berlin', day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
   }, [locale, tickets]);
 
   // Ramadan Helper
@@ -341,8 +341,8 @@ export function ShiftplanTable({
                   </th>
                 ))}
 
-                {/* 2027+ Header Logic */}
-                {year >= 2027 && (
+                {/* Hours columns header */}
+                {employeeHours && (
                   <>
                     <th className="sticky right-[100px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Soll" : "Plan"}</th>
                     <th className="sticky right-[50px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Ist" : "Actual"}</th>
@@ -415,7 +415,7 @@ export function ShiftplanTable({
                               <TooltipContent side="bottom" className="text-xs bg-[#0f111a]/95 backdrop-blur text-white border-white/10 p-2 shadow-xl z-50 text-left">
                                 {/* ... existing content ... */}
                                 <div className="font-bold mb-1 text-purple-400 flex items-center gap-2 border-b border-white/10 pb-1">
-                                  <Moon size={10} /> {d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}
+                                  <Moon size={10} /> {d.toLocaleDateString(locale, { timeZone: 'Europe/Berlin', month: 'short', day: 'numeric' })}
                                 </div>
                                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px]">
                                   <span className="text-muted-foreground">Fajr:</span> <span className="text-right font-mono text-purple-200">{getSunData(day)?.fajr || "-"}</span>
@@ -472,7 +472,7 @@ export function ShiftplanTable({
                               </div>
                               <div className="text-[13px] font-bold text-slate-100 px-1 pb-1">{holidayName}</div>
                               <div className="text-[11px] text-muted-foreground px-1 mb-2">
-                                {d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}
+                                {d.toLocaleDateString("de-DE", { timeZone: 'Europe/Berlin', weekday: "long", day: "numeric", month: "long" })}
                               </div>
                             </ContextMenu.Content>
                           </ContextMenu.Portal>
@@ -543,12 +543,29 @@ export function ShiftplanTable({
                             </div>
                           )}
 
-                          {/* 2027 Hours */}
+                          {/* Hours summary */}
                           {employeeHours && (
-                            <div className="text-[10px] text-muted-foreground font-normal mt-1 grid grid-cols-2 gap-x-2">
-                              <span>{isGerman ? "Soll" : "Plan"}: {employeeHours.get(name)?.soll ?? "—"}h</span>
-                              <span>{isGerman ? "Ist" : "Actual"}: {employeeHours.get(name)?.ist ?? "—"}h</span>
-                            </div>
+                            (() => {
+                              const stats = employeeHours.get(name);
+                              if (!stats) return null;
+                              const weekViolations = Object.values(stats.weekHours).filter(w => w.exceeded);
+                              return (
+                                <div className="text-[10px] font-normal mt-1 space-y-0.5">
+                                  <div className="grid grid-cols-2 gap-x-2 text-muted-foreground">
+                                    <span>{isGerman ? "Soll" : "Plan"}: {stats.soll}h</span>
+                                    <span>{isGerman ? "Ist" : "Actual"}: {stats.ist}h</span>
+                                  </div>
+                                  {weekViolations.length > 0 && (
+                                    <div className={`flex items-center gap-1 ${weekViolations[0].mode === 'block' ? 'text-red-400' : 'text-amber-400'}`}>
+                                      <AlertTriangle size={10} />
+                                      <span>
+                                        {weekViolations.map(w => `KW${w.weekNo}: ${w.totalHours}h`).join(", ")}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
                           )}
                         </div>
                       </td>
@@ -626,6 +643,11 @@ export function ShiftplanTable({
                           return d.getDate() === day && d.getMonth() === monthIndex1 - 1 && d.getFullYear() === year;
                         });
 
+                        // Daily hour limit check
+                        const dailyInfo = employeeHours?.get(name)?.dayHours?.[day];
+                        const dailyExceeded = dailyInfo?.exceeded ?? false;
+                        const dailyBlock = dailyExceeded && dailyInfo?.mode === 'block';
+
                         return (
                           <td
                             key={day}
@@ -640,6 +662,7 @@ export function ShiftplanTable({
                               ${isCellSelected ? "ring-2 ring-indigo-400 bg-indigo-500/20" : ""}
                               ${isToday ? "bg-indigo-500/5" : ""}
                               ${conflict ? "bg-red-900/40" : ""} 
+                              ${dailyBlock ? "bg-red-500/15 ring-1 ring-red-500/40" : dailyExceeded ? "bg-amber-500/10" : ""}
                             `}
                             onKeyDown={(e) => {
                               if (!canNav) return;
@@ -741,8 +764,24 @@ export function ShiftplanTable({
                             )}
 
                             {info || shift ? (
-                              <div className="flex justify-center w-full">
+                              <div className="flex flex-col items-center w-full gap-0.5">
                                 <ShiftBadge code={shift} hasWarning={hasWarning} />
+                                {/* Daily hours indicator */}
+                                {(() => {
+                                  const dayInfo = employeeHours?.get(name)?.dayHours?.[day];
+                                  if (!dayInfo || dayInfo.hours <= 0) return null;
+                                  const exceeded = dayInfo.exceeded;
+                                  const isBlock = exceeded && dayInfo.mode === 'block';
+                                  const isWarn = exceeded && dayInfo.mode === 'warn';
+                                  return (
+                                    <div
+                                      className={`text-[8px] font-mono leading-none ${isBlock ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-muted-foreground/40'}`}
+                                      title={exceeded ? (isGerman ? `Tageslimit überschritten (${dayInfo.hours}h)` : `Daily limit exceeded (${dayInfo.hours}h)`) : `${dayInfo.hours}h`}
+                                    >
+                                      {dayInfo.hours}h{exceeded && ' ⚠'}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             ) : (
                               <div className="text-[12px] font-bold text-white/10 group-hover:text-white/20 transition-colors select-none flex items-center justify-center w-full h-[22px]">—</div>
@@ -751,18 +790,20 @@ export function ShiftplanTable({
                         );
                       })}
 
-                      {/* 2027 Stats Columns */}
-                      {year >= 2027 && (
+                      {/* Hours Stats Columns */}
+                      {employeeHours && (
                         (() => {
                           const stats = employeeHours?.get(name);
                           const isOver = stats ? stats.diff > 0 : false;
                           const isUnder = stats ? stats.diff < 0 : false;
+                          // Check for any weekly violation
+                          const hasWeeklyViolation = stats && Object.values(stats.weekHours).some(w => w.exceeded);
                           return (
                             <>
                               <td className="p-2 border-l border-white/5 text-center text-xs font-semibold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-[100px] z-30 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-muted-foreground/80">
                                 {stats?.soll ?? "—"}
                               </td>
-                              <td className="p-2 border-l border-white/5 text-center text-xs font-semibold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-[50px] z-30 text-muted-foreground/80">
+                              <td className={`p-2 border-l border-white/5 text-center text-xs font-semibold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-[50px] z-30 ${hasWeeklyViolation ? "text-amber-400" : "text-muted-foreground/80"}`}>
                                 {stats?.ist ?? "—"}
                               </td>
                               <td className={`p-2 border-l border-white/5 text-center text-xs font-bold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-0 z-30

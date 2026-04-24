@@ -134,6 +134,18 @@ async function sendBotTicketNotification(baseUrl, apiKey, payload) {
 }
 
 export async function sendTeamsMessage(webhookUrl, title, body) {
+  // Check communication mode — respect disabled setting
+  try {
+    const modeSettings = await loadTeamsSettings(['teams.communicationMode']);
+    const commMode = modeSettings['teams.communicationMode'] || 'webhook';
+    if (commMode === 'disabled') {
+      console.warn('[Teams] Communication mode is disabled – message skipped.');
+      return { skipped: true, reason: 'disabled' };
+    }
+  } catch (e) {
+    // If settings lookup fails, proceed with send attempt
+  }
+
   if (!webhookUrl) {
     console.warn('[Teams] No webhook URL configured – message skipped.');
     return { skipped: true };
@@ -153,7 +165,7 @@ export async function sendTeamsMessage(webhookUrl, title, body) {
             { type: 'TextBlock', text: body, wrap: true },
             {
               type: 'TextBlock',
-              text: `ODIN · ${new Date().toLocaleString('de-DE')}`,
+              text: `ODIN · ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`,
               isSubtle: true,
               size: 'Small',
             },
@@ -186,6 +198,13 @@ export async function logTeamsMessage(type, recipient, channel, content, status,
 }
 
 export async function notifyDispatcherManualReview({ ticket, reason, category, mode = 'shadow' }) {
+  // Check communication mode — if disabled, skip all notifications
+  const modeSettings = await loadTeamsSettings(['teams.communicationMode']);
+  const commMode = modeSettings['teams.communicationMode'] || 'webhook';
+  if (commMode === 'disabled') {
+    return { skipped: true, reason: 'Teams communication is disabled' };
+  }
+
   const settings = await loadTeamsSettings([
     'dispatcher_manual_review_notify_systems',
     'dispatcher_manual_review_notify_subtypes',

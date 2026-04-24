@@ -37,7 +37,7 @@ import { formatMonthLabel } from "../../utils/dateFormat";
 import { getHessenHolidayMap, HolidayMap } from "../../utils/deHolidays";
 import { api } from "../../api/api";
 import { computeUnderstaffWarnings } from "../shiftplan/shiftplan.warnings";
-import { calculateEmployeeHours, EmployeeMonthlyStats } from "../shiftplan/shiftplan.hours";
+import { calculateEmployeeHours, EmployeeMonthlyStats, HourLimitsConfig } from "../shiftplan/shiftplan.hours";
 import { useWellbeingStore } from "../../store/wellbeingStore"; // [NEW]
 
 import { fetchViolations, validateShiftplan, ShiftViolation } from "../../api/shiftValidation"; // [NEW]
@@ -249,6 +249,7 @@ export default function Shiftplan() {
   const [issueShowSolutions, setIssueShowSolutions] = useState(true);
   const [issuePriorityMode, setIssuePriorityMode] = useState<IssuePriorityMode>("balanced");
   const [skillsEnabled, setSkillsEnabled] = useState(false);
+  const [hourLimits, setHourLimits] = useState<HourLimitsConfig>({ maxDailyHours: 10, maxWeeklyHours: 48, dailyMode: 'warn', weeklyMode: 'warn' });
 
   // [NEW] Ramadan State (Centralized)
   const [ramadanMeta, setRamadanMeta] = useState<RamadanMeta | null>(null);
@@ -285,6 +286,15 @@ export default function Shiftplan() {
         if (nextMode === "staffing_first" || nextMode === "balanced" || nextMode === "fairness_first") {
           setIssuePriorityMode(nextMode);
         }
+        // Hour limits
+        const dh = parseFloat(settings["shiftplan.max_daily_hours"]);
+        const wh = parseFloat(settings["shiftplan.max_weekly_hours"]);
+        setHourLimits({
+          maxDailyHours: Number.isFinite(dh) ? dh : 10,
+          maxWeeklyHours: Number.isFinite(wh) ? wh : 48,
+          dailyMode: (settings["shiftplan.daily_mode"] as HourLimitsConfig['dailyMode']) || 'warn',
+          weeklyMode: (settings["shiftplan.weekly_mode"] as HourLimitsConfig['weeklyMode']) || 'warn',
+        });
       })
       .catch(() => {
         setIssuePanelEnabled(true);
@@ -519,17 +529,16 @@ export default function Shiftplan() {
 
   const monthlyStats = useMonthlyStats(schedule, selectedYear, selectedMonthIndex);
 
-  // 2027 Logic
+  // Employee hours calculation (always active)
   const employeeHours = useMemo(() => {
-    if (selectedYear < 2027) return undefined;
     const map = new Map<string, EmployeeMonthlyStats>();
     for (const [name, row] of Object.entries(visibleSchedule)) {
       const rowTyped = row as Record<number, string>;
-      const stats = calculateEmployeeHours(name, rowTyped, selectedYear, monthIndex1, daysInMonth, holidays);
+      const stats = calculateEmployeeHours(name, rowTyped, selectedYear, monthIndex1, daysInMonth, holidays, hourLimits);
       map.set(name, stats);
     }
     return map;
-  }, [visibleSchedule, selectedYear, monthIndex1, daysInMonth, holidays]);
+  }, [visibleSchedule, selectedYear, monthIndex1, daysInMonth, holidays, hourLimits]);
 
   /* ------------------------------------------------ */
   /* WELLBEING LOGIC (NEW)                            */

@@ -1,9 +1,12 @@
 import express from "express";
 import { query } from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
+import { config } from "../config/index.js";
 
 const router = express.Router();
 router.use(requireAuth); // All /api/stats/* routes require a valid JWT
+
+const TZ = config.OPERATIONAL_TIMEZONE;
 
 /* ------------------------------------------------ */
 /* WEEKLY PIE: CLOSED TICKETS (QUALITY)             */
@@ -241,7 +244,7 @@ router.get("/dispatch", async (req, res) => {
         const t = to || new Date().toISOString().split("T")[0];
 
         const result = await query(`
-            SELECT DATE(dispatch_date AT TIME ZONE 'Europe/Berlin') as day, COUNT(*) as count
+            SELECT DATE(dispatch_date AT TIME ZONE '${TZ}') as day, COUNT(*) as count
             FROM queue_items
             WHERE dispatch_date >= $1::date AND dispatch_date < $2::date + INTERVAL '1 day'
             GROUP BY day
@@ -265,7 +268,7 @@ router.get("/closed", async (req, res) => {
         const t = to || new Date().toISOString().split("T")[0];
 
         const result = await query(`
-            SELECT DATE(closed_at AT TIME ZONE 'Europe/Berlin') as day, COUNT(*) as count
+            SELECT DATE(closed_at AT TIME ZONE '${TZ}') as day, COUNT(*) as count
             FROM queue_items
             WHERE closed_at >= $1::date AND closed_at < $2::date + INTERVAL '1 day'
             GROUP BY day
@@ -292,7 +295,7 @@ router.get("/expired", async (req, res) => {
         // Use COALESCE(revised_commit_date, commit_date) as the due field
         const result = await query(`
             SELECT
-                DATE(COALESCE(revised_commit_date, commit_date) AT TIME ZONE 'Europe/Berlin') as day,
+                DATE(COALESCE(revised_commit_date, commit_date) AT TIME ZONE '${TZ}') as day,
                 COUNT(*) as count
             FROM queue_items
             WHERE COALESCE(revised_commit_date, commit_date) >= $1::date

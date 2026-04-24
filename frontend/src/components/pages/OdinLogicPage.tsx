@@ -581,13 +581,13 @@ export default function OdinLogicPage() {
                 {health?.lastStartedAt && (
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {copy.lastStarted}: {new Date(health.lastStartedAt).toLocaleString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {copy.lastStarted}: {new Date(health.lastStartedAt).toLocaleString(locale, { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     {health.lastStartedBy && <span> {copy.by} {health.lastStartedBy}</span>}
                   </span>
                 )}
                 {!engineEnabled && health?.lastStoppedAt && (
                   <span className="flex items-center gap-1">
-                    {copy.stopped}: {new Date(health.lastStoppedAt).toLocaleString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {copy.stopped}: {new Date(health.lastStoppedAt).toLocaleString(locale, { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     {health.lastStoppedBy && <span> {copy.by} {health.lastStoppedBy}</span>}
                   </span>
                 )}

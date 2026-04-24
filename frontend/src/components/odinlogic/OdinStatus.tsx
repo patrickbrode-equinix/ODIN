@@ -52,7 +52,7 @@ export default function OdinStatus() {
           <div>
             <span className="text-muted-foreground">Letztes Update</span>
             <p className="font-medium">
-              {lastRunAt ? new Date(lastRunAt).toLocaleString("de-DE") : "Nie"}
+              {lastRunAt ? new Date(lastRunAt).toLocaleString("de-DE", { timeZone: 'Europe/Berlin' }) : "Nie"}
             </p>
           </div>
           <div>
@@ -96,7 +96,7 @@ export default function OdinStatus() {
           <div>
             <span className="text-muted-foreground">Letzter Run</span>
             <p className="font-medium">
-              {lastRun ? new Date(lastRun.started_at).toLocaleString("de-DE") : "Kein Run"}
+              {lastRun ? new Date(lastRun.started_at).toLocaleString("de-DE", { timeZone: 'Europe/Berlin' }) : "Kein Run"}
             </p>
           </div>
           <div>

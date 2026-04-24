@@ -185,7 +185,7 @@ function TvStockBadge() {
 function AssignmentHeaderBanner({ trace }: { trace: TvAssignmentTrace }) {
   const ticketLabel = trace.ticket.externalId || trace.ticket.id || "Unbekannt";
   const decidedAt = trace.decidedAt
-    ? new Date(trace.decidedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    ? new Date(trace.decidedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : null;
   const meta = [trace.ticket.status, trace.ticket.priorityLabel, trace.ticket.remainingLabel].filter(Boolean).join(" • ");
 
@@ -428,7 +428,7 @@ function ProjekteSlide({ projects }: { projects: TvProject[] }) {
                       {p.expected_done && (
                         <span className={`flex items-center gap-1.5 ${daysColor}`}>
                           <Calendar className="w-4 h-4" />
-                          {new Date(p.expected_done).toLocaleDateString("de-DE")}
+                          {new Date(p.expected_done).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
                           {daysLeft !== null && (
                             <span className="text-sm">
                               ({daysLeft < 0 ? `${Math.abs(daysLeft)}d überfällig` : daysLeft === 0 ? "heute" : `noch ${daysLeft}d`})
@@ -995,9 +995,9 @@ export function TvLayout({
               {next72hTickets.map((t, i) => {
                 const dStr = t.commit_date || t.dueDate || t.targetDate || t.termin || t.sched_start || t.Start_Date || t.EndDate;
                 const dateObj = dStr ? new Date(dStr) : null;
-                const dateFormatted = dateObj ? dateObj.toLocaleDateString("de-DE", { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : "";
+                const dateFormatted = dateObj ? dateObj.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : "";
                 const schedStart = t.sched_start || t.Start_Date;
-                const schedFormatted = schedStart ? new Date(schedStart).toLocaleDateString("de-DE", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : "";
+                const schedFormatted = schedStart ? new Date(schedStart).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : "";
                 const owner = String(t.owner ?? t.Owner ?? t.assignee ?? t.assignedTo ?? t.ticketOwner ?? "–").trim();
                 const id = String(t.external_id ?? t.ticketNumber ?? t.id ?? "").trim();
                 const activity = String(t.activityType ?? t.activity ?? t.title ?? t.subtype ?? "–").trim();

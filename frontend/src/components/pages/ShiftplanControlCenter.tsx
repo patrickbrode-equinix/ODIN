@@ -72,7 +72,7 @@ type TabKey = 'overview' | 'draft' | 'conflicts' | 'explanations' | 'fairness' |
 
 function formatDT(iso: string | null, locale: string) {
   if (!iso) return '–';
-  return new Date(iso).toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString(locale, { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function daysInMonth(year: number, month: number) {
@@ -964,7 +964,7 @@ function PlanningBasisView({ basis, loading, onReload }: { basis: any; loading: 
           </h4>
           <div className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-0.5">
             {(basis.absences || []).map((a: any, i: number) => (
-              <div key={i}>{a.employee_name}: {a.type} ({new Date(a.start_date).toLocaleDateString(locale)} – {new Date(a.end_date).toLocaleDateString(locale)})</div>
+              <div key={i}>{a.employee_name}: {a.type} ({new Date(a.start_date).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })} – {new Date(a.end_date).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })})</div>
             ))}
             {(basis.absences || []).length === 0 && <div>{t('sc.noAbsences')}</div>}
           </div>

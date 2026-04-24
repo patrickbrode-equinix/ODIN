@@ -8,6 +8,7 @@ import express from 'express';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { requirePageAccess } from '../middleware/requirePageAccess.js';
 import pool from '../db.js';
+import { config } from '../config/index.js';
 import ExcelJS from 'exceljs';
 import { recomputeConstraintsInternal } from './constraints.js';
 import { syncEmployeeContacts } from './employeeContacts.js';
@@ -1328,7 +1329,7 @@ async function buildExcelWorkbook(drafts) {
 
     // Footer
     const footerRow = empNames.length + 8;
-    ws.getCell(footerRow, 1).value = `Exportiert am ${new Date().toLocaleString('de-DE')} — ODIN Schichtplan v${draft.version}`;
+    ws.getCell(footerRow, 1).value = `Exportiert am ${new Date().toLocaleString('de-DE', { timeZone: config.OPERATIONAL_TIMEZONE })} — ODIN Schichtplan v${draft.version}`;
     ws.getCell(footerRow, 1).font = { name: 'Calibri', size: 8, color: { argb: '9CA3AF' } };
 
     // Print setup

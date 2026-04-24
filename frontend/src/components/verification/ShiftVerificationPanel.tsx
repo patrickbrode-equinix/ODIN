@@ -394,10 +394,10 @@ export function ShiftVerificationPanel() {
                       <td className="px-3 py-2 font-mono">{r.shift_code}</td>
                       <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
                       <td className="px-3 py-2 text-muted-foreground text-xs">
-                        {r.message_sent_at ? new Date(r.message_sent_at).toLocaleTimeString(locale) : copy.misc.noValue}
+                        {r.message_sent_at ? new Date(r.message_sent_at).toLocaleTimeString(locale, { timeZone: 'Europe/Berlin' }) : copy.misc.noValue}
                       </td>
                       <td className="px-3 py-2 text-muted-foreground text-xs">
-                        {r.responded_at ? new Date(r.responded_at).toLocaleTimeString(locale) : copy.misc.noValue}
+                        {r.responded_at ? new Date(r.responded_at).toLocaleTimeString(locale, { timeZone: 'Europe/Berlin' }) : copy.misc.noValue}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <select
@@ -492,7 +492,7 @@ export function ShiftVerificationPanel() {
                   {audit.map((a) => (
                     <tr key={a.id} className="hover:bg-muted/10">
                       <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
-                        {new Date(a.created_at).toLocaleString(locale)}
+                        {new Date(a.created_at).toLocaleString(locale, { timeZone: 'Europe/Berlin' })}
                       </td>
                       <td className="px-3 py-1.5 font-medium">{a.employee_name}</td>
                       <td className="px-3 py-1.5 font-mono">{a.event_type}</td>

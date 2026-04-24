@@ -117,7 +117,8 @@ export const useAssignmentStore = create<AssignmentState>()((set, get) => ({
       const health = await AssignmentApi.getHealth();
       set({ health, executing: false });
     } catch (err: any) {
-      set({ error: err.message || 'Failed to start engine', executing: false });
+      const serverMsg = err?.response?.data?.error || err?.response?.data?.message;
+      set({ error: serverMsg || err.message || 'Failed to start engine', executing: false });
     }
   },
 
@@ -128,7 +129,8 @@ export const useAssignmentStore = create<AssignmentState>()((set, get) => ({
       const health = await AssignmentApi.getHealth();
       set({ health, executing: false });
     } catch (err: any) {
-      set({ error: err.message || 'Failed to stop engine', executing: false });
+      const serverMsg = err?.response?.data?.error || err?.response?.data?.message;
+      set({ error: serverMsg || err.message || 'Failed to stop engine', executing: false });
     }
   },
 

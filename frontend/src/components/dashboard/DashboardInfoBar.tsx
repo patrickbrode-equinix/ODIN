@@ -167,11 +167,11 @@ export function DashboardInfoBar() {
                                     {/* Footer: Date + Auto-Delete Badge */}
                                     <div className="mt-auto flex items-center justify-between border-t border-border/50 pt-2">
                                         <div className="text-[0.75em] text-muted-foreground">
-                                            {new Date(entry.created_at).toLocaleDateString(locale)}
+                                            {new Date(entry.created_at).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })}
                                         </div>
                                         {entry.delete_at && (
                                             <div className="text-[0.7em] bg-red-500/20 text-red-300 px-1 py-0.5 rounded border border-red-500/10">
-                                                {t("dashboardInfo.deletionBadge")}: {new Date(entry.delete_at).toLocaleDateString(locale)}
+                                                {t("dashboardInfo.deletionBadge")}: {new Date(entry.delete_at).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })}
                                             </div>
                                         )}
                                     </div>

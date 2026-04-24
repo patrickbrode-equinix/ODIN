@@ -73,6 +73,10 @@ export const config = {
     DATABASE_URL,
     db,
 
+    // Operational timezone — used for interpreting crawler timestamps and display
+    // Override via OPERATIONAL_TIMEZONE env var (IANA identifier, e.g. "Europe/Berlin")
+    OPERATIONAL_TIMEZONE: process.env.OPERATIONAL_TIMEZONE || "Europe/Berlin",
+
     // Auth
     JWT_SECRET: process.env.JWT_SECRET || (isProd ? "" : "dev-only-insecure-secret"),
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "8h",
@@ -95,6 +99,7 @@ export const config = {
 console.log("\n[CONFIG] ── Startup Configuration ──────────────────────");
 console.log(`  NODE_ENV   : ${config.NODE_ENV}`);
 console.log(`  PORT       : ${config.PORT}`);
+console.log(`  TIMEZONE   : ${config.OPERATIONAL_TIMEZONE}`);
 console.log(`  DATABASE   : ${DATABASE_URL ? "DATABASE_URL (set)" : `${db.host}:${db.port}/${db.database} (user: ${db.user})`}`);
 console.log(`  DB_PASS    : ${db.password ? "****" : "⚠ MISSING"}`);
 console.log(`  JWT_SECRET : ${config.JWT_SECRET && config.JWT_SECRET !== "dev-only-insecure-secret" ? "****" : (isProd ? "⚠ MISSING" : "dev (insecure)")}`);

@@ -238,6 +238,13 @@ export default function AdminSettings() {
     [canAccess, tabs]
   );
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
+  const [feedbackCount, setFeedbackCount] = useState<number>(0);
+
+  useEffect(() => {
+    api.get<{ id: number }[]>("/feedback/entries", { params: { limit: 200 } })
+      .then(res => setFeedbackCount(Array.isArray(res.data) ? res.data.length : 0))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -308,7 +315,12 @@ export default function AdminSettings() {
             <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${tab.accent} ${activeTab === tab.id ? "text-sky-700 dark:text-sky-200" : "text-slate-600 dark:text-slate-300 group-hover:text-sky-700 dark:group-hover:text-sky-200"}`}>
               <tab.icon className="h-5 w-5" />
             </div>
-            <div className="text-base font-semibold">{tab.label}</div>
+            <div className="text-base font-semibold">
+              {tab.label}
+              {tab.id === "feedback" && feedbackCount > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[11px] font-bold text-rose-300">{feedbackCount}</span>
+              )}
+            </div>
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300">{tab.description}</div>
           </button>
         ))}
@@ -453,7 +465,7 @@ function TVSettingsTab() {
 
       <div className="mt-4 text-xs text-gray-400">
         {slides.length > 0 && slides[0].updated_by && (
-          <span>{t('admin.lastChangedBy')} {slides[0].updated_by} {t('admin.on')} {new Date(slides[0].updated_at!).toLocaleString(isGerman ? "de-DE" : "en-GB")}</span>
+          <span>{t('admin.lastChangedBy')} {slides[0].updated_by} {t('admin.on')} {new Date(slides[0].updated_at!).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}</span>
         )}
       </div>
     </div>
@@ -998,6 +1010,7 @@ function FeedbackTab() {
       <EnterpriseCard>
         <div className="mb-4 flex items-center gap-1.5">
           <h3 className="text-sm font-semibold">{t('admin.submittedFeedback')}</h3>
+          <span className="inline-flex items-center justify-center rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[11px] font-bold text-rose-300">{entries.length}</span>
           <InfoTooltip title={t('admin.submittedFeedback')} side="right" align="start"><p>{isGerman ? "Hier erscheinen nur Feedbacks, die Nutzer in ODIN erfasst haben. Mail-Einstellungen oder Weiterleitungen gibt es nicht mehr." : "Only feedback captured directly in ODIN appears here. Mail settings and forwarding are no longer used."}</p></InfoTooltip>
         </div>
 
@@ -1027,7 +1040,7 @@ function FeedbackTab() {
                         <span className="text-sm font-semibold text-slate-100">{entry.title}</span>
                       </div>
                       <div className="mt-1 text-xs text-slate-400">
-                        {t('admin.from')} {entry.senderName || entry.senderEmail || t('admin.unknown')} {t('admin.on')} {new Date(entry.createdAt).toLocaleString(isGerman ? "de-DE" : "en-GB")}
+                        {t('admin.from')} {entry.senderName || entry.senderEmail || t('admin.unknown')} {t('admin.on')} {new Date(entry.createdAt).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -1173,7 +1186,7 @@ function AuditTab() {
           <tbody>
             {entries.map(e => (
               <tr key={e.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                <td className="py-2 px-3 whitespace-nowrap text-gray-500">{new Date(e.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB")}</td>
+                <td className="py-2 px-3 whitespace-nowrap text-gray-500">{new Date(e.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}</td>
                 <td className="py-2 px-3"><span className="px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700">{e.domain}</span></td>
                 <td className="py-2 px-3 font-mono text-xs">{e.setting_key}</td>
                 <td className="py-2 px-3 text-xs text-red-500 truncate" style={{ maxWidth: 150 }}>{e.old_value || "–"}</td>

@@ -808,7 +808,7 @@ export default function AssignmentRulesEditor({ embedded = false }: { embedded?:
                         </div>
 
                         <div className="text-xs text-gray-400">
-                          {t("rules.version")} {rule.version} · {t("rules.lastChangedBy")} {rule.updated_by || "System"} {isGerman ? "am" : "on"} {new Date(rule.updated_at).toLocaleString(isGerman ? "de-DE" : "en-GB")}
+                          {t("rules.version")} {rule.version} · {t("rules.lastChangedBy")} {rule.updated_by || "System"} {isGerman ? "am" : "on"} {new Date(rule.updated_at).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}
                         </div>
 
                         {showHistory && history.length > 0 && (
@@ -818,7 +818,7 @@ export default function AssignmentRulesEditor({ embedded = false }: { embedded?:
                               <div key={entry.id} className="flex items-start justify-between rounded bg-gray-50 p-2 text-xs dark:bg-gray-800/50">
                                 <div className="space-y-1">
                                   <div className="font-medium">v{entry.version} – {entry.changed_by || "System"}</div>
-                                  <div className="text-gray-400">{new Date(entry.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB")}</div>
+                                  <div className="text-gray-400">{new Date(entry.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}</div>
                                   {entry.change_note && <div className="italic text-gray-500">{entry.change_note}</div>}
                                 </div>
                                 <button

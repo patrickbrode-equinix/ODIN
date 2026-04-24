@@ -274,7 +274,7 @@ function ProjectCard({
             {project.expected_done && (
               <span className={`flex items-center gap-1 text-[12px] ${daysColor}`}>
                 <Calendar className="w-3 h-3" />
-                {new Date(project.expected_done).toLocaleDateString(locale)}
+                {new Date(project.expected_done).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })}
                 {daysLeft !== null && (
                   <span className="ml-1 text-[11px]">
                     ({daysLeft < 0 ? `${Math.abs(daysLeft)}d ${t("projects.overdue")}` : daysLeft === 0 ? t("projects.today") : `${daysLeft}d`})

@@ -1,6 +1,7 @@
 import express from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import { config } from '../config/index.js';
 
 const router = express.Router();
 
@@ -233,7 +234,7 @@ router.get('/changes/export', requireAuth, async (req, res) => {
             Mitarbeiter: r.employee_name,
             "Alt": r.old_value || "",
             "Neu": r.new_value || "",
-            "Geändert am": new Date(r.changed_at).toLocaleString('de-DE'),
+            "Geändert am": new Date(r.changed_at).toLocaleString('de-DE', { timeZone: config.OPERATIONAL_TIMEZONE }),
             "Geändert von": r.changed_by,
             "Quelle": r.source
         }));

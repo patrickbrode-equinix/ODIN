@@ -319,8 +319,8 @@ export default function Protokoll() {
                 return (
                   <TableRow key={log.id} className="border-white/5 hover:bg-white/2.5">
                     <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                      {new Date(log.ts).toLocaleDateString(locale)}{" "}
-                      <span className="text-foreground/80">{new Date(log.ts).toLocaleTimeString(locale)}</span>
+                      {new Date(log.ts).toLocaleDateString(locale, { timeZone: 'Europe/Berlin' })}{" "}
+                      <span className="text-foreground/80">{new Date(log.ts).toLocaleTimeString(locale, { timeZone: 'Europe/Berlin' })}</span>
                     </TableCell>
                     <TableCell className="text-sm font-medium">{log.actor || "Ã¢â‚¬â€œ"}</TableCell>
                     <TableCell>

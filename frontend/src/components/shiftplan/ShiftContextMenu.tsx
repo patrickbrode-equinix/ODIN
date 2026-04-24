@@ -63,6 +63,12 @@ export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClos
                 <MenuItem label={t("shiftContext.late2")} onClick={() => onSelect('L2')} />
                 <MenuItem label={t("shiftContext.night")} onClick={() => onSelect('N')} />
                 <div className="h-px bg-border my-1" />
+                <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground">{t("shiftContext.halfShifts")}</div>
+                <MenuItem label={t("shiftContext.halfEarly1")} onClick={() => onSelect('HE1')} />
+                <MenuItem label={t("shiftContext.halfEarly2")} onClick={() => onSelect('HE2')} />
+                <MenuItem label={t("shiftContext.halfLate1")} onClick={() => onSelect('HL1')} />
+                <MenuItem label={t("shiftContext.halfLate2")} onClick={() => onSelect('HL2')} />
+                <div className="h-px bg-border my-1" />
                 <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground">{t("shiftContext.absence")}</div>
                 <MenuItem label={t("shiftContext.vacation")} onClick={() => onSelect('ABSENCE:VACATION')} />
                 <MenuItem label={t("shiftContext.sick")} onClick={() => onSelect('ABSENCE:SICK')} />

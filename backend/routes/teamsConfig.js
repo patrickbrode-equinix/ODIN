@@ -894,7 +894,7 @@ router.post("/test/send", requireAuth, requirePageAccess("teams_center", "write"
           body: [
             { type: "TextBlock", size: "Large", weight: "Bolder", text: title },
             { type: "TextBlock", text: body, wrap: true },
-            { type: "TextBlock", text: `Test via ODIN · ${new Date().toLocaleString("de-DE")}`, isSubtle: true, size: "Small" },
+            { type: "TextBlock", text: `Test via ODIN · ${new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`, isSubtle: true, size: "Small" },
           ],
         },
       }],
@@ -970,7 +970,7 @@ router.post("/test/template", requireAuth, requirePageAccess("teams_center", "wr
           body: [
             { type: "TextBlock", size: "Large", weight: "Bolder", text: req.body.title },
             { type: "TextBlock", text: rendered, wrap: true },
-            { type: "TextBlock", text: `Template Test · ${new Date().toLocaleString("de-DE")}`, isSubtle: true, size: "Small" },
+            { type: "TextBlock", text: `Template Test · ${new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`, isSubtle: true, size: "Small" },
           ],
         },
       }],

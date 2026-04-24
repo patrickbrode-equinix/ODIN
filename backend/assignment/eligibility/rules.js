@@ -262,6 +262,75 @@ export function checkTicketCapacity(worker, ticket, workerCurrentTickets = []) {
 }
 
 /**
+ * Check if the worker's shift is too close to ending.
+ * If cutoffMinutesBeforeShiftEnd is set, no new tickets should be assigned
+ * to workers whose shift ends within that many minutes.
+ */
+export function isNotNearShiftEnd(worker, settings = {}, now = Date.now()) {
+  const cutoffMinutes = parseInt(settings.cutoffMinutesBeforeShiftEnd, 10);
+  if (!cutoffMinutes || cutoffMinutes <= 0) {
+    return { eligible: true, rule: 'isNotNearShiftEnd', reason: 'Shift-end cutoff is disabled (0 or not set)' };
+  }
+  if (!worker.shiftEnd) {
+    return { eligible: true, rule: 'isNotNearShiftEnd', reason: 'Worker has no shift end time — skipping cutoff check' };
+  }
+  const shiftEnd = new Date(worker.shiftEnd);
+  if (isNaN(shiftEnd.getTime())) {
+    return { eligible: true, rule: 'isNotNearShiftEnd', reason: 'Worker shift end is not a valid date — skipping cutoff check' };
+  }
+  const currentMoment = now instanceof Date ? now : new Date(now);
+  const cutoffMs = cutoffMinutes * 60 * 1000;
+  const cutoffTime = new Date(shiftEnd.getTime() - cutoffMs);
+  if (currentMoment >= cutoffTime) {
+    return {
+      eligible: false,
+      rule: 'isNotNearShiftEnd',
+      reason: `${worker.name} Schichtende in weniger als ${cutoffMinutes} Min. (${shiftEnd.toISOString()}) — keine neuen Zuweisungen`,
+    };
+  }
+  return { eligible: true, rule: 'isNotNearShiftEnd', reason: `Worker shift ends at ${shiftEnd.toISOString()}, still ${cutoffMinutes}+ min remaining` };
+}
+
+/**
+ * Check if the worker already has too many tickets with the same system_name
+ * for a given ticket type (SmartHands / CrossConnect).
+ * Uses type-specific configurable limits.
+ */
+export function checkSameSystemLimit(worker, ticket, workerCurrentTickets = [], settings = {}) {
+  if (!ticket.systemName) {
+    return { eligible: true, rule: 'sameSystemLimit', reason: 'Ticket has no system_name — skipping same-system limit' };
+  }
+
+  const ticketType = (ticket.type || '').toLowerCase();
+  let maxLimit = 0;
+  if (ticketType === 'smarthands') {
+    maxLimit = parseInt(settings.maxSameSystemSmartHands, 10) || 3;
+  } else if (ticketType === 'crossconnect') {
+    maxLimit = parseInt(settings.maxSameSystemCrossConnect, 10) || 2;
+  } else {
+    return { eligible: true, rule: 'sameSystemLimit', reason: `No same-system limit configured for type ${ticket.type}` };
+  }
+
+  const sameSystemCount = workerCurrentTickets.filter(
+    (t) => t.systemName && t.systemName.toLowerCase() === ticket.systemName.toLowerCase()
+  ).length;
+
+  if (sameSystemCount >= maxLimit) {
+    return {
+      eligible: false,
+      rule: 'sameSystemLimit',
+      reason: `${worker.name} hat bereits ${sameSystemCount}/${maxLimit} Tickets für System "${ticket.systemName}" (${ticket.type})`,
+    };
+  }
+
+  return {
+    eligible: true,
+    rule: 'sameSystemLimit',
+    reason: `Worker has ${sameSystemCount}/${maxLimit} tickets for system "${ticket.systemName}" (${ticket.type})`,
+  };
+}
+
+/**
  * Apply all eligibility rules to a single worker for a given ticket.
  * Returns { eligible, exclusions: [{rule, reason}] }
  *
@@ -281,10 +350,12 @@ export function applyEligibilityRules(worker, ticket, settings, workerCurrentTic
     () => isNotAbsent(worker),
     () => isVerified(worker, settings),
     () => isShiftActive(worker, ticket, settings, now),
+    () => isNotNearShiftEnd(worker, settings, now),
     () => checkRole(worker, ticket, now),
     () => matchesSite(worker, ticket, settings),
     () => matchesResponsibility(worker, ticket, settings),
     () => checkTicketCapacity(worker, ticket, workerCurrentTickets),
+    () => checkSameSystemLimit(worker, ticket, workerCurrentTickets, settings),
   ];
 
   const exclusions = [];
