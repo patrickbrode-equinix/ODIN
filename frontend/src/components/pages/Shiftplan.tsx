@@ -3,18 +3,17 @@
 /* FINAL stabile Version (Restored Layout)          */
 /* ------------------------------------------------ */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, ChevronLeft, ChevronRight, RefreshCw, Download, Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, RefreshCw, Calendar, Plus, Trash2, Users } from "lucide-react";
 import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
 
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { toast } from "sonner"; // [NEW]
 import { ShiftplanTable } from "../shiftplan/ShiftplanTable";
 import { ShiftContextMenu } from "../shiftplan/ShiftContextMenu";
 import { useShiftSelection } from "../../hooks/useShiftSelection";
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
-import { useMonthlyStats } from "../../hooks/useShiftStats";
-import { ShiftStatsPanel } from "../shiftplan/ShiftStatsPanel";
 import { ShiftImportDialog } from "../shiftplan/ShiftImportDialog"; // [NEW] Excel Import
 import { ExportMenu } from "../shiftplan/ExportMenu"; // [NEW]
 import { HistoryDialog } from "../shiftplan/HistoryDialog"; // [NEW]
@@ -25,8 +24,11 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 
 import {
+  createManualShiftplanEmployee,
+  deleteManualShiftplanEmployee,
   fetchSchedule,
   importSchedule,
+  type ManualShiftplanEmployee,
 } from "../shiftplan/shiftplan.api";
 import { useShiftplanActions } from "../../hooks/useShiftplanActions";
 
@@ -36,6 +38,8 @@ import { useShiftStore } from "../../store/shiftStore";
 import { formatMonthLabel } from "../../utils/dateFormat";
 import { getHessenHolidayMap, HolidayMap } from "../../utils/deHolidays";
 import { api } from "../../api/api";
+import { logActivityEventSafe } from "../../api/activity";
+import { fetchShiftHours, type ShiftHoursEmployee } from "../../api/shiftHours";
 import { computeUnderstaffWarnings } from "../shiftplan/shiftplan.warnings";
 import { calculateEmployeeHours, EmployeeMonthlyStats, HourLimitsConfig } from "../shiftplan/shiftplan.hours";
 import { useWellbeingStore } from "../../store/wellbeingStore"; // [NEW]
@@ -59,6 +63,7 @@ import { RamadanBadge } from "../shiftplan/RamadanBadge"; // [NEW]
 import { getShiftplanPreferences, updateShiftplanPreferences } from "../../api/userPreferences";
 import { generateReport, downloadReport } from "../../api/reports"; // [NEW]
 import { fetchRamadanMeta, fetchSunTimes, RamadanMeta, SunTime } from "../../api/ramadan"; // [NEW]
+import { fetchAttendance, upsertAttendance, type AttendanceRecord } from "../../api/attendance";
 
 type IssuePriorityMode = "staffing_first" | "balanced" | "fairness_first";
 
@@ -119,6 +124,19 @@ function formatIssueSource(source: ShiftplanIssueInsight["source"], isGerman: bo
   }
 }
 
+function normalizeTargetHours(value: unknown, fallback = 174) {
+  const parsed = Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) && parsed >= 0 ? Number(parsed.toFixed(2)) : fallback;
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toIsoDate(year: number, monthIndex1: number, day: number) {
+  return `${year}-${pad2(monthIndex1)}-${pad2(day)}`;
+}
+
 /* ------------------------------------------------ */
 /* PAGE                                             */
 /* ------------------------------------------------ */
@@ -156,6 +174,9 @@ export default function Shiftplan() {
 
 
   const [schedule, setSchedule] = useState<Record<string, any>>({});
+  const [manualEmployees, setManualEmployees] = useState<ManualShiftplanEmployee[]>([]);
+  const [manualEmployeeDraft, setManualEmployeeDraft] = useState("");
+  const [manualEmployeesSaving, setManualEmployeesSaving] = useState(false);
   const [daysInMonth, setDaysInMonth] = useState<number>(31);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -171,7 +192,6 @@ export default function Shiftplan() {
   const [warningsVisible, setWarningsVisible] = useState(false);
   const [warningDialogOpen, setWarningDialogOpen] = useState(false);
   const [hiddenPanelVisible, setHiddenPanelVisible] = useState(false);
-  const [statsVisible, setStatsVisible] = useState(false);
   // [NEW] Wellbeing Panel
   const [wellbeingVisible, setWellbeingVisible] = useState(false);
 
@@ -242,6 +262,7 @@ export default function Shiftplan() {
   const [showNightOnly, setShowNightOnly] = useState(false);
   const [showWeekendOnly, setShowWeekendOnly] = useState(false);
   const [showWarningsOnly, setShowWarningsOnly] = useState(false);
+  const [showManualOnly, setShowManualOnly] = useState(false);
   const [showUnderstaffedOnly, setShowUnderstaffedOnly] = useState(false); // Not used yet in logic but requested
   const [showRamadanOverlay, setShowRamadanOverlay] = useState(false);
   const [showSunTimesHints, setShowSunTimesHints] = useState(false);
@@ -250,11 +271,22 @@ export default function Shiftplan() {
   const [issuePriorityMode, setIssuePriorityMode] = useState<IssuePriorityMode>("balanced");
   const [skillsEnabled, setSkillsEnabled] = useState(false);
   const [hourLimits, setHourLimits] = useState<HourLimitsConfig>({ maxDailyHours: 10, maxWeeklyHours: 48, dailyMode: 'warn', weeklyMode: 'warn' });
+  const [defaultTargetHours, setDefaultTargetHours] = useState(174);
+  const [employeeYearProgress, setEmployeeYearProgress] = useState<Map<string, ShiftHoursEmployee>>(new Map());
+  const [employeeYearProgressLoading, setEmployeeYearProgressLoading] = useState(false);
 
   // [NEW] Ramadan State (Centralized)
   const [ramadanMeta, setRamadanMeta] = useState<RamadanMeta | null>(null);
   const [ramadanTimings, setRamadanTimings] = useState<SunTime[]>([]);
   const [ramadanLoading, setRamadanLoading] = useState(false);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceRecord>>({});
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [attendanceTarget, setAttendanceTarget] = useState<{ employeeName: string; day: number; date: string } | null>(null);
+  const [attendanceSelectionTargets, setAttendanceSelectionTargets] = useState<Array<{ employeeName: string; day: number; date: string }>>([]);
+  const [attendanceApplyToSelection, setAttendanceApplyToSelection] = useState(false);
+  const [attendanceArrival, setAttendanceArrival] = useState("");
+  const [attendanceDeparture, setAttendanceDeparture] = useState("");
+  const [attendanceNote, setAttendanceNote] = useState("");
 
   // Load Preferences
   useEffect(() => {
@@ -327,8 +359,59 @@ export default function Shiftplan() {
   }, [searchTerm, showNightOnly, showWeekendOnly, showWarningsOnly]);
 
   const cellKey = (employeeName: string, day: number) => `${employeeName}|||${day}`;
+  const attendanceKey = (employeeName: string, date: string) => `${employeeName}|||${date}`;
 
   const canEdit = canWrite("shiftplan");
+
+  const loadMonthAttendance = useCallback(async (year: number, monthIndex1: number, totalDays: number) => {
+    try {
+      const from = toIsoDate(year, monthIndex1, 1);
+      const to = toIsoDate(year, monthIndex1, totalDays);
+      const records = await fetchAttendance(from, to);
+      const map: Record<string, AttendanceRecord> = {};
+      for (const record of records) {
+        const dateValue = String(record.date || "").split("T")[0];
+        map[attendanceKey(record.employee_name, dateValue)] = record;
+      }
+      setAttendanceMap(map);
+    } catch {
+      setAttendanceMap({});
+    }
+  }, []);
+
+  const applyAttendance = useCallback(async () => {
+    if (!attendanceTarget) return;
+    try {
+      const targets = attendanceApplyToSelection && attendanceSelectionTargets.length > 0
+        ? attendanceSelectionTargets
+        : [attendanceTarget];
+
+      const nextRecords: Record<string, AttendanceRecord> = {};
+      for (const target of targets) {
+        const result = await upsertAttendance({
+          employee_name: target.employeeName,
+          date: target.date,
+          arrival_time: attendanceArrival || null,
+          departure_time: attendanceDeparture || null,
+          note: attendanceNote || null,
+        });
+        nextRecords[attendanceKey(target.employeeName, target.date)] = result;
+      }
+
+      setAttendanceMap((prev) => ({
+        ...prev,
+        ...nextRecords,
+      }));
+      setAttendanceOpen(false);
+      toast.success(
+        targets.length > 1
+          ? (isGerman ? `Kommen/Gehen für ${targets.length} Einträge gespeichert.` : `Arrival/departure saved for ${targets.length} entries.`)
+          : (isGerman ? "Kommen/Gehen gespeichert." : "Arrival/departure saved.")
+      );
+    } catch {
+      toast.error(isGerman ? "Speichern fehlgeschlagen." : "Save failed.");
+    }
+  }, [attendanceApplyToSelection, attendanceArrival, attendanceDeparture, attendanceNote, attendanceSelectionTargets, attendanceTarget, isGerman]);
 
   /* ------------------------------------------------ */
   /* HELPERS                                         */
@@ -343,6 +426,123 @@ export default function Shiftplan() {
   const monthIndex1 = selectedMonthIndex + 1;
 
   const holidays = useMemo(() => getHessenHolidayMap(selectedYear, isGerman ? "de" : "en"), [isGerman, selectedYear]);
+  const absencesByEmployee = useMemo(() => {
+    const grouped = new Map<string, Absence[]>();
+    for (const absence of absences) {
+      const employeeName = String(absence.employee_name || "").trim();
+      if (!employeeName) continue;
+      if (!grouped.has(employeeName)) grouped.set(employeeName, []);
+      grouped.get(employeeName)!.push(absence);
+    }
+    return grouped;
+  }, [absences]);
+
+  const logShiftplanEvent = (action: string, details: Record<string, unknown> = {}) => {
+    logActivityEventSafe({
+      action,
+      module: "SHIFTPLAN",
+      details: {
+        year: selectedYear,
+        month: monthIndex1,
+        viewMode,
+        ...details,
+      },
+    });
+  };
+
+  const handleToggleHolidayOverlay = () => {
+    const nextState = !showHolidayOverlay;
+    logShiftplanEvent("SHIFTPLAN_HOLIDAYS_TOGGLE", { enabled: nextState });
+    setShowHolidayOverlay(nextState);
+  };
+
+  const handleToggleWarnings = () => {
+    const nextState = !warningsVisible;
+    logShiftplanEvent("SHIFTPLAN_WARNINGS_TOGGLE", { enabled: nextState });
+    setWarningsVisible(nextState);
+  };
+
+  const handleOpenWarningsDialog = () => {
+    logShiftplanEvent("SHIFTPLAN_WARNINGS_DIALOG_OPEN", {});
+    setWarningDialogOpen(true);
+  };
+
+  const handleToggleWellbeing = () => {
+    const nextState = !wellbeingVisible;
+    logShiftplanEvent("SHIFTPLAN_WELLBEING_TOGGLE", { enabled: nextState });
+    setWellbeingVisible(nextState);
+  };
+
+  const handleToggleHiddenPanel = () => {
+    const nextState = !hiddenPanelVisible;
+    logShiftplanEvent("SHIFTPLAN_HIDDEN_PANEL_TOGGLE", { enabled: nextState, hiddenEmployees: hiddenEmployees.size });
+    setHiddenPanelVisible(nextState);
+  };
+
+  const handleShiftplanYearChange = (delta: number) => {
+    const nextYear = selectedYear + delta;
+    logShiftplanEvent("SHIFTPLAN_YEAR_CHANGE", { nextYear });
+    setSelectedYear(nextYear);
+  };
+
+  const handleShiftplanMonthSelect = (monthIndex: number) => {
+    if (monthIndex === selectedMonthIndex) return;
+
+    logShiftplanEvent("SHIFTPLAN_MONTH_SELECT", { nextMonth: monthIndex + 1 });
+    setSelectedMonthIndex(monthIndex);
+
+    if (viewMode === "year") {
+      const el = document.getElementById(`shiftplan-month-${monthIndex + 1}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.get("/shift-config/planning-config")
+      .then((res) => {
+        if (cancelled) return;
+
+        setDefaultTargetHours(normalizeTargetHours(res.data?.config?.monthly_target_hours, 174));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDefaultTargetHours(174);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEmployeeYearProgressLoading(true);
+
+    fetchShiftHours(selectedYear)
+      .then((response) => {
+        if (cancelled) return;
+        const next = new Map<string, ShiftHoursEmployee>();
+        for (const entry of response.employees || []) {
+          const key = String(entry.employee_name || "").trim();
+          if (!key) continue;
+          next.set(key, entry);
+        }
+        setEmployeeYearProgress(next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEmployeeYearProgress(new Map());
+      })
+      .finally(() => {
+        if (!cancelled) setEmployeeYearProgressLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedYear]);
 
   const warningsComputed = useMemo(
     () => computeUnderstaffWarnings(schedule || {}, selectedYear, monthIndex1, daysInMonth),
@@ -482,8 +682,30 @@ export default function Shiftplan() {
     return { high, total: issueInsights.length };
   }, [issueInsights]);
 
+  const manualEmployeeNameSet = useMemo(() => {
+    return new Set(
+      manualEmployees
+        .map((entry) => String(entry.employee_name || "").trim())
+        .filter(Boolean)
+    );
+  }, [manualEmployees]);
+
+  const employeeBadges = useMemo(() => {
+    const badges: Record<string, Array<{ label: string; tone?: "success" | "warning" | "neutral" }>> = {};
+
+    for (const entry of manualEmployees) {
+      const employeeName = String(entry.employee_name || "").trim();
+      if (!employeeName) continue;
+      badges[employeeName] = [{ label: isGerman ? "MANUELL" : "MANUAL", tone: "warning" }];
+    }
+
+    return badges;
+  }, [isGerman, manualEmployees]);
+
   const visibleSchedule = useMemo(() => {
     const out: Record<string, any> = {};
+    const importedEntries: Array<[string, any]> = [];
+    const manualEntries: Array<[string, any]> = [];
     const searchLower = searchTerm.toLowerCase();
 
     const safeSchedule = (schedule && typeof schedule === 'object') ? schedule : {};
@@ -499,6 +721,8 @@ export default function Shiftplan() {
         const hasWarning = Array.isArray(warningsComputed) && warningsComputed.some(w => w.label === name);
         if (!hasWarning) continue;
       }
+
+      if (showManualOnly && !manualEmployeeNameSet.has(name)) continue;
 
       const planTyped = plan as Record<number, string>;
       const shifts = Object.values(planTyped);
@@ -522,23 +746,40 @@ export default function Shiftplan() {
         if (!hasWeekendShift) continue;
       }
 
+      if (manualEmployeeNameSet.has(name)) manualEntries.push([name, plan]);
+      else importedEntries.push([name, plan]);
+    }
+
+    importedEntries.sort((left, right) => left[0].localeCompare(right[0], locale));
+    manualEntries.sort((left, right) => left[0].localeCompare(right[0], locale));
+
+    for (const [name, plan] of [...importedEntries, ...manualEntries]) {
       out[name] = plan;
     }
-    return out;
-  }, [schedule, hiddenEmployees, searchTerm, showWarningsOnly, showNightOnly, showWeekendOnly, warningsComputed, selectedYear, monthIndex1]);
 
-  const monthlyStats = useMonthlyStats(schedule, selectedYear, selectedMonthIndex);
+    return out;
+  }, [schedule, hiddenEmployees, searchTerm, showWarningsOnly, showNightOnly, showWeekendOnly, showManualOnly, warningsComputed, selectedYear, monthIndex1, manualEmployeeNameSet, locale]);
 
   // Employee hours calculation (always active)
   const employeeHours = useMemo(() => {
     const map = new Map<string, EmployeeMonthlyStats>();
     for (const [name, row] of Object.entries(visibleSchedule)) {
       const rowTyped = row as Record<number, string>;
-      const stats = calculateEmployeeHours(name, rowTyped, selectedYear, monthIndex1, daysInMonth, holidays, hourLimits);
+      const stats = calculateEmployeeHours(
+        name,
+        rowTyped,
+        selectedYear,
+        monthIndex1,
+        daysInMonth,
+        holidays,
+        hourLimits,
+        defaultTargetHours,
+        absencesByEmployee.get(name) || []
+      );
       map.set(name, stats);
     }
     return map;
-  }, [visibleSchedule, selectedYear, monthIndex1, daysInMonth, holidays, hourLimits]);
+  }, [visibleSchedule, selectedYear, monthIndex1, daysInMonth, holidays, hourLimits, defaultTargetHours, absencesByEmployee]);
 
   /* ------------------------------------------------ */
   /* WELLBEING LOGIC (NEW)                            */
@@ -655,6 +896,7 @@ export default function Shiftplan() {
       setDaysInMonth(days);
       shiftStore.setDaysInMonth(days);
     }
+    setManualEmployees([]);
     loadSchedule(activeMonthLabel);
   }, [viewMode, selectedYear, selectedMonthIndex]);
 
@@ -668,8 +910,12 @@ export default function Shiftplan() {
       const data = await fetchSchedule(monthLabel);
       const sched = (data && typeof data === 'object' && data.schedule) ? data.schedule : {};
       const meta = (data && typeof data === 'object') ? data.meta : null;
+      const manual = Array.isArray((data as any)?.manualEmployees)
+        ? (data as any).manualEmployees as ManualShiftplanEmployee[]
+        : [];
 
       setSchedule(sched);
+      setManualEmployees(manual);
       shiftStore.setSchedule(monthLabel, sched);
       shiftStore.setSelectedMonth(monthLabel);
 
@@ -716,6 +962,12 @@ export default function Shiftplan() {
     setEditOpen(false);
     loadYear(selectedYear);
   }, [viewMode, selectedYear]);
+
+  useEffect(() => {
+    if (viewMode !== "month") return;
+    const totalDays = new Date(selectedYear, selectedMonthIndex + 1, 0).getDate();
+    void loadMonthAttendance(selectedYear, selectedMonthIndex + 1, totalDays);
+  }, [loadMonthAttendance, selectedMonthIndex, selectedYear, viewMode]);
 
   /* ------------------------------------------------ */
   /* INTERACTIONS                                     */
@@ -856,6 +1108,38 @@ export default function Shiftplan() {
       return;
     }
 
+    if (value === "ATTENDANCE") {
+      const keysArr = Array.from(keys);
+      if (keysArr.length > 0) {
+        const targets = keysArr
+          .map((raw) => {
+            const [employeeName, dayRaw] = raw.split("|||");
+            const day = Number(dayRaw);
+            if (!employeeName || !Number.isFinite(day)) return null;
+            return {
+              employeeName,
+              day,
+              date: toIsoDate(selectedYear, selectedMonthIndex + 1, day),
+            };
+          })
+          .filter((entry): entry is { employeeName: string; day: number; date: string } => Boolean(entry));
+
+        if (targets.length > 0) {
+          const primary = targets[0];
+          const existing = attendanceMap[attendanceKey(primary.employeeName, primary.date)];
+          setAttendanceSelectionTargets(targets);
+          setAttendanceApplyToSelection(targets.length > 1);
+          setAttendanceTarget(primary);
+          setAttendanceArrival(existing?.arrival_time?.substring(0, 5) || "");
+          setAttendanceDeparture(existing?.departure_time?.substring(0, 5) || "");
+          setAttendanceNote(existing?.note || "");
+          setAttendanceOpen(true);
+        }
+      }
+      setContextMenu(null);
+      return;
+    }
+
     if (!window.confirm(`Möchten Sie die Änderung für ${keys.size} ${keys.size === 1 ? 'Eintrag' : 'Einträge'} übernehmen?`)) {
       setContextMenu(null);
       return;
@@ -896,12 +1180,84 @@ export default function Shiftplan() {
     setEditOpen(false);
   };
 
+  const handleCreateManualEmployee = async () => {
+    if (!canEdit || manualEmployeesSaving) return;
+
+    const employeeName = manualEmployeeDraft.trim().replace(/\s+/g, " ");
+    if (!employeeName) return;
+
+    try {
+      setManualEmployeesSaving(true);
+      const response = await createManualShiftplanEmployee(activeMonthLabel, employeeName);
+      const createdEmployee = (response?.employee as ManualShiftplanEmployee | undefined) ?? { employee_name: employeeName };
+      const normalizedName = String(createdEmployee.employee_name || employeeName).trim();
+
+      setManualEmployees((prev) => {
+        const next = [...prev.filter((entry) => entry.employee_name !== normalizedName), createdEmployee];
+        next.sort((left, right) => String(left.employee_name || "").localeCompare(String(right.employee_name || ""), locale));
+        return next;
+      });
+
+      setSchedule((prev) => {
+        if (prev?.[normalizedName]) return prev;
+        const next = { ...(prev || {}), [normalizedName]: {} };
+        shiftStore.setSchedule(activeMonthLabel, next);
+        return next;
+      });
+
+      setManualEmployeeDraft("");
+      toast.success(isGerman ? "Manueller Mitarbeiter angelegt" : "Manual employee created");
+    } catch (err) {
+      console.error("MANUAL EMPLOYEE CREATE ERROR:", err);
+      toast.error(isGerman ? "Manueller Mitarbeiter konnte nicht angelegt werden" : "Failed to create manual employee");
+    } finally {
+      setManualEmployeesSaving(false);
+    }
+  };
+
+  const handleDeleteManualEmployee = async (employeeName: string) => {
+    if (!canEdit || manualEmployeesSaving) return;
+
+    const confirmed = window.confirm(
+      isGerman
+        ? `Manuellen Mitarbeiter "${employeeName}" wirklich löschen?`
+        : `Delete manual employee "${employeeName}"?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setManualEmployeesSaving(true);
+      await deleteManualShiftplanEmployee(activeMonthLabel, employeeName);
+
+      setManualEmployees((prev) => prev.filter((entry) => entry.employee_name !== employeeName));
+      setSchedule((prev) => {
+        const next = { ...(prev || {}) };
+        delete next[employeeName];
+        shiftStore.setSchedule(activeMonthLabel, next);
+        return next;
+      });
+
+      if (hiddenEmployees.has(employeeName)) {
+        unhideEmployee(employeeName);
+      }
+
+      clearSelection();
+      setContextMenu(null);
+      toast.success(isGerman ? "Manueller Mitarbeiter gelöscht" : "Manual employee deleted");
+    } catch (err) {
+      console.error("MANUAL EMPLOYEE DELETE ERROR:", err);
+      toast.error(isGerman ? "Manueller Mitarbeiter konnte nicht gelöscht werden" : "Failed to delete manual employee");
+    } finally {
+      setManualEmployeesSaving(false);
+    }
+  };
+
   const saveChanges = async () => {
     if (!canEdit) return;
     if (!isDirty) return;
     try {
       setLoading(true);
-      await importSchedule(activeMonthLabel, schedule);
+      await importSchedule(activeMonthLabel, schedule, { preserveManualEmployees: true });
 
       // [NEW] Trigger Wellbeing Compute
       if (wellbeingVisible) {
@@ -966,7 +1322,7 @@ export default function Shiftplan() {
           }
           if (Object.keys(dayMap).length > 0) parsed[emp.name] = dayMap;
         }
-        await importSchedule(label, parsed);
+        await importSchedule(label, parsed, { preserveManualEmployees: true });
       }
       await refreshMonths();
       if (viewMode === "year") await loadYear(selectedYear);
@@ -1036,7 +1392,7 @@ export default function Shiftplan() {
                 variant={showHolidayOverlay ? "default" : "secondary"}
                 size="sm"
                 className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${showHolidayOverlay ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
-                onClick={() => setShowHolidayOverlay(v => !v)}
+                onClick={handleToggleHolidayOverlay}
                 onContextMenu={(e) => { e.preventDefault(); setHolidayListOpen(true); }}
                 title={t("shiftplan.holidayTooltip")}
               >
@@ -1050,10 +1406,10 @@ export default function Shiftplan() {
               variant={warningsVisible ? "default" : "secondary"}
               size="sm"
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${warningsVisible ? 'bg-red-500/80 hover:bg-red-500 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
-              onClick={() => setWarningsVisible(!warningsVisible)}
+              onClick={handleToggleWarnings}
               onContextMenu={(event) => {
                 event.preventDefault();
-                setWarningDialogOpen(true);
+                handleOpenWarningsDialog();
               }}
               title={t("shiftplan.warningsTooltip")}
             >
@@ -1064,7 +1420,7 @@ export default function Shiftplan() {
               variant={wellbeingVisible ? "default" : "secondary"}
               size="sm"
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${wellbeingVisible ? 'bg-blue-500/80 hover:bg-blue-500 text-white border-transparent' : 'theme-toolbar-button border border-blue-500/30 bg-background/85 text-blue-700 shadow-sm hover:bg-blue-500/10 dark:text-blue-300'}`}
-              onClick={() => setWellbeingVisible(!wellbeingVisible)}
+              onClick={handleToggleWellbeing}
             >
               {t("shiftplan.wellbeing")}
             </Button>
@@ -1073,7 +1429,7 @@ export default function Shiftplan() {
               variant={hiddenPanelVisible ? "default" : "secondary"}
               size="sm"
               className={`h-7 px-3 text-[11px] font-bold tracking-wider uppercase ${hiddenPanelVisible ? 'bg-sky-600/80 hover:bg-sky-600 text-white border-transparent' : 'theme-toolbar-button border border-border bg-background/85 text-foreground shadow-sm hover:bg-accent'}`}
-              onClick={() => setHiddenPanelVisible(!hiddenPanelVisible)}
+              onClick={handleToggleHiddenPanel}
             >
               {hiddenPanelVisible ? `${t("shiftplan.hiddenOn")}: ${hiddenEmployees.size}` : `${t("shiftplan.hidden")} (${hiddenEmployees.size})`}
             </Button>
@@ -1112,17 +1468,77 @@ export default function Shiftplan() {
         }
       />
 
+      <div className="overflow-hidden rounded-[34px] border border-indigo-400/14 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.10),transparent_24%),linear-gradient(180deg,rgba(8,18,38,0.98),rgba(4,8,20,0.99))] p-6 shadow-[0_34px_96px_rgba(2,6,23,0.46)] dark:border-indigo-300/12">
+        <div className="relative overflow-hidden rounded-[28px] border border-indigo-300/14 bg-[linear-gradient(135deg,rgba(15,23,42,0.78),rgba(15,23,42,0.40))] px-5 py-5 shadow-[0_24px_60px_rgba(2,6,23,0.34),0_0_28px_rgba(99,102,241,0.10)]">
+          <div className="pointer-events-none absolute inset-y-0 left-[-18%] w-28 opacity-60" style={{ background: "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.20) 55%, transparent 100%)", filter: "blur(16px)", animation: "shellSweep 8.5s linear infinite" }} />
+          <div className="relative grid gap-5 lg:grid-cols-[1.35fr_0.95fr] lg:items-end">
+            <div>
+              <div className="font-display-brand text-[10px] font-black uppercase tracking-[0.34em] text-indigo-200/56">
+                {isGerman ? "Planungszentrale" : "Planning Deck"}
+              </div>
+              <h2 className="font-display-brand mt-3 text-[34px] font-black tracking-[-0.04em] text-white">
+                {activeMonthLabel}
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300/88">
+                {isGerman
+                  ? "Monatsplanung, Warnlagen und operative Eingriffe liegen in einer kompakten Steuerbuehne vor dir."
+                  : "Monthly planning, warning pressure and operational interventions are unified in one control stage."}
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[20px] border border-indigo-300/12 bg-white/4 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-indigo-200/48">{isGerman ? "Mitarbeiter" : "Crew"}</div>
+                <div className="mt-2 text-sm font-black text-white">{Object.keys(visibleSchedule).length}</div>
+              </div>
+              <div className="rounded-[20px] border border-indigo-300/12 bg-white/4 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-indigo-200/48">{isGerman ? "Risiken" : "Risks"}</div>
+                <div className="mt-2 text-sm font-black text-white">{issueCounts.total}</div>
+              </div>
+              <div className="rounded-[20px] border border-indigo-300/12 bg-white/4 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-indigo-200/48">{isGerman ? "Manuell" : "Manual"}</div>
+                <div className="mt-2 text-sm font-black text-white">{manualEmployees.length}</div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-[22px] border border-white/8 bg-black/14 px-4 py-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">{isGerman ? "Signalstatus" : "Signal state"}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full border border-amber-400/22 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">{warningsComputed.length} {isGerman ? "Warnungen" : "warnings"}</span>
+                <span className="inline-flex items-center rounded-full border border-rose-400/22 bg-rose-500/10 px-3 py-1 text-[11px] font-semibold text-rose-100">{issueCounts.high} {isGerman ? "kritisch" : "critical"}</span>
+                <span className="inline-flex items-center rounded-full border border-cyan-400/22 bg-cyan-500/10 px-3 py-1 text-[11px] font-semibold text-cyan-100">{hiddenEmployees.size} {isGerman ? "ausgeblendet" : "hidden"}</span>
+              </div>
+            </div>
+            <div className="rounded-[22px] border border-white/8 bg-black/14 px-4 py-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">{isGerman ? "Wellbeing Fokus" : "Wellbeing focus"}</div>
+              {topCriticalEmployees.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {topCriticalEmployees.slice(0, 2).map((entry) => (
+                    <div key={entry.employeeName} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/4 px-3 py-2">
+                      <span className="truncate text-sm font-semibold text-white/90">{entry.employeeName}</span>
+                      <span className="rounded-full border border-rose-400/20 bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold text-rose-100">Score {entry.score}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 text-sm text-slate-300/78">{isGerman ? "Aktuell keine kritischen Wellbeing-Signale." : "No critical wellbeing signals right now."}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* ── PLAN VIEW ── */}
       {(<>
 
       {/* MONTH NAVIGATION */}
-      <EnterpriseCard className="theme-glass-panel relative flex items-center justify-center !px-4 !py-2" noPadding={false}>
+      <EnterpriseCard className="theme-glass-panel relative flex items-center justify-center px-4! py-2!" noPadding={false}>
         <div className="theme-glass-inset absolute left-4 flex items-center gap-2 rounded-md border p-1">
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => setSelectedYear(y => y - 1)}>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => handleShiftplanYearChange(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[3rem] text-center text-sm font-bold text-foreground">{selectedYear}</span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => setSelectedYear(y => y + 1)}>
+          <span className="min-w-12 text-center text-sm font-bold text-foreground">{selectedYear}</span>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => handleShiftplanYearChange(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -1136,13 +1552,7 @@ export default function Shiftplan() {
             return (
               <button
                 key={idx}
-                onClick={() => {
-                  setSelectedMonthIndex(idx);
-                  if (viewMode === "year") {
-                    const el = document.getElementById(`shiftplan-month-${idx + 1}`);
-                    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }
-                }}
+                onClick={() => handleShiftplanMonthSelect(idx)}
                 className={`
                             px-4 py-1.5 text-[11px] rounded-md transition-all font-bold uppercase tracking-wider whitespace-nowrap border
                             ${active
@@ -1160,9 +1570,107 @@ export default function Shiftplan() {
         </div>
       </EnterpriseCard>
 
+      {viewMode === "month" && (
+        <EnterpriseCard className="theme-glass-panel relative overflow-hidden">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.24em] text-amber-300/80">
+                <Users className="h-4 w-4" />
+                {isGerman ? "Manuelle Mitarbeiter" : "Manual employees"}
+              </div>
+              <h3 className="text-base font-semibold text-foreground">
+                {isGerman ? "Azubis, Praktikanten und Zusatzkräfte separat vom Excel pflegen" : "Manage trainees, interns, and extra staff separately from Excel"}
+              </h3>
+              <p className="max-w-3xl text-sm text-muted-foreground">
+                {isGerman
+                  ? "Diese Mitarbeiter bleiben als eigene Quelle im Dienstplan bestehen und werden beim Excel-Import nicht überschrieben."
+                  : "These employees stay as a separate source inside the shiftplan and are not overwritten by Excel imports."}
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant={showManualOnly ? "default" : "secondary"}
+                  className={`h-8 px-3 text-[11px] font-bold uppercase tracking-[0.22em] ${showManualOnly ? "bg-amber-500/85 text-slate-950 hover:bg-amber-400" : "border border-amber-400/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"}`}
+                  onClick={() => setShowManualOnly((current) => !current)}
+                >
+                  {showManualOnly
+                    ? (isGerman ? "Nur manuelle Mitarbeiter aktiv" : "Manual-only filter active")
+                    : (isGerman ? "Nur manuelle Mitarbeiter" : "Manual employees only")}
+                </Button>
+              </div>
+            </div>
+
+            {canEdit && (
+              <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row">
+                <Input
+                  value={manualEmployeeDraft}
+                  onChange={(event) => setManualEmployeeDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleCreateManualEmployee();
+                    }
+                  }}
+                  placeholder={isGerman ? "Name für manuellen Mitarbeiter eingeben" : "Enter a manual employee name"}
+                  className="h-9 bg-background/75 text-sm"
+                  disabled={manualEmployeesSaving}
+                />
+                <Button
+                  type="button"
+                  className="h-9 shrink-0 bg-amber-500/85 font-bold text-slate-950 hover:bg-amber-400"
+                  onClick={() => void handleCreateManualEmployee()}
+                  disabled={manualEmployeesSaving || !manualEmployeeDraft.trim()}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {isGerman ? "Manuell anlegen" : "Add manual employee"}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            {manualEmployees.length > 0 ? (
+              manualEmployees.map((entry) => {
+                const employeeName = String(entry.employee_name || "").trim();
+                return (
+                  <div
+                    key={employeeName}
+                    className="flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-sm shadow-[0_18px_38px_rgba(245,158,11,0.08)]"
+                  >
+                    <span className="font-semibold text-foreground">{employeeName}</span>
+                    <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">
+                      {isGerman ? "MANUELL" : "MANUAL"}
+                    </span>
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-muted-foreground hover:bg-red-500/10 hover:text-red-300"
+                        onClick={() => void handleDeleteManualEmployee(employeeName)}
+                        disabled={manualEmployeesSaving}
+                        title={isGerman ? "Manuellen Mitarbeiter löschen" : "Delete manual employee"}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/12 bg-white/3 px-4 py-3 text-sm text-muted-foreground">
+                {isGerman
+                  ? "Noch keine manuellen Mitarbeiter für diesen Monat angelegt."
+                  : "No manual employees have been created for this month yet."}
+              </div>
+            )}
+          </div>
+        </EnterpriseCard>
+      )}
+
       {/* PANELS */}
       {
-        (hiddenPanelVisible || statsVisible || wellbeingVisible) && (
+        (hiddenPanelVisible || wellbeingVisible) && (
           <div className="flex flex-col gap-4">
             {/* WELLBEING / FAIRNESS PANEL */}
             {wellbeingVisible && (
@@ -1209,12 +1717,6 @@ export default function Shiftplan() {
               </div>
             )}
 
-            {/* STATS PANEL */}
-            {statsVisible && (
-              <div className="bg-card rounded-xl border p-0 overflow-hidden">
-                <ShiftStatsPanel stats={monthlyStats} />
-              </div>
-            )}
             {hiddenPanelVisible && (
               <div className="bg-secondary/20 border rounded-xl p-3 flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm">Ausgeblendet:</span>
@@ -1249,7 +1751,10 @@ export default function Shiftplan() {
                 selectedCells={getSelectedKeys()}
                 onCellContextMenu={handleCellContextMenu}
                 onHideEmployee={hideEmployee}
+                employeeBadges={employeeBadges}
                 employeeHours={employeeHours}
+                employeeYearProgress={employeeYearProgress}
+                employeeYearProgressLoading={employeeYearProgressLoading}
                 highlightRequest={highlightRequest}
                 // [NEW] Pass metrics
                 // [NEW] Coverage Props
@@ -1268,6 +1773,7 @@ export default function Shiftplan() {
                 ramadanTimings={ramadanTimings}
                 showRamadanOverlay={showRamadanOverlay}
                 showSunTimesHints={showSunTimesHints}
+                attendanceMap={attendanceMap}
               />
               {contextMenu && (
                 <ShiftContextMenu
@@ -1445,6 +1951,73 @@ export default function Shiftplan() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditOpen(false)}>{t("common.cancel")}</Button>
             <Button onClick={applyEdit}>{t("common.apply")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={attendanceOpen} onOpenChange={setAttendanceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{isGerman ? "Kommen/Gehen erfassen" : "Track arrival/departure"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <label className="text-xs text-muted-foreground">{isGerman ? "Mitarbeiter" : "Employee"}</label>
+                <div className="font-medium">{attendanceTarget?.employeeName}</div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{t("common.date")}</label>
+                <div className="font-medium">{attendanceTarget?.day}. {activeMonthLabel}</div>
+              </div>
+            </div>
+            {attendanceSelectionTargets.length > 1 ? (
+              <label className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={attendanceApplyToSelection}
+                  onChange={(event) => setAttendanceApplyToSelection(event.target.checked)}
+                />
+                <span>
+                  {isGerman
+                    ? `Auf alle ${attendanceSelectionTargets.length} ausgewählten Zellen anwenden`
+                    : `Apply to all ${attendanceSelectionTargets.length} selected cells`}
+                </span>
+              </label>
+            ) : null}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-muted-foreground">{isGerman ? "Kommen (HH:MM)" : "Arrival (HH:MM)"}</label>
+                <input
+                  type="time"
+                  value={attendanceArrival}
+                  onChange={(event) => setAttendanceArrival(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">{isGerman ? "Gehen (HH:MM)" : "Departure (HH:MM)"}</label>
+                <input
+                  type="time"
+                  value={attendanceDeparture}
+                  onChange={(event) => setAttendanceDeparture(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">{isGerman ? "Notiz" : "Note"}</label>
+              <textarea
+                value={attendanceNote}
+                onChange={(event) => setAttendanceNote(event.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAttendanceOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={() => void applyAttendance()}>{isGerman ? "Speichern" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

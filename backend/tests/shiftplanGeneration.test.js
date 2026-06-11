@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildDailyShiftSlots,
   buildShiftSlots,
   buildStaffingRulesByShiftType,
   normalizePlanningShiftTypeKey,
@@ -49,6 +50,29 @@ describe('shiftplanGeneration helpers', () => {
         { code: 'L1', planned_slots: 1 },
         { code: 'L2', planned_slots: 1 },
         { code: 'N', planned_slots: 1 },
+      ]
+    );
+  });
+
+  it('uses per-employee monthly target hours when sizing daily slots', () => {
+    const planned = buildDailyShiftSlots({
+      shiftDefinitions: [
+        { code: 'E1', shift_type: 'early', min_staff: 0, max_staff: 3, duration_hours: 8 },
+      ],
+      staffingRules: {},
+      activeEmployees: ['Alice', 'Bob'],
+      employeeHours: { Alice: 0, Bob: 0 },
+      employeeTargetHours: { Alice: 160, Bob: 0 },
+      monthlyTargetHours: 174,
+      day: 1,
+      numDays: 20,
+      dayOfWeek: 1,
+    });
+
+    assert.deepEqual(
+      planned.map((entry) => ({ code: entry.code, planned_slots: entry.planned_slots })),
+      [
+        { code: 'E1', planned_slots: 1 },
       ]
     );
   });

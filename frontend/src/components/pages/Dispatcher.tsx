@@ -13,6 +13,7 @@ import {
   getISOWeek,
   format,
 } from "date-fns";
+import { EnterpriseCard, EnterpriseFeatureHero, EnterprisePageShell } from "../layout/EnterpriseLayout";
 
 import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, useShiftStore } from "../../store/shiftStore";
 import { useDispatcherStore } from "../../store/dispatcherStore";
@@ -192,7 +193,7 @@ const loadWeekFromShiftplan = () => {
   /* ------------------------------------------------ */
 
   return (
-    <div className="space-y-4">
+    <EnterprisePageShell>
       {/* HEADER */}
       <DispatcherHeader
         weekDate={weekDate}
@@ -200,15 +201,42 @@ const loadWeekFromShiftplan = () => {
         onNextWeek={() => setWeek(addWeeks(weekDate, 1))}
       />
 
+      <EnterpriseFeatureHero
+        tone="cyan"
+        eyebrow="Shift orchestration"
+        title="Dispatcher Console"
+        description="Wochenlage, Besetzung je Schicht und direkte Bearbeitung laufen in einer verdichteten Leitstandansicht zusammen."
+        metrics={[
+          { label: "KW", value: weekNumber },
+          { label: "Besetzung", value: employees.length },
+          { label: "Zeitraum", value: `${format(weekStart, "dd.MM")} - ${format(weekEnd, "dd.MM")}` },
+        ]}
+      />
+
       {/* INFO LINE */}
-      <div className="text-sm text-muted-foreground">
-        KW {weekNumber} | {format(weekStart, "dd.MM.yyyy")} –{" "}
-        {format(weekEnd, "dd.MM.yyyy")} · F: {counts.F} · S: {counts.S} ·
-        N: {counts.N} · ABW: {counts.ABW}
-      </div>
+      <EnterpriseCard>
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { label: "KW", value: String(weekNumber), color: "text-sky-300 border-sky-400/20 bg-sky-400/10" },
+            { label: "Zeitraum", value: `${format(weekStart, "dd.MM.yyyy")} – ${format(weekEnd, "dd.MM.yyyy")}`, color: "text-foreground border-white/10 bg-white/5" },
+            { label: "Früh", value: String(counts.F), color: "text-orange-300 border-orange-400/20 bg-orange-400/10" },
+            { label: "Spät", value: String(counts.S), color: "text-yellow-300 border-yellow-400/20 bg-yellow-400/10" },
+            { label: "Nacht", value: String(counts.N), color: "text-sky-300 border-sky-400/20 bg-sky-400/10" },
+            { label: "Abwesend", value: String(counts.ABW), color: "text-slate-300 border-slate-400/20 bg-slate-400/10" },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold ${item.color}`}
+            >
+              <span className="uppercase tracking-[0.18em] opacity-80">{item.label}</span>
+              <span>{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </EnterpriseCard>
 
       {/* COLUMNS */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
         <DispatcherColumn shift="F" employees={byShift("F")} onSelect={setSelected} />
         <DispatcherColumn shift="S" employees={byShift("S")} onSelect={setSelected} />
         <DispatcherColumn shift="N" employees={byShift("N")} onSelect={setSelected} />
@@ -226,6 +254,6 @@ const loadWeekFromShiftplan = () => {
         onClose={() => setSelected(null)}
         onSave={onSave}
       />
-    </div>
+    </EnterprisePageShell>
   );
 }

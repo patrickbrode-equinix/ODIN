@@ -112,7 +112,7 @@ export function WeatherDisplay() {
 
     if (error) {
         return (
-            <div className="px-3 py-1.5 text-sm text-muted-foreground border border-transparent rounded-lg flex items-center gap-2">
+            <div className="flex h-10 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.035] px-3 text-sm text-muted-foreground">
                 <Cloud className="w-4 h-4" />
                 <span>—</span>
             </div>
@@ -121,7 +121,7 @@ export function WeatherDisplay() {
 
     if (loading && !data) {
         return (
-            <div className="px-3 py-1.5 text-sm border border-transparent rounded-lg flex items-center gap-2">
+            <div className="flex h-10 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.035] px-3 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
             </div>
         );
@@ -150,7 +150,7 @@ export function WeatherDisplay() {
         <Popover>
             <PopoverTrigger asChild>
                 <button
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium tabular-nums flex items-center gap-2 border border-transparent transition-all ${badgeClass}`}
+                    className={`flex h-10 items-center gap-2 whitespace-nowrap rounded-2xl border px-3 text-sm font-semibold tabular-nums transition-all ${badgeClass}`}
                 >
                     {hazardIcon}
                     {getWeatherIcon(data.current.weatherCode)}

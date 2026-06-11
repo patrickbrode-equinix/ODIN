@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -62,9 +63,32 @@ const STATUS_STYLES: Record<
 /* ------------------------------------------------ */
 
 export function CommitSubTypeModal({ open, onClose }: Props) {
+  const { language } = useLanguage();
   const [items, setItems] = useState<CommitSubType[]>([]);
   const [loading, setLoading] = useState(false);
   const [newKey, setNewKey] = useState("");
+
+  const copy = language === "de"
+    ? {
+        title: "Activity-Subtypen verwalten",
+        placeholder: "Neuen Subtyp anlegen...",
+        add: "Hinzufuegen",
+        subtype: "Subtyp",
+        status: "Status",
+        loading: "Lade...",
+        empty: "Keine Subtypen gefunden.",
+        deleteConfirm: "Subtyp wirklich loeschen?",
+      }
+    : {
+        title: "Manage activity sub-types",
+        placeholder: "Create new sub-type...",
+        add: "Add",
+        subtype: "Sub-type",
+        status: "Status",
+        loading: "Loading...",
+        empty: "No sub-types found.",
+        deleteConfirm: "Delete this sub-type?",
+      };
 
   /* ------------------------------------------------ */
   /* LOAD SUB TYPES                                   */
@@ -115,7 +139,7 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
   /* ------------------------------------------------ */
 
   async function remove(id: number) {
-    if (!confirm("Sub-Type wirklich löschen?")) return;
+    if (!confirm(copy.deleteConfirm)) return;
     await api.delete(`/commit/subtypes/${id}`);
     await load();
   }
@@ -128,7 +152,7 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
         <DialogHeader className="flex flex-row items-center justify-between sticky top-0 bg-background z-10 pb-2">
-          <DialogTitle>Activity Sub-Types verwalten</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
           <button onClick={onClose}>
             <X className="w-5 h-5" />
           </button>
@@ -137,13 +161,13 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
         {/* CREATE */}
         <div className="flex gap-2">
           <Input
-            placeholder="Neuen Sub-Type anlegen…"
+            placeholder={copy.placeholder}
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
           />
           <Button onClick={create}>
             <Plus className="w-4 h-4 mr-1" />
-            Hinzufügen
+            {copy.add}
           </Button>
         </div>
 
@@ -152,8 +176,8 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="text-left px-3 py-2">Sub-Type</th>
-                <th className="text-left px-3 py-2 w-64">Status</th>
+                <th className="text-left px-3 py-2">{copy.subtype}</th>
+                <th className="text-left px-3 py-2 w-64">{copy.status}</th>
                 <th className="w-12"></th>
               </tr>
             </thead>
@@ -165,7 +189,7 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
                     colSpan={3}
                     className="p-4 text-center text-muted-foreground"
                   >
-                    Lade…
+                    {copy.loading}
                   </td>
                 </tr>
               )}
@@ -176,7 +200,7 @@ export function CommitSubTypeModal({ open, onClose }: Props) {
                     colSpan={3}
                     className="p-4 text-center text-muted-foreground"
                   >
-                    Keine Sub-Types gefunden.
+                    {copy.empty}
                   </td>
                 </tr>
               )}

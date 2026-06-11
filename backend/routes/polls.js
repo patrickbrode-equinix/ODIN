@@ -13,7 +13,7 @@ const router = express.Router();
 /* ------------------------------------------------ */
 
 function isOwnerOrMainAdmin(poll, user) {
-  return poll.created_by === user.id || user.email === "admin@local";
+  return poll.created_by === user.id || user.is_root === true;
 }
 
 function isPollExpired(poll) {

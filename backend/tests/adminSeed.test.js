@@ -18,7 +18,8 @@ import bcrypt from "bcrypt";
 /*  We accept `queryFn` as a parameter so tests can inject a mock.             */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-const DEFAULT_EMAIL    = "admin@local";
+const DEFAULT_LOGIN_NAME = "Admin@Odin";
+const DEFAULT_EMAIL    = "admin@odin.local";
 const DEFAULT_PASSWORD = "admin";
 const BCRYPT_ROUNDS    = 12;
 
@@ -29,8 +30,8 @@ async function seedDefaultAdmin(queryFn) {
 
     if (seedIfMissing) {
       const { rows: existing } = await queryFn(
-        "SELECT 1 FROM users WHERE email = $1 LIMIT 1",
-        [DEFAULT_EMAIL]
+        "SELECT 1 FROM users WHERE LOWER(login_name) = LOWER($1) LIMIT 1",
+        [DEFAULT_LOGIN_NAME]
       );
       if (existing.length > 0) return { skipped: true };
     } else {
@@ -43,10 +44,10 @@ async function seedDefaultAdmin(queryFn) {
 
     await queryFn(
       `INSERT INTO users
-         (first_name, last_name, username, email, password_hash,
+        (first_name, last_name, username, login_name, email, password_hash,
           user_group, department, ibx, approved, is_root)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,TRUE)`,
-      ["Admin", "User", "admin", DEFAULT_EMAIL, passwordHash,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,TRUE)`,
+      ["Admin", "User", "admin", DEFAULT_LOGIN_NAME, DEFAULT_EMAIL, passwordHash,
        "c-ops", "c-ops", "FR2"]
     );
 
@@ -82,9 +83,10 @@ describe("seedDefaultAdmin – default mode", () => {
 
     const insertCall = calls.find((c) => c.sql.includes("INSERT INTO users"));
     assert.ok(insertCall, "INSERT query must have been issued");
-    assert.equal(insertCall.params[3], DEFAULT_EMAIL, "email should be admin@local");
-    assert.equal(insertCall.params[5], "c-ops", "user_group should be c-ops");
-    assert.equal(insertCall.params[7], "FR2", "ibx should be FR2");
+    assert.equal(insertCall.params[3], DEFAULT_LOGIN_NAME, "login name should be Admin@Odin");
+    assert.equal(insertCall.params[4], DEFAULT_EMAIL, "email should be admin@odin.local");
+    assert.equal(insertCall.params[6], "c-ops", "user_group should be c-ops");
+    assert.equal(insertCall.params[8], "FR2", "ibx should be FR2");
   });
 
   // ── 2. Password is bcrypt-hashed ───────────────────────────────────────────
@@ -145,7 +147,8 @@ describe("seedDefaultAdmin – default mode", () => {
     await seedDefaultAdmin(mockQuery);
 
     assert.ok(Array.isArray(insertedParams), "INSERT params must be an array");
-    assert.equal(insertedParams[3], "admin@local", "email must be admin@local");
+    assert.equal(insertedParams[3], DEFAULT_LOGIN_NAME, "login name must be Admin@Odin");
+    assert.equal(insertedParams[4], DEFAULT_EMAIL, "email must be admin@odin.local");
     assert.equal(insertedParams[0], "Admin",  "first_name must be Admin");
     assert.equal(insertedParams[1], "User",   "last_name must be User");
     assert.equal(insertedParams[2], "admin",  "username must be admin");
@@ -183,13 +186,12 @@ describe("seedDefaultAdmin – SEED_ADMIN_IF_MISSING=true", () => {
   afterEach(() => { delete process.env.SEED_ADMIN_IF_MISSING; });
 
   // ── 7. Creates admin even when other users exist ──────────────────────────
-  test("creates admin@local when other users exist but admin is absent", async () => {
+  test("creates Admin@Odin when other users exist but admin is absent", async () => {
     const calls = [];
 
     const mockQuery = async (sql, params) => {
       calls.push({ sql, params });
-      // SELECT 1 FROM users WHERE email = $1 → not found
-      if (sql.includes("WHERE email")) return { rows: [] };
+      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [] };
       if (sql.includes("INSERT INTO users")) return { rowCount: 1 };
       return { rows: [] };
     };
@@ -197,20 +199,20 @@ describe("seedDefaultAdmin – SEED_ADMIN_IF_MISSING=true", () => {
     const result = await seedDefaultAdmin(mockQuery);
     assert.ok(result.created, "should create admin in SEED_ADMIN_IF_MISSING mode");
 
-    const emailCheck = calls.find((c) => c.sql.includes("WHERE email"));
-    assert.ok(emailCheck, "should query by email");
-    assert.equal(emailCheck.params[0], DEFAULT_EMAIL, "should check admin@local email");
+    const loginCheck = calls.find((c) => c.sql.includes("WHERE LOWER(login_name)"));
+    assert.ok(loginCheck, "should query by login name");
+    assert.equal(loginCheck.params[0], DEFAULT_LOGIN_NAME, "should check Admin@Odin login name");
   });
 
-  // ── 8. Skips if admin@local already present ───────────────────────────────
-  test("skips if admin@local already exists (SEED_ADMIN_IF_MISSING mode)", async () => {
+  // ── 8. Skips if Admin@Odin already present ───────────────────────────────
+  test("skips if Admin@Odin already exists (SEED_ADMIN_IF_MISSING mode)", async () => {
     const mockQuery = async (sql, params) => {
-      if (sql.includes("WHERE email")) return { rows: [{ email: DEFAULT_EMAIL }] };
+      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [{ login_name: DEFAULT_LOGIN_NAME }] };
       throw new Error("INSERT must not run if admin already exists");
     };
 
     const result = await seedDefaultAdmin(mockQuery);
-    assert.ok(result.skipped, "should skip if admin@local already present");
+    assert.ok(result.skipped, "should skip if Admin@Odin already present");
   });
 
   // ── 9. Does NOT use COUNT(*) in SEED_ADMIN_IF_MISSING mode ───────────────
@@ -219,7 +221,7 @@ describe("seedDefaultAdmin – SEED_ADMIN_IF_MISSING=true", () => {
 
     const mockQuery = async (sql, params) => {
       calls.push(sql);
-      if (sql.includes("WHERE email")) return { rows: [] };
+      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [] };
       if (sql.includes("INSERT")) return { rowCount: 1 };
       return { rows: [] };
     };

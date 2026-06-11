@@ -10,6 +10,7 @@ import db from "../../db.js";
 import { config } from "../../config/index.js";
 import { ensureUserSettings } from "../../db/userSettings.js";
 import { buildAccessPolicy, resolveUserRole } from "../../auth/accessControl.js";
+import { normalizeLoginNameForLookup, validateLoginName } from "../../lib/loginName.js";
 
 const router = express.Router();
 
@@ -22,12 +23,20 @@ const router = express.Router();
 /* ———————————————————————————————— */
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  const { loginName, password } = req.body;
 
-  if (!email || !password) {
+  if (!loginName || !password) {
     return res
       .status(400)
-      .json({ message: "E-Mail und Passwort erforderlich" });
+      .json({ message: "Benutzerkennung und Passwort erforderlich", code: "LOGIN_NAME_REQUIRED" });
+  }
+
+  const loginValidation = validateLoginName(loginName);
+  if (!loginValidation.ok) {
+    return res.status(400).json({
+      message: "Bitte Benutzerkennung im Format Vorname@Nachname eingeben.",
+      code: loginValidation.code,
+    });
   }
 
   try {
@@ -36,6 +45,7 @@ router.post("/login", async (req, res) => {
       `
       SELECT
         id,
+        login_name,
         email,
         first_name,
         last_name,
@@ -49,9 +59,9 @@ router.post("/login", async (req, res) => {
         must_change_password,
         access_override
       FROM users
-      WHERE email = $1
+      WHERE LOWER(login_name) = $1
       `,
-      [String(email).toLowerCase().trim()]
+      [normalizeLoginNameForLookup(loginName)]
     );
 
     if (rows.length === 0) {
@@ -63,6 +73,7 @@ router.post("/login", async (req, res) => {
     /* DISPLAY NAME (SINGLE SOURCE OF TRUTH) */
     const displayName =
       [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+      user.login_name ||
       user.email;
 
     /* PASSWORD CHECK */
@@ -107,6 +118,7 @@ router.post("/login", async (req, res) => {
       token,
       user: {
         id: user.id,
+        loginName: user.login_name,
         email: user.email,
 
         firstName: user.first_name,

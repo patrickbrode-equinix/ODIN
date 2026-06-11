@@ -7,6 +7,7 @@ import db from "../db.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requirePageAccess } from "../middleware/requirePageAccess.js";
 import { broadcast } from "./sse.js";
+import { parseAnyDateToIso } from "../lib/dateParser.js";
 
 const router = express.Router();
 
@@ -21,10 +22,7 @@ function pick(obj, keys) {
 }
 
 function parseDate(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
+  return parseAnyDateToIso(v);
 }
 
 function parseNum(v) {

@@ -8,6 +8,7 @@ import { HandoverItem } from "./handover.types";
 import { api } from "../../api/api";
 import { useShiftStore } from "../../store/shiftStore";
 import { useLanguage } from "../../context/LanguageContext";
+import { dedupeEmployeeNames, extractEmployeeNameFromUser } from "../../utils/employeeNames";
 
 interface CreateTaskModalProps {
     isOpen: boolean;
@@ -37,13 +38,14 @@ export function CreateTaskModal({ isOpen, onClose, employees: propEmployees }: C
 
         api.get("/admin/users").then(res => {
             const empList = Array.isArray(res.data) ? res.data : [];
-            const userNames: string[] = empList.map((u: any) => u.display_name || u.displayName || u.username || u.email).filter(Boolean);
-            // Merge both lists, deduplicate, sort alphabetically
-            const merged = [...new Set([...userNames, ...Array.from(shiftplanNames)])].sort();
+            const userNames: string[] = empList
+                .map((u: any) => extractEmployeeNameFromUser(u))
+                .filter((name: string | null): name is string => Boolean(name));
+            const merged = dedupeEmployeeNames([...userNames, ...Array.from(shiftplanNames)]);
             setEmployees(merged);
         }).catch(() => {
             // Fallback to shiftplan names only
-            const names = [...shiftplanNames].sort();
+            const names = dedupeEmployeeNames(Array.from(shiftplanNames));
             setEmployees(names.length > 0 ? names : []);
         });
     }, [isOpen, schedulesByMonth]);

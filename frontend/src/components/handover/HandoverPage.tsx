@@ -16,7 +16,7 @@ import {
 import { useHandoverStore } from "../../store/handoverStore";
 import { CreateTaskModal } from "./CreateTaskModal";
 import { Plus, FileText } from "lucide-react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import { useLanguage } from "../../context/LanguageContext";
 
 
@@ -162,8 +162,24 @@ export function HandoverPage() {
         }
       />
 
+      <EnterpriseFeatureHero
+        tone="indigo"
+        eyebrow={t("handover.subtitle")}
+        title="Handover"
+        description="Offene Uebergaben, aktive Bearbeitung und abgeschlossene Aufgaben bleiben in einer gemeinsamen Schichtuebersicht sichtbar."
+        metrics={[
+          { label: "Visible", value: visible.length },
+          { label: "Total", value: handovers.length },
+          { label: "Mode", value: showCompleted ? t("handover.hideCompleted") : t("handover.showCompleted") },
+        ]}
+      />
+
       {/* CONTENT GRID */}
-      <EnterpriseCard noPadding className="w-full flex-1 min-h-0 bg-transparent border-0 shadow-none">
+      <EnterpriseCard
+        noPadding
+        className="w-full flex-1 min-h-0"
+        style={{ background: "transparent", border: "0", boxShadow: "none" }}
+      >
         {!isLoaded ? (
           <HandoverListSkeleton />
         ) : (

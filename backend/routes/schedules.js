@@ -36,7 +36,11 @@ router.get(
   async (req, res) => {
     try {
       const result = await db.query(
-        `SELECT DISTINCT month FROM shifts`
+        `SELECT month FROM (
+           SELECT DISTINCT month FROM shifts
+           UNION
+           SELECT DISTINCT month FROM manual_shiftplan_employees
+         ) AS schedule_months`
       );
 
       const rawMonths = result.rows
@@ -75,6 +79,47 @@ router.get("/last-upload", requireAuth, async (req, res) => {
     res.json(rows[0] || null);
   } catch (err) {
     // Table might not exist yet — return null gracefully
+    res.json(null);
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/schedules/last-change                   */
+/* Returns the most recent shiftplan change (upload */
+/* OR manual edit) by checking both the upload log  */
+/* and the activity log for shiftplan module.       */
+/* ------------------------------------------------ */
+
+router.get("/last-change", requireAuth, async (req, res) => {
+  try {
+    // Check both sources and return the most recent
+    const uploadPromise = db.query(
+      `SELECT uploaded_at AS ts, uploaded_by AS actor, 'upload' AS change_type FROM shiftplan_upload_log ORDER BY uploaded_at DESC LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+
+    const activityPromise = db.query(
+      `SELECT ts, actor_name AS actor, action_type AS change_type FROM activity_log WHERE module = 'shiftplan' ORDER BY ts DESC LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+
+    const [uploadResult, activityResult] = await Promise.all([uploadPromise, activityPromise]);
+
+    const uploadRow = uploadResult.rows[0] || null;
+    const activityRow = activityResult.rows[0] || null;
+
+    if (!uploadRow && !activityRow) {
+      return res.json(null);
+    }
+
+    const uploadTs = uploadRow ? new Date(uploadRow.ts).getTime() : 0;
+    const activityTs = activityRow ? new Date(activityRow.ts).getTime() : 0;
+
+    const latest = activityTs > uploadTs ? activityRow : uploadRow;
+    res.json({
+      last_changed_at: latest.ts,
+      changed_by: latest.actor || null,
+      change_type: latest.change_type || "unknown",
+    });
+  } catch (err) {
     res.json(null);
   }
 });
@@ -128,6 +173,97 @@ function normalizeEmployeeActions(payload) {
   return { additions, updates, removals };
 }
 
+function normalizeManualEmployeeName(value) {
+  return normalizeEmployeeActionName(value);
+}
+
+async function fetchManualEmployeesForMonth(client, monthLabel) {
+  const { rows } = await client.query(
+    `SELECT employee_name, created_at, created_by
+       FROM manual_shiftplan_employees
+      WHERE month = $1
+      ORDER BY LOWER(employee_name) ASC, employee_name ASC`,
+    [monthLabel]
+  );
+
+  return rows.map((row) => ({
+    employee_name: row.employee_name,
+    created_at: row.created_at,
+    created_by: row.created_by || null,
+  }));
+}
+
+async function fetchManualEmployeeNameSet(client, monthLabel) {
+  const manualEmployees = await fetchManualEmployeesForMonth(client, monthLabel);
+  return new Set(manualEmployees.map((entry) => entry.employee_name));
+}
+
+async function fetchExistingManualShiftRows(client, monthLabel) {
+  const { rows } = await client.query(
+    `SELECT employee_name, day, shift_code
+       FROM shifts
+      WHERE month = $1
+        AND COALESCE(source, 'import') = 'manual'`,
+    [monthLabel]
+  );
+
+  return rows.map((row) => ({
+    employee_name: row.employee_name,
+    day: Number(row.day),
+    shift_code: row.shift_code,
+  }));
+}
+
+function buildPersistedShiftEntries({
+  scheduleData,
+  existingManualRows = [],
+  manualEmployeeNames = new Set(),
+  preserveManualEmployees = false,
+}) {
+  const entryMap = new Map();
+  const incomingEmployees = new Set();
+
+  for (const [rawEmployeeName, rawDays] of Object.entries(scheduleData || {})) {
+    const employeeName = normalizeManualEmployeeName(rawEmployeeName);
+    if (!employeeName || !rawDays || typeof rawDays !== "object" || Array.isArray(rawDays)) continue;
+
+    incomingEmployees.add(employeeName);
+
+    for (const [rawDay, rawShift] of Object.entries(rawDays)) {
+      const day = Number(rawDay);
+      const shiftCode = String(rawShift || "").trim();
+      if (!Number.isFinite(day) || day < 1 || day > 31 || !shiftCode) continue;
+
+      entryMap.set(`${employeeName}|${day}`, {
+        employeeName,
+        day,
+        shiftCode,
+        source: manualEmployeeNames.has(employeeName) ? "manual" : "import",
+      });
+    }
+  }
+
+  if (preserveManualEmployees) {
+    for (const row of existingManualRows) {
+      const employeeName = normalizeManualEmployeeName(row.employee_name);
+      const day = Number(row.day);
+      const shiftCode = String(row.shift_code || "").trim();
+
+      if (!employeeName || incomingEmployees.has(employeeName)) continue;
+      if (!Number.isFinite(day) || day < 1 || day > 31 || !shiftCode) continue;
+
+      entryMap.set(`${employeeName}|${day}`, {
+        employeeName,
+        day,
+        shiftCode,
+        source: "manual",
+      });
+    }
+  }
+
+  return Array.from(entryMap.values());
+}
+
 router.get(
   "/:month",
   requireAuth,
@@ -152,6 +288,7 @@ router.get(
         `,
         [monthLabel]
       );
+      const manualEmployees = await fetchManualEmployeesForMonth(db, monthLabel);
 
       // --- AUTO-SEED LOGIC FOR 2027 ---
       if (parsed.year === 2027 && result.rows.length === 0) {
@@ -240,19 +377,172 @@ router.get(
         if (day > maxDay) maxDay = day;
       }
 
+      for (const manualEmployee of manualEmployees) {
+        const employeeName = normalizeManualEmployeeName(manualEmployee.employee_name);
+        if (!employeeName) continue;
+        if (!schedule[employeeName]) schedule[employeeName] = {};
+      }
+
       res.json({
         meta: {
           label: monthLabel,
           year: parsed.year,
           month: parsed.month,
           id: `${parsed.year}-${String(parsed.month).padStart(2, "0")}`,
-          daysInMonth: maxDay || 31,
+          daysInMonth: new Date(parsed.year, parsed.month, 0).getDate() || maxDay || 31,
         },
         schedule,
+        manualEmployees,
       });
     } catch (err) {
       console.error("SCHEDULE LOAD ERROR:", err);
       res.status(500).json({ error: "Failed to load schedule" });
+    }
+  }
+);
+
+router.get(
+  "/:month/manual-employees",
+  requireAuth,
+  requirePageAccess("shiftplan", "view"),
+  async (req, res) => {
+    try {
+      const monthLabel = String(req.params.month || "").trim();
+      if (!parseMonthLabel(monthLabel)) {
+        return res.status(400).json({ error: "Invalid month label" });
+      }
+
+      const manualEmployees = await fetchManualEmployeesForMonth(db, monthLabel);
+      res.json({ employees: manualEmployees });
+    } catch (err) {
+      console.error("MANUAL EMPLOYEE LIST ERROR:", err);
+      res.status(500).json({ error: "Failed to load manual employees" });
+    }
+  }
+);
+
+router.post(
+  "/:month/manual-employees",
+  requireAuth,
+  requirePageAccess("shiftplan", "write"),
+  async (req, res) => {
+    const monthLabel = String(req.params.month || "").trim();
+    const employeeName = normalizeManualEmployeeName(req.body?.employeeName);
+
+    if (!parseMonthLabel(monthLabel)) {
+      return res.status(400).json({ error: "Invalid month label" });
+    }
+
+    if (!employeeName) {
+      return res.status(400).json({ error: "employeeName is required" });
+    }
+
+    try {
+      const duplicateRes = await db.query(
+        `SELECT COALESCE(source, 'import') AS source
+           FROM shifts
+          WHERE month = $1
+            AND employee_name = $2
+          LIMIT 1`,
+        [monthLabel, employeeName]
+      );
+
+      if (duplicateRes.rowCount > 0 && duplicateRes.rows[0]?.source !== "manual") {
+        return res.status(409).json({ error: "Employee already exists in the imported shiftplan for this month" });
+      }
+
+      const createdBy = req.user?.displayName || req.user?.email || req.user?.username || "unknown";
+      const insertRes = await db.query(
+        `INSERT INTO manual_shiftplan_employees (month, employee_name, created_by)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (month, employee_name) DO NOTHING
+         RETURNING employee_name, created_at, created_by`,
+        [monthLabel, employeeName, createdBy]
+      );
+
+      if (insertRes.rowCount === 0) {
+        return res.status(409).json({ error: "Manual employee already exists for this month" });
+      }
+
+      await logActivity(
+        req.user?.id,
+        req.user?.displayName || req.user?.username || "System",
+        "shiftplan_manual_employee_add",
+        "SHIFTPLAN",
+        "employee",
+        employeeName,
+        null,
+        { month: monthLabel }
+      );
+
+      res.status(201).json({ success: true, employee: insertRes.rows[0] });
+    } catch (err) {
+      console.error("MANUAL EMPLOYEE CREATE ERROR:", err);
+      res.status(500).json({ error: "Failed to create manual employee" });
+    }
+  }
+);
+
+router.delete(
+  "/:month/manual-employees/:employeeName",
+  requireAuth,
+  requirePageAccess("shiftplan", "write"),
+  async (req, res) => {
+    const monthLabel = String(req.params.month || "").trim();
+    const employeeName = normalizeManualEmployeeName(req.params.employeeName);
+
+    if (!parseMonthLabel(monthLabel)) {
+      return res.status(400).json({ error: "Invalid month label" });
+    }
+
+    if (!employeeName) {
+      return res.status(400).json({ error: "employeeName is required" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const deleteManualEmployeeRes = await client.query(
+        `DELETE FROM manual_shiftplan_employees
+          WHERE month = $1
+            AND employee_name = $2`,
+        [monthLabel, employeeName]
+      );
+
+      if (deleteManualEmployeeRes.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Manual employee not found" });
+      }
+
+      await client.query(
+        `DELETE FROM shifts
+          WHERE month = $1
+            AND employee_name = $2
+            AND COALESCE(source, 'import') = 'manual'`,
+        [monthLabel, employeeName]
+      );
+
+      await client.query("COMMIT");
+
+      await logActivity(
+        req.user?.id,
+        req.user?.displayName || req.user?.username || "System",
+        "shiftplan_manual_employee_delete",
+        "SHIFTPLAN",
+        "employee",
+        employeeName,
+        null,
+        { month: monthLabel }
+      );
+
+      res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("MANUAL EMPLOYEE DELETE ERROR:", err);
+      res.status(500).json({ error: "Failed to delete manual employee" });
+    } finally {
+      client.release();
     }
   }
 );
@@ -270,7 +560,7 @@ router.post(
     const client = await db.connect();
 
     try {
-      const { month, data } = req.body;
+      const { month, data, preserveManualEmployees = true } = req.body;
 
       if (!month || !data) {
         return res.status(400).json({ error: "Missing data" });
@@ -303,34 +593,26 @@ router.post(
       const year = parsedAudit?.year || new Date().getFullYear();
       const monthIdx = (parsedAudit?.month || 1) - 1; // 0-based
 
+      const manualEmployeeNames = await fetchManualEmployeeNameSet(client, month);
+      const existingManualRows = await fetchExistingManualShiftRows(client, month);
+      const persistedEntries = buildPersistedShiftEntries({
+        scheduleData: data,
+        existingManualRows,
+        manualEmployeeNames,
+        preserveManualEmployees,
+      });
       const incomingMap = new Map(); // key: "Name|Day" -> code
 
-      // Prepare Insert Data
-      const insertValues = []; // Array of params
+      for (const entry of persistedEntries) {
+        const key = `${entry.employeeName}|${entry.day}`;
+        incomingMap.set(key, entry.shiftCode);
 
-      for (const employee of Object.keys(data)) {
-        const days = data[employee] || {};
+        const oldShift = existingMap.get(key);
 
-        for (const rawDay of Object.keys(days)) {
-          const day = Number(rawDay);
-          const shift = days[rawDay];
-
-          if (!Number.isFinite(day) || day < 1 || day > 31) continue;
-          // treat empty string as deletion if it existed, otherwise skip
-          if (!shift || typeof shift !== "string" || shift === "") continue;
-
-          const key = `${employee}|${day}`;
-          incomingMap.set(key, shift);
-
-          const oldShift = existingMap.get(key);
-
-          // CHANGE or NEW
-          if (oldShift !== shift) {
-            const dateObj = new Date(year, monthIdx, day);
-            const dateStr = dateObj.toISOString().split('T')[0];
-            // Params: emp_name, date, old, new, by, source
-            auditLogParams.push([employee, dateStr, oldShift || null, shift, changedBy, source]);
-          }
+        if (oldShift !== entry.shiftCode) {
+          const dateObj = new Date(year, monthIdx, entry.day);
+          const dateStr = dateObj.toISOString().split('T')[0];
+          auditLogParams.push([entry.employeeName, dateStr, oldShift || null, entry.shiftCode, changedBy, source]);
         }
       }
 
@@ -369,11 +651,10 @@ router.post(
       // 4. Overwrite Data
       await client.query(`DELETE FROM shifts WHERE month = $1`, [month]);
 
-      for (const [key, code] of incomingMap.entries()) {
-        const [emp, day] = key.split('|');
+      for (const entry of persistedEntries) {
         await client.query(
-          `INSERT INTO shifts (month, employee_name, day, shift_code) VALUES ($1,$2,$3,$4)`,
-          [month, emp, day, code]
+          `INSERT INTO shifts (month, employee_name, day, shift_code, source) VALUES ($1,$2,$3,$4,$5)`,
+          [month, entry.employeeName, entry.day, entry.shiftCode, entry.source]
         );
       }
 
@@ -475,26 +756,25 @@ router.post(
           throw new Error(`Invalid month label: ${monthLabel}`);
         }
 
+        const monthData = schedulesToPersist[monthLabel];
+        const manualEmployeeNames = await fetchManualEmployeeNameSet(client, monthLabel);
+        const existingManualRows = await fetchExistingManualShiftRows(client, monthLabel);
+        const persistedEntries = buildPersistedShiftEntries({
+          scheduleData: monthData,
+          existingManualRows,
+          manualEmployeeNames,
+          preserveManualEmployees: true,
+        });
+
         // 1. CLEAR existing data for this month
         await client.query(`DELETE FROM shifts WHERE month = $1`, [monthLabel]);
 
         // 2. INSERT new data
-        const monthData = schedulesToPersist[monthLabel];
-        for (const employee of Object.keys(monthData)) {
-          const days = monthData[employee] || {};
-
-          for (const rawDay of Object.keys(days)) {
-            const day = Number(rawDay);
-            const shift = days[rawDay];
-
-            if (!Number.isFinite(day) || day < 1 || day > 31) continue;
-            if (!shift || typeof shift !== "string") continue;
-
-            await client.query(
-              `INSERT INTO shifts (month, employee_name, day, shift_code) VALUES ($1, $2, $3, $4)`,
-              [monthLabel, employee, day, shift]
-            );
-          }
+        for (const entry of persistedEntries) {
+          await client.query(
+            `INSERT INTO shifts (month, employee_name, day, shift_code, source) VALUES ($1, $2, $3, $4, $5)`,
+            [monthLabel, entry.employeeName, entry.day, entry.shiftCode, entry.source]
+          );
         }
       }
 
@@ -660,6 +940,16 @@ router.put(
     try {
       await client.query("BEGIN");
 
+      const manualEmployeeRes = await client.query(
+        `SELECT 1
+           FROM manual_shiftplan_employees
+          WHERE month = $1
+            AND employee_name = $2
+          LIMIT 1`,
+        [month, employeeName]
+      );
+      const rowSource = manualEmployeeRes.rowCount > 0 ? "manual" : "import";
+
       if (!shiftCode) {
         await client.query(
           `DELETE FROM shifts WHERE month=$1 AND employee_name=$2 AND day=$3`,
@@ -668,12 +958,13 @@ router.put(
       } else {
         await client.query(
           `
-          INSERT INTO shifts (month, employee_name, day, shift_code)
-          VALUES ($1,$2,$3,$4)
+          INSERT INTO shifts (month, employee_name, day, shift_code, source)
+          VALUES ($1,$2,$3,$4,$5)
           ON CONFLICT (month, employee_name, day)
-          DO UPDATE SET shift_code = EXCLUDED.shift_code
+          DO UPDATE SET shift_code = EXCLUDED.shift_code,
+                        source = EXCLUDED.source
           `,
-          [month, employeeName, day, shiftCode]
+          [month, employeeName, day, shiftCode, rowSource]
         );
       }
 
@@ -723,6 +1014,9 @@ router.post(
 
       const aShift = a.rows?.[0]?.shift_code ?? null;
       const bShift = b.rows?.[0]?.shift_code ?? null;
+      const manualEmployees = await fetchManualEmployeeNameSet(client, month);
+      const sourceA = manualEmployees.has(employeeA) ? "manual" : "import";
+      const sourceB = manualEmployees.has(employeeB) ? "manual" : "import";
 
       // upsert A -> bShift
       if (bShift === null) {
@@ -730,12 +1024,13 @@ router.post(
       } else {
         await client.query(
           `
-          INSERT INTO shifts (month, employee_name, day, shift_code)
-          VALUES ($1,$2,$3,$4)
+          INSERT INTO shifts (month, employee_name, day, shift_code, source)
+          VALUES ($1,$2,$3,$4,$5)
           ON CONFLICT (month, employee_name, day)
-          DO UPDATE SET shift_code = EXCLUDED.shift_code
+          DO UPDATE SET shift_code = EXCLUDED.shift_code,
+                        source = EXCLUDED.source
           `,
-          [month, employeeA, day, bShift]
+          [month, employeeA, day, bShift, sourceA]
         );
       }
 
@@ -745,12 +1040,13 @@ router.post(
       } else {
         await client.query(
           `
-          INSERT INTO shifts (month, employee_name, day, shift_code)
-          VALUES ($1,$2,$3,$4)
+          INSERT INTO shifts (month, employee_name, day, shift_code, source)
+          VALUES ($1,$2,$3,$4,$5)
           ON CONFLICT (month, employee_name, day)
-          DO UPDATE SET shift_code = EXCLUDED.shift_code
+          DO UPDATE SET shift_code = EXCLUDED.shift_code,
+                        source = EXCLUDED.source
           `,
-          [month, employeeB, day, aShift]
+          [month, employeeB, day, aShift, sourceB]
         );
       }
 

@@ -146,6 +146,7 @@ describe('buildProvisioningPlan', () => {
       firstName: 'John',
       lastName: 'Doe',
       username: 'jdoe',
+      loginName: 'John@Doe',
       email: 'john.doe@eu.equinix.com',
       group: 'c-ops',
       department: 'c-ops',
@@ -179,6 +180,7 @@ describe('buildProvisioningPlan', () => {
     assert.deepEqual(plan.updates, [{
       employeeName: 'Jane Doe',
       userId: 7,
+      loginName: null,
       email: 'jane.doe@eu.equinix.com',
       match: 'email',
       patch: {
@@ -201,6 +203,7 @@ describe('buildProvisioningPlan', () => {
       firstName: 'Patrick',
       lastName: 'Brode',
       username: 'pbrode',
+      loginName: 'Patrick@Brode',
       email: 'patrick.brode@eu.equinix.com',
       group: 'c-ops',
       department: 'c-ops',
@@ -240,6 +243,7 @@ describe('buildProvisioningPlan', () => {
 
     assert.equal(plan.uniqueEmployees, 1);
     assert.equal(plan.creates.length, 1);
+    assert.equal(plan.creates[0].loginName, 'NoraAdelMahmoud@Hafez');
     assert.equal(plan.creates[0].email, 'nora.hafez@eu.equinix.com');
     assert.deepEqual(plan.skipped, []);
   });
@@ -260,6 +264,7 @@ describe('buildProvisioningPlan', () => {
     });
 
     assert.equal(plan.creates.length, 1);
+  assert.equal(plan.creates[0].loginName, 'John@Doe');
     assert.equal(plan.creates[0].email, 'john.doe+odin2@eu.equinix.com');
     assert.equal(plan.creates[0].username, 'jdoe');
     assert.equal(plan.creates[0].employeeName, 'John Doe');

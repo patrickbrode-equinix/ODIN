@@ -59,6 +59,7 @@ export async function requireAuth(req, res, next) {
       `
       SELECT
         id,
+        login_name,
         email,
         user_group,
         approved,
@@ -86,6 +87,7 @@ export async function requireAuth(req, res, next) {
 
     req.user = {
       id: user.id,
+      loginName: user.login_name,
       email: user.email,
       group: user.user_group,
       approved: user.approved === true,

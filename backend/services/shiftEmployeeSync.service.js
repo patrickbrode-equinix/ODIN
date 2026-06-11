@@ -250,6 +250,7 @@ export async function fetchShiftImportReview({ schedules, client = db }) {
       `SELECT DISTINCT employee_name
        FROM shifts
        WHERE month = ANY($1::text[])
+         AND COALESCE(source, 'import') <> 'manual'
        ORDER BY employee_name ASC`,
       [months]
     )
@@ -272,6 +273,7 @@ export async function fetchShiftImportReview({ schedules, client = db }) {
 
 const EMPLOYEE_DELETE_STEPS = [
   { table: "shifts", column: "employee_name" },
+  { table: "manual_shiftplan_employees", column: "employee_name" },
   { table: "employee_contacts", column: "employee_name" },
   { table: "absences", column: "employee_name" },
   { table: "absence_conflicts", column: "employee_name" },

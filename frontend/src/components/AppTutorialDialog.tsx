@@ -98,14 +98,14 @@ const TUTORIAL: Record<LanguageCode, TutorialCopy> = {
         title: "Navigation und Aufbau",
         icon: <Layout className="h-5 w-5 text-sky-400" />,
         highlight: "Sidebar",
-        body: "ODIN ist in drei Hauptbereiche gegliedert:\n\n**Header (oben)**\nZeigt Echtzeit-Status: Crawler-Updates, aktive Tickets, Schichtplan-Upload, Teams-Status, ODIN-Logik-Status, Sprachauswahl und dein Profil.\n\n**Sidebar (links)**\nDie Hauptnavigation mit allen Bereichen. Gruppen wie Dashboard, Schichtplan und Protokoll lassen sich auf- und zuklappen. Im kompakten Modus zeigen Icons den Bereich an.\n\n**Deine Navigationsreiter:**\n[tab:LayoutDashboard:Dashboard] [tab:Calendar:Schichtplan] [tab:FileText:Handover] [tab:Ticket:Tickets] [tab:Brain:ODIN-Logik] [tab:CalendarClock:Schichtplaner] [tab:MessageSquare:Teams Center] [tab:Tv:TV Dashboard] [tab:ScrollText:Protokoll] [tab:FileCheck:Commit Compliance] [tab:Shield:Admin Settings] [tab:UsersRound:User Management]\n\n**Hauptbereich (Mitte)**\nDer Inhalt des gewählten Reiters. Jede Seite bietet kontextbezogene Filter, Aktionen und Informationen.",
+        body: "ODIN ist in drei Hauptbereiche gegliedert:\n\n**Header (oben)**\nZeigt Echtzeit-Status: Crawler-Updates, aktive Tickets, Schichtplan-Upload, Teams-Status, ODIN-Logik-Status, Sprachauswahl und dein Profil.\n\n**Sidebar (links)**\nDie Hauptnavigation mit allen Bereichen. Gruppen wie Dashboard und Schichtplan lassen sich auf- und zuklappen. Im kompakten Modus zeigen Icons den Bereich an.\n\n**Deine Navigationsreiter:**\n[tab:LayoutDashboard:Dashboard] [tab:Calendar:Schichtplan] [tab:FileText:Handover] [tab:Ticket:Tickets] [tab:Brain:ODIN-Logik] [tab:CalendarClock:Schichtplaner] [tab:MessageSquare:Teams Center] [tab:Tv:TV Dashboard] [tab:FileCheck:Commit Compliance] [tab:Shield:Admin Settings] [tab:UsersRound:User Management]\n\n**Hauptbereich (Mitte)**\nDer Inhalt des gewählten Reiters. Jede Seite bietet kontextbezogene Filter, Aktionen und Informationen.",
       },
       /* ── 2  DASHBOARD ── */
       {
         title: "Dashboard",
         icon: <BarChart2 className="h-5 w-5 text-indigo-400" />,
         highlight: "Dashboard",
-        body: "Das Dashboard ist deine Startseite und zentrale Kommandozentrale.\n\n**Was du hier siehst:**\n• **Aktive Tickets** nach Typ – Smart Hand, Trouble Ticket, Cross Connect\n• **Letzte Aktivitäten** im Team in Echtzeit\n• **Schichtplan-Status** und aktuelle Besetzung\n• **Systemgesundheit** über die Metriken im Header\n\n**Unterseiten:**\n[tab:BarChart2:Statistiken] – Detaillierte Diagramme: Dispatch vs. Closed, Ticket-Typen, Commit-Gesundheit, Tagestrends\n[tab:FileCheck:Ticket Audit] – Lückenlose Nachverfolgbarkeit aller Ticket-Aktionen (nur für Root-User)\n\n**Tipp:** Über das Untermenü in der Sidebar erreichst du Statistiken und Audit direkt.",
+        body: "Das Dashboard ist deine Startseite und zentrale Kommandozentrale.\n\n**Was du hier siehst:**\n• **Aktive Tickets** nach Typ – Smart Hand, Trouble Ticket, Cross Connect\n• **Letzte Aktivitäten** im Team in Echtzeit\n• **Schichtplan-Status** und aktuelle Besetzung\n• **Systemgesundheit** über die Metriken im Header\n\n**Unterseiten:**\n[tab:BarChart2:Statistiken] – Detaillierte Diagramme: Dispatch vs. Closed, Ticket-Typen, Commit-Gesundheit, Tagestrends sowie integrierte Audit-Kennzahlen\n\n**Tipp:** Über das Untermenü in der Sidebar erreichst du den Statistik-Hub direkt.",
       },
       /* ── 3  SCHICHTPLAN ── */
       {
@@ -135,12 +135,12 @@ const TUTORIAL: Record<LanguageCode, TutorialCopy> = {
         highlight: "Teams Center",
         body: "[tab:MessageSquare:Teams Center] – Microsoft Teams-Integration\n\n**Kanalversand:** Automatische Nachrichten an Teams-Kanäle bei Schichtänderungen, neuen Tickets oder Systemereignissen.\n\n**Persönliche Nachrichten:** Direkte Benachrichtigungen an einzelne Teammitglieder über den Microsoft Graph-Bot.\n\n**Diagnostik:** Das Fehlercenter zeigt nicht nur ob, sondern **warum** die Integration nicht funktioniert – Webhook-Status, Graph-Rechte, Token-Prüfung und Konnektivitätstests.\n\n**Event-Konfiguration:** Jedes ODIN-Event (Ticketzuweisung, Schichtplanänderung, Engine-Status) kann einzeln aktiviert, mit Formaten versehen und zeitlich eingeschränkt werden (Ruhezeiten).",
       },
-      /* ── 7  TV & PROTOKOLL ── */
+      /* ── 7  TV & AUDIT ── */
       {
-        title: "TV Dashboard & Protokoll",
+        title: "TV Dashboard & Audit-Log",
         icon: <Tv className="h-5 w-5 text-amber-400" />,
         highlight: "TV Dashboard",
-        body: "[tab:Tv:TV Dashboard]\nEine für große Monitore optimierte Vollbildansicht mit den wichtigsten KPIs. Ideal für Teamräume, Leitstellen und Operations-Bildschirme. Übernimmt automatisch Sprache und Theme.\n\n**Features:** Auto-Scroll, einstellbare Slide-Dauer, kompakte Ticket-Karten, Schichtanzeige.\n\n[tab:ScrollText:Protokoll]\nZeigt die chronologische Historie aller Systemaktionen – wer hat wann was gemacht.\n\n**Unterseiten:**\n• **Teams-Benachrichtigungen** – Alle gesendeten Teams-Nachrichten\n• **Automated Assignment Log** – Alle Aktionen der Zuweisungsengine",
+        body: "[tab:Tv:TV Dashboard]\nEine für große Monitore optimierte Vollbildansicht mit den wichtigsten KPIs. Ideal für Teamräume, Leitstellen und Operations-Bildschirme. Übernimmt automatisch Sprache und Theme.\n\n**Features:** Auto-Scroll, einstellbare Slide-Dauer, kompakte Ticket-Karten, Schichtanzeige.\n\n[tab:Shield:Admin Settings]\nIm Audit-Bereich findest du das zentrale Aktivitaets- und Aenderungsprotokoll. Dort laufen Systemaktionen, Teams-Events und Konfigurationsaenderungen zusammen.",
       },
       /* ── 8  SCHICHTPLANER ── */
       {

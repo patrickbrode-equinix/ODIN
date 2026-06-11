@@ -4,6 +4,12 @@
 
 import { api, asArray, asObject } from "../../api/api";
 
+export interface ManualShiftplanEmployee {
+  employee_name: string;
+  created_at?: string | null;
+  created_by?: string | null;
+}
+
 /* ------------------------------------------------ */
 /* GET MONTHS                                       */
 /* ------------------------------------------------ */
@@ -27,7 +33,29 @@ export async function fetchSchedule(month: string) {
 /* IMPORT SCHEDULE (ADMIN/SUPERADMIN)               */
 /* ------------------------------------------------ */
 
-export async function importSchedule(month: string, data: any) {
-  const res = await api.post("/schedules/import", { month, data });
+export async function importSchedule(
+  month: string,
+  data: any,
+  options?: { preserveManualEmployees?: boolean },
+) {
+  const res = await api.post("/schedules/import", {
+    month,
+    data,
+    preserveManualEmployees: options?.preserveManualEmployees !== false,
+  });
   return res.data;
+}
+
+export async function createManualShiftplanEmployee(month: string, employeeName: string) {
+  const res = await api.post(`/schedules/${encodeURIComponent(month)}/manual-employees`, {
+    employeeName,
+  });
+  return asObject(res.data, "createManualShiftplanEmployee");
+}
+
+export async function deleteManualShiftplanEmployee(month: string, employeeName: string) {
+  const res = await api.delete(
+    `/schedules/${encodeURIComponent(month)}/manual-employees/${encodeURIComponent(employeeName)}`,
+  );
+  return asObject(res.data, "deleteManualShiftplanEmployee");
 }

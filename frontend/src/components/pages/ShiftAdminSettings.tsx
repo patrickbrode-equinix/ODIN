@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/api';
-import { EnterpriseHeader, EnterprisePageShell } from '../layout/EnterpriseLayout';
+import { EnterpriseFeatureHero, EnterpriseHeader, EnterprisePageShell } from '../layout/EnterpriseLayout';
 import {
   AlertTriangle,
   CalendarDays,
@@ -29,6 +29,7 @@ import {
 import { EmployeeSkills, fetchSkills, updateSkills } from '../../api/coverage';
 import type { TranslationKey } from '../../context/LanguageContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { dedupeEmployeeNames } from '../../utils/employeeNames';
 
 /* ── locale helpers ── */
 
@@ -64,6 +65,7 @@ interface ShiftDefinition {
   start_day_offset: number;
   end_day_offset: number;
   duration_hours: number;
+  series_days: number;
   min_staff: number;
   max_staff: number;
   color_hex: string;
@@ -101,6 +103,7 @@ interface PlanningConfig {
   fairness_priority: number;
   admin_override_priority: number;
   monthly_target_hours: number;
+  annual_target_hours: number;
 }
 
 interface ShiftplanExclusion {
@@ -108,6 +111,7 @@ interface ShiftplanExclusion {
   employee_name: string;
   reason: string;
   reason_text: string | null;
+  fixed_shift_type: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;
@@ -155,6 +159,13 @@ interface OvertimeConfig {
   dailyMode: 'off' | 'warn' | 'block';
   weeklyMode: 'off' | 'warn' | 'block';
 }
+
+type HolidayStaffingLimit = {
+  early: number;
+  late: number;
+};
+
+type HolidayStaffingConfig = Record<string, HolidayStaffingLimit>;
 
 interface SkillMatrixProfile extends EmployeeSkills {
   rated_skills: Record<string, number>;
@@ -210,6 +221,41 @@ const DEFAULT_OVERTIME_CONFIG: OvertimeConfig = {
   dailyMode: 'warn',
   weeklyMode: 'warn',
 };
+
+const HOLIDAY_STAFFING_OPTIONS = [
+  { value: 'Neujahr', labelDe: 'Neujahr', labelEn: "New Year's Day" },
+  { value: 'Karfreitag', labelDe: 'Karfreitag', labelEn: 'Good Friday' },
+  { value: 'Ostermontag', labelDe: 'Ostermontag', labelEn: 'Easter Monday' },
+  { value: 'Tag der Arbeit', labelDe: 'Tag der Arbeit', labelEn: 'Labour Day' },
+  { value: 'Christi Himmelfahrt', labelDe: 'Christi Himmelfahrt', labelEn: 'Ascension Day' },
+  { value: 'Pfingstmontag', labelDe: 'Pfingstmontag', labelEn: 'Whit Monday' },
+  { value: 'Fronleichnam', labelDe: 'Fronleichnam', labelEn: 'Corpus Christi' },
+  { value: 'Tag der Deutschen Einheit', labelDe: 'Tag der Deutschen Einheit', labelEn: 'German Unity Day' },
+  { value: '1. Weihnachtstag', labelDe: '1. Weihnachtstag', labelEn: 'Christmas Day' },
+  { value: '2. Weihnachtstag', labelDe: '2. Weihnachtstag', labelEn: 'Boxing Day' },
+] as const;
+
+type FixedShiftTypeValue = '' | 'early' | 'late' | 'night';
+
+const FIXED_SHIFT_TYPE_OPTIONS: Array<{ value: FixedShiftTypeValue; labelDe: string; labelEn: string }> = [
+  { value: '', labelDe: 'Komplett ausschliessen', labelEn: 'Exclude completely' },
+  { value: 'early', labelDe: 'Nur Fruehschicht', labelEn: 'Early only' },
+  { value: 'late', labelDe: 'Nur Spaetschicht', labelEn: 'Late only' },
+  { value: 'night', labelDe: 'Nur Nachtschicht', labelEn: 'Night only' },
+];
+
+function formatFixedShiftType(value: string | null | undefined, isGerman: boolean) {
+  switch (String(value || '').trim().toLowerCase()) {
+    case 'early':
+      return isGerman ? 'Nur Fruehschicht' : 'Early only';
+    case 'late':
+      return isGerman ? 'Nur Spaetschicht' : 'Late only';
+    case 'night':
+      return isGerman ? 'Nur Nachtschicht' : 'Night only';
+    default:
+      return isGerman ? 'Komplett ausgeschlossen' : 'Fully excluded';
+  }
+}
 
 /* ── parsers / normalizers ── */
 
@@ -275,6 +321,33 @@ function extractOvertimeConfig(settings: Record<string, string>): OvertimeConfig
   };
 }
 
+function extractHolidayStaffingConfig(settings: Record<string, string>): HolidayStaffingConfig {
+  const config: HolidayStaffingConfig = Object.fromEntries(
+    HOLIDAY_STAFFING_OPTIONS.map((holiday) => [holiday.value, { early: 0, late: 0 }])
+  ) as HolidayStaffingConfig;
+  const raw = settings['shiftplan.holiday_staffing_limits'];
+
+  if (!raw) return config;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return config;
+
+    for (const holiday of HOLIDAY_STAFFING_OPTIONS) {
+      const entry = parsed[holiday.value];
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      config[holiday.value] = {
+        early: Math.max(Number.parseInt(String(entry.early ?? 0), 10) || 0, 0),
+        late: Math.max(Number.parseInt(String(entry.late ?? 0), 10) || 0, 0),
+      };
+    }
+  } catch {
+    return config;
+  }
+
+  return config;
+}
+
 function normalizeApplicableDays(value: unknown): number[] {
   const fallback = [1, 2, 3, 4, 5, 6, 0];
 
@@ -306,6 +379,16 @@ function normalizeShiftDayOffset(value: unknown, fallback = 0) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isInteger(parsed) || parsed < 0) return fallback;
   return parsed;
+}
+
+function normalizeSeriesDays(value: unknown, fallback = 1) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
+
+function isHalfDayShiftCode(code: string) {
+  return /^H[EL]\d+$/i.test(String(code || '').trim());
 }
 
 function normalizeSkillCatalog(value: unknown): string[] {
@@ -427,22 +510,22 @@ function Section({
 
   return (
     <section className="theme-glass-panel overflow-hidden rounded-3xl border shadow-[0_12px_40px_rgba(15,23,42,0.22)] backdrop-blur-sm">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-accent/60"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-700 dark:text-sky-300">
-            <Icon className="h-4 w-4" />
+      <div className="flex items-center gap-3 px-5 py-4 transition hover:bg-accent/60">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-700 dark:text-sky-300">
+              <Icon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 text-sm font-semibold text-foreground">{title}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-foreground">{title}</div>
-            {helpKey && t ? <SectionHelp textKey={helpKey} t={t} /> : null}
-          </div>
-        </div>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-      </button>
+          {open ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        </button>
+        {helpKey && t ? <SectionHelp textKey={helpKey} t={t} /> : null}
+      </div>
       {open ? <div className="border-t border-border/60 px-5 pb-5 pt-4">{children}</div> : null}
     </section>
   );
@@ -464,6 +547,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const [dbsPool, setDbsPool] = useState<SpecialPoolEntry[]>([]);
   const [dbsConfig, setDbsConfig] = useState<DbsConfig>(DEFAULT_DBS_CONFIG);
   const [overtimeConfig, setOvertimeConfig] = useState<OvertimeConfig>(DEFAULT_OVERTIME_CONFIG);
+  const [holidayStaffingConfig, setHolidayStaffingConfig] = useState<HolidayStaffingConfig>(extractHolidayStaffingConfig({}));
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedPlanningSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [skillsEnabled, setSkillsEnabled] = useState(false);
   const [skillCatalog, setSkillCatalog] = useState<string[]>([...DEFAULT_SKILL_CATALOG]);
@@ -472,6 +556,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const [saving, setSaving] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
   const [newExclusionName, setNewExclusionName] = useState('');
+  const [newExclusionFixedShiftType, setNewExclusionFixedShiftType] = useState<FixedShiftTypeValue>('');
   const [newDbsEmployee, setNewDbsEmployee] = useState('');
   const [newSkillName, setNewSkillName] = useState('');
 
@@ -485,19 +570,20 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, poolRes, appSettingsRes, skillsRes] = await Promise.all([
+      const [defRes, rotRes, fairRes, planRes, exclRes, basisRes, appSettingsRes, skillsRes] = await Promise.all([
         api.get('/shift-config/definitions'),
         api.get('/shift-config/rotation-rules'),
         api.get('/shift-config/fairness-rules'),
         api.get('/shift-config/planning-config'),
         api.get('/shift-config/exclusions'),
         api.get('/shiftplan-control/planning-basis?month=' + new Date().toISOString().slice(0, 7)).catch(() => ({ data: { basis: { employees: [] } } })),
-        api.get('/shift-config/special-pools/DBS').catch(() => ({ data: { assignments: [] } })),
         api.get('/app-settings').catch(() => ({ data: {} })),
         fetchSkills().catch(() => []),
       ]);
 
-      const loadedEmployees = basisRes.data.basis?.employees || [];
+      const loadedEmployees = dedupeEmployeeNames(basisRes.data.basis?.employees || []);
+      const nextDbsConfig = extractDbsConfig(appSettingsRes.data || {});
+      const poolRes = await api.get(`/shift-config/special-pools/${encodeURIComponent(nextDbsConfig.shiftCode)}`).catch(() => ({ data: { assignments: [] } }));
       const configuredSkillCatalog = normalizeSkillCatalog(appSettingsRes.data?.['shiftplan.skill_catalog']);
       const allSkillProfiles = Array.isArray(skillsRes) ? skillsRes : [];
       const knownEmployees = [...new Set([
@@ -506,20 +592,24 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       ])].sort((left, right) => left.localeCompare(right, 'de'));
       const skillsByEmployee = new Map(allSkillProfiles.map((entry) => [entry.employee_name, entry]));
 
-      setDefinitions((defRes.data.definitions || []).map((definition: ShiftDefinition) => ({
-        ...definition,
-        applicable_days: normalizeApplicableDays(definition.applicable_days),
-        start_day_offset: normalizeShiftDayOffset(definition.start_day_offset, 0),
-        end_day_offset: normalizeShiftDayOffset(definition.end_day_offset, definition.shift_type === 'night' ? 1 : 0),
-      })));
+      setDefinitions((defRes.data.definitions || [])
+        .filter((definition: ShiftDefinition) => !isHalfDayShiftCode(definition.code))
+        .map((definition: ShiftDefinition) => ({
+          ...definition,
+          applicable_days: normalizeApplicableDays(definition.applicable_days),
+          start_day_offset: normalizeShiftDayOffset(definition.start_day_offset, 0),
+          end_day_offset: normalizeShiftDayOffset(definition.end_day_offset, definition.shift_type === 'night' ? 1 : 0),
+          series_days: normalizeSeriesDays(definition.series_days, 1),
+        })));
       setRotation(rotRes.data.rules || null);
       setFairness(fairRes.data.rules || null);
       setPlanConfig(planRes.data.config || null);
       setExclusions((exclRes.data.exclusions || []).filter((entry: ShiftplanExclusion) => entry.is_active));
       setEmployees(loadedEmployees);
       setDbsPool(poolRes.data.assignments || []);
-      setDbsConfig(extractDbsConfig(appSettingsRes.data || {}));
+      setDbsConfig(nextDbsConfig);
       setOvertimeConfig(extractOvertimeConfig(appSettingsRes.data || {}));
+      setHolidayStaffingConfig(extractHolidayStaffingConfig(appSettingsRes.data || {}));
       setAdvancedSettings(extractAdvancedPlanningSettings(appSettingsRes.data || {}));
       setSkillsEnabled(parseBooleanSetting(appSettingsRes.data?.['shiftplan.skills_enabled'], false));
       setSkillCatalog(configuredSkillCatalog);
@@ -568,6 +658,20 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
       showToast(t("shiftAdmin.toastRotationSaved"));
     } catch (error: any) {
       showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveHolidayStaffing = async () => {
+    setSaving('holiday-staffing');
+    try {
+      await api.put('/app-settings', {
+        'shiftplan.holiday_staffing_limits': JSON.stringify(holidayStaffingConfig),
+      });
+      showToast(isGerman ? 'Feiertags-Maximalbesetzung gespeichert' : 'Holiday max staffing saved');
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || t('shiftAdmin.error'), 'err');
     } finally {
       setSaving('');
     }
@@ -636,6 +740,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         'shiftplan.dbs_required_staff': dbsConfig.requiredStaff,
         'shiftplan.dbs_default_monthly_target': dbsConfig.defaultMonthlyTarget,
       });
+      await loadAll();
       showToast(t("shiftAdmin.toastDbsConfigSaved"));
     } catch (error: any) {
       showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
@@ -647,12 +752,13 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
   const saveDbsPool = async () => {
     setSaving('dbs-pool');
     try {
+      const shiftCode = String(dbsConfig.shiftCode || 'DBS').trim().toUpperCase() || 'DBS';
       const payload = dbsPool.map((entry, index) => ({
         employee_name: entry.employee_name,
         monthly_max_assignments: Math.max(Number.parseInt(String(entry.monthly_max_assignments ?? 0), 10) || 0, 0),
         sort_order: index,
       }));
-      const { data } = await api.put('/shift-config/special-pools/DBS', { assignments: payload });
+      const { data } = await api.put(`/shift-config/special-pools/${shiftCode}`, { assignments: payload });
       setDbsPool(data.assignments || []);
       showToast(t("shiftAdmin.toastDbsPoolSaved"));
     } catch (error: any) {
@@ -664,13 +770,41 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
 
   const addExclusion = async () => {
     if (!newExclusionName.trim()) return;
+    setSaving('excl-new');
     try {
-      await api.post('/shift-config/exclusions', { employee_name: newExclusionName.trim(), reason: 'admin_override' });
+      const fixedShiftType = newExclusionFixedShiftType || null;
+      await api.post('/shift-config/exclusions', {
+        employee_name: newExclusionName.trim(),
+        reason: fixedShiftType ? 'fixed_shift' : 'admin_override',
+        fixed_shift_type: fixedShiftType,
+      });
       setNewExclusionName('');
-      showToast(t("shiftAdmin.toastExclAdded"));
+      setNewExclusionFixedShiftType('');
+      showToast(fixedShiftType
+        ? (isGerman ? 'Regel fuer feste Schicht gespeichert.' : 'Fixed shift rule saved.')
+        : t("shiftAdmin.toastExclAdded"));
       await loadAll();
     } catch (error: any) {
       showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const updateExclusionRule = async (exclusion: ShiftplanExclusion, fixedShiftType: FixedShiftTypeValue) => {
+    setSaving(`excl-${exclusion.id}`);
+    try {
+      const { data } = await api.patch(`/shift-config/exclusions/${exclusion.id}`, {
+        reason: fixedShiftType ? 'fixed_shift' : 'admin_override',
+        reason_text: exclusion.reason_text,
+        fixed_shift_type: fixedShiftType || null,
+      });
+      setExclusions((current) => current.map((entry) => entry.id === exclusion.id ? data.exclusion : entry));
+      showToast(isGerman ? 'Regel aktualisiert.' : 'Rule updated.');
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || t("shiftAdmin.error"), 'err');
+    } finally {
+      setSaving('');
     }
   };
 
@@ -851,6 +985,12 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
           <div>{t("shiftAdmin.sectionDefinitionsInfo")}</div>
         </div>
 
+        <div className="mb-4 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {isGerman
+            ? 'Halbtagsschichten werden hier bewusst ausgeblendet. Sie bleiben für spontane Anpassungen nutzbar, fließen aber nicht mehr in die automatische Draft-Planung ein.'
+            : 'Half-day shifts are intentionally hidden here. They remain available for ad-hoc adjustments, but are no longer used for automatic draft planning.'}
+        </div>
+
         <div className="space-y-4">
           {definitions.map((definition) => {
             const applicableDays = normalizeApplicableDays(definition.applicable_days);
@@ -883,6 +1023,10 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                   <div className="xl:col-span-1">
                     <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defHours")}</label>
                     <input type="number" min="0" step="0.5" value={definition.duration_hours} onChange={(event) => updateDef(definition.id, 'duration_hours', Number.parseFloat(event.target.value) || 0)} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  </div>
+                  <div className="xl:col-span-1">
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-slate-400">{isGerman ? 'Blocktage' : 'Block days'}</label>
+                    <input type="number" min="1" max="31" value={definition.series_days} onChange={(event) => updateDef(definition.id, 'series_days', normalizeSeriesDays(event.target.value, 1))} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
                   </div>
                   <div className="xl:col-span-1">
                     <label className="mb-1 flex items-center text-[10px] uppercase tracking-[0.18em] text-slate-400">{t("shiftAdmin.defMin")} <HelpTooltip textKey="shiftAdmin.helpDefMinMax" t={t} /></label>
@@ -1238,6 +1382,74 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         ) : null}
       </Section>
 
+      <Section title={isGerman ? 'Feiertags-Maximalbesetzung' : 'Holiday max staffing'} icon={CalendarDays}>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/5 px-4 py-3 text-sm text-slate-200">
+            {isGerman
+              ? 'Lege pro Feiertag die maximale Gesamtbesetzung fuer Frueh- und Spaetschicht fest. Die Begrenzung gilt nur an Feiertagen und nur fuer die Schichttypen Frueh und Spaet. 0 bedeutet: normale Schichtdefinition ohne Feiertagsbegrenzung verwenden.'
+              : 'Define the maximum total staffing for early and late shifts per public holiday. The cap applies only on holidays and only to early and late shift types. 0 means: use the regular shift definition without a holiday-specific cap.'}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {HOLIDAY_STAFFING_OPTIONS.map((holiday) => {
+              const limits = holidayStaffingConfig[holiday.value] || { early: 0, late: 0 };
+              return (
+                <div key={holiday.value} className="rounded-2xl border border-white/10 bg-slate-900/55 p-4">
+                  <div className="mb-3 text-sm font-semibold text-slate-100">
+                    {isGerman ? holiday.labelDe : holiday.labelEn}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-slate-400">{isGerman ? 'Max. Frueh' : 'Max early'}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={limits.early}
+                        onChange={(event) => setHolidayStaffingConfig((prev) => ({
+                          ...prev,
+                          [holiday.value]: {
+                            ...(prev[holiday.value] || { early: 0, late: 0 }),
+                            early: Math.max(Number.parseInt(event.target.value, 10) || 0, 0),
+                          },
+                        }))}
+                        className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400">{isGerman ? 'Max. Spaet' : 'Max late'}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={limits.late}
+                        onChange={(event) => setHolidayStaffingConfig((prev) => ({
+                          ...prev,
+                          [holiday.value]: {
+                            ...(prev[holiday.value] || { early: 0, late: 0 }),
+                            late: Math.max(Number.parseInt(event.target.value, 10) || 0, 0),
+                          },
+                        }))}
+                        className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-end">
+            <button onClick={saveHolidayStaffing} disabled={saving === 'holiday-staffing'} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-300 disabled:opacity-50">
+              <Save className="h-4 w-4" />
+              {saving === 'holiday-staffing'
+                ? (isGerman ? 'Speichert…' : 'Saving…')
+                : (isGerman ? 'Feiertagsbesetzung speichern' : 'Save holiday staffing')}
+            </button>
+          </div>
+        </div>
+      </Section>
+
       {/* ── Fairness ── */}
       <Section title={t("shiftAdmin.sectionFairness")} icon={Scale} helpKey="shiftAdmin.helpSectionFairness" t={t}>
         {fairness ? (
@@ -1291,10 +1503,27 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
               <span className="flex items-center">{t("shiftAdmin.planRespectWishes")} <HelpTooltip textKey="shiftAdmin.helpPlanRespectWishes" t={t} /></span>
             </label>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.planTargetHours")} <HelpTooltip textKey="shiftAdmin.helpPlanTargetHours" t={t} /></label>
                 <input type="number" min="0" step="0.5" value={planConfig.monthly_target_hours} onChange={(event) => setPlanConfig({ ...planConfig, monthly_target_hours: Number.parseFloat(event.target.value) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              </div>
+              <div>
+                <label className="flex items-center text-xs text-slate-400">
+                  {isGerman ? 'Jaehrliche Sollzeit (Std.)' : 'Annual target hours'}
+                  <HelpTooltip textKey="shiftAdmin.helpPlanTargetHours" t={t} />
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={planConfig.annual_target_hours}
+                  onChange={(event) => setPlanConfig({ ...planConfig, annual_target_hours: Number.parseFloat(event.target.value) || 0 })}
+                  className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100"
+                />
+                <div className="mt-1 text-xs text-slate-400">
+                  {isGerman ? 'Wird fuer die Jahresauswertung im Statistikbereich genutzt.' : 'Used for yearly progress in the statistics area.'}
+                </div>
               </div>
               <div>
                 <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.planHardRules")} <HelpTooltip textKey="shiftAdmin.helpPlanHardRules" t={t} /></label>
@@ -1535,14 +1764,24 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
 
       {/* ── Employee exclusions ── */}
       <Section title={t("shiftAdmin.sectionExclusions")} icon={UserX} helpKey="shiftAdmin.helpSectionExclusions" t={t}>
-        <div className="mb-4 flex flex-col gap-3 xl:flex-row">
+        <div className="mb-2 text-xs text-slate-400">
+          {isGerman ? 'Leer laesst den Mitarbeiter komplett draussen. Frueh, Spaet oder Nacht erzwingt genau diese Schichtart im Draft.' : 'Leave empty to exclude the employee completely. Early, late, or night enforces that shift type in the draft.'}
+        </div>
+        <div className="mb-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_auto]">
           <select value={newExclusionName} onChange={(event) => setNewExclusionName(event.target.value)} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
             <option value="">{t("shiftAdmin.exclSelectEmployee")}</option>
             {employees.filter((employee) => !exclusions.some((exclusion) => exclusion.employee_name === employee)).map((employee) => <option key={employee} value={employee}>{employee}</option>)}
           </select>
-          <button onClick={() => void addExclusion()} disabled={!newExclusionName.trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/20 disabled:opacity-50">
+          <select value={newExclusionFixedShiftType} onChange={(event) => setNewExclusionFixedShiftType(event.target.value as FixedShiftTypeValue)} className="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+            {FIXED_SHIFT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value || 'exclude'} value={option.value}>{isGerman ? option.labelDe : option.labelEn}</option>
+            ))}
+          </select>
+          <button onClick={() => void addExclusion()} disabled={!newExclusionName.trim() || saving === 'excl-new'} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/20 disabled:opacity-50">
             <UserX className="h-4 w-4" />
-            {t("shiftAdmin.exclExclude")}
+            {saving === 'excl-new'
+              ? (isGerman ? 'Speichert...' : 'Saving...')
+              : (newExclusionFixedShiftType ? (isGerman ? 'Regel anlegen' : 'Add rule') : t("shiftAdmin.exclExclude"))}
           </button>
         </div>
 
@@ -1550,18 +1789,35 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
           <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-400">{t("shiftAdmin.exclEmpty")}</div>
         ) : (
           <div className="space-y-3">
-            {exclusions.map((exclusion) => (
-              <div key={exclusion.id} className="flex flex-col gap-3 rounded-2xl border border-red-400/20 bg-red-500/5 p-4 xl:flex-row xl:items-center xl:justify-between">
-                <div>
+            {exclusions.map((exclusion) => {
+              const isFixedShiftRule = Boolean(exclusion.fixed_shift_type);
+              return (
+              <div key={exclusion.id} className={`flex flex-col gap-3 rounded-2xl border p-4 xl:flex-row xl:items-center xl:justify-between ${isFixedShiftRule ? 'border-blue-400/20 bg-blue-500/5' : 'border-red-400/20 bg-red-500/5'}`}>
+                <div className="space-y-1">
                   <div className="text-sm font-medium text-slate-100">{exclusion.employee_name}</div>
+                  <div className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isFixedShiftRule ? 'border-blue-400/30 bg-blue-500/10 text-blue-200' : 'border-red-400/30 bg-red-500/10 text-red-200'}`}>
+                    {formatFixedShiftType(exclusion.fixed_shift_type, isGerman)}
+                  </div>
                   <div className="text-xs text-slate-400">{t("shiftAdmin.exclCreatedBy")} {exclusion.created_by} {isGerman ? 'am' : 'on'} {new Date(exclusion.created_at).toLocaleDateString(isGerman ? 'de-DE' : 'en-US', { timeZone: 'Europe/Berlin' })}</div>
                 </div>
-                <button onClick={() => void removeExclusion(exclusion.id)} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20">
-                  <Plus className="h-4 w-4" />
-                  {t("shiftAdmin.exclRestore")}
-                </button>
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                  <select
+                    value={(exclusion.fixed_shift_type || '') as FixedShiftTypeValue}
+                    onChange={(event) => void updateExclusionRule(exclusion, event.target.value as FixedShiftTypeValue)}
+                    disabled={saving === `excl-${exclusion.id}`}
+                    className="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
+                  >
+                    {FIXED_SHIFT_TYPE_OPTIONS.map((option) => (
+                      <option key={`${exclusion.id}-${option.value || 'exclude'}`} value={option.value}>{isGerman ? option.labelDe : option.labelEn}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => void removeExclusion(exclusion.id)} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20">
+                    <Plus className="h-4 w-4" />
+                    {isGerman ? 'Regel entfernen' : 'Remove rule'}
+                  </button>
+                </div>
               </div>
-            ))}
+            );})}
           </div>
         )}
       </Section>
@@ -1576,6 +1832,12 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         icon={<Settings2 className="h-6 w-6 text-blue-400" />}
         title={t("shiftAdmin.title")}
         subtitle={t("shiftAdmin.subtitle")}
+      />
+      <EnterpriseFeatureHero
+        tone="emerald"
+        eyebrow={t("shiftAdmin.subtitle")}
+        title={t("shiftAdmin.title")}
+        description={t("shiftAdmin.subtitle")}
       />
       {content}
     </EnterprisePageShell>

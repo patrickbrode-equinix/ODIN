@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { api } from "../api/api";
@@ -74,6 +75,7 @@ export type TranslationKey =
   | "header.uploadButton"
   | "header.fileFormats"
   | "header.noImagesAvailable"
+  | "header.events"
   | "header.imageVisibleHint"
   | "header.imageHiddenHint"
   | "header.deleteTooltip"
@@ -132,6 +134,7 @@ export type TranslationKey =
   | "nav.statistics"
   | "nav.ticketAudit"
   | "nav.weekPlanning"
+  | "nav.dayPlanning"
   | "nav.teamsNotifications"
   | "nav.automatedAssignment"
   | "nav.operationsNode"
@@ -309,6 +312,8 @@ export type TranslationKey =
   | "addUser.note"
   | "addUser.firstName"
   | "addUser.lastName"
+  | "addUser.loginName"
+  | "addUser.loginNamePlaceholder"
   | "addUser.email"
   | "addUser.initialPassword"
   | "addUser.passwordPlaceholder"
@@ -335,6 +340,7 @@ export type TranslationKey =
   | "login.emailHint"
   | "login.email"
   | "login.emailPlaceholder"
+  | "login.userIdInvalid"
   | "login.password"
   | "login.hidePassword"
   | "login.showPassword"
@@ -418,6 +424,8 @@ export type TranslationKey =
   | "register.infoLineTwo"
   | "register.firstName"
   | "register.lastName"
+  | "register.loginName"
+  | "register.loginNamePlaceholder"
   | "register.email"
   | "register.emailPlaceholder"
   | "register.location"
@@ -1163,7 +1171,94 @@ export type TranslationKey =
   | "competency.level"
   | "competency.notesPlaceholder"
   | "competency.add"
-  | "competency.addCompetency";
+  | "competency.addCompetency"
+  /* ── Assignment Writeback ── */
+  | "writeback.panelTitle"
+  | "writeback.panelSubtitle"
+  | "writeback.tabPending"
+  | "writeback.tabShadow"
+  | "writeback.tabConfirm"
+  | "writeback.tabApplied"
+  | "writeback.tabUnassign"
+  | "writeback.tabReassign"
+  | "writeback.tabManualReview"
+  | "writeback.tabFailed"
+  | "writeback.tabOther"
+  | "writeback.empty"
+  | "writeback.loading"
+  | "writeback.refresh"
+  | "writeback.reconcile"
+  | "writeback.reconcileInfo"
+  | "writeback.reconcileResult"
+  | "writeback.snapshotCount"
+  | "writeback.discrepancies"
+  | "writeback.killSwitchActive"
+  | "writeback.shadowModeActive"
+  | "writeback.shadowBanner"
+  | "writeback.manualReviewNote"
+  | "writeback.btnValidate"
+  | "writeback.btnApprove"
+  | "writeback.btnExecute"
+  | "writeback.btnCancel"
+  | "writeback.btnAudit"
+  | "writeback.confirmExecute"
+  | "writeback.confirmCancel"
+  | "writeback.fieldActivity"
+  | "writeback.fieldSO"
+  | "writeback.fieldQueue"
+  | "writeback.fieldSubType"
+  | "writeback.fieldSystem"
+  | "writeback.fieldCurrentOwner"
+  | "writeback.fieldSelectedEmployee"
+  | "writeback.fieldOwnerCode"
+  | "writeback.fieldActionType"
+  | "writeback.fieldMode"
+  | "writeback.fieldStatus"
+  | "writeback.fieldCreated"
+  | "writeback.fieldLastAttempt"
+  | "writeback.fieldFailureReason"
+  | "writeback.fieldHardReason"
+  | "writeback.fieldRetryCount"
+  | "writeback.auditTitle"
+  | "writeback.auditLoading"
+  | "writeback.auditEmpty"
+  | "writeback.auditBefore"
+  | "writeback.auditAfter"
+  | "writeback.auditValidation"
+  | "writeback.auditScreenshot"
+  | "writeback.auditDiagnostics"
+  | "writeback.settingEnabled"
+  | "writeback.settingEnabledTooltip"
+  | "writeback.settingMode"
+  | "writeback.settingModeTooltip"
+  | "writeback.settingKillSwitch"
+  | "writeback.settingKillSwitchTooltip"
+  | "writeback.settingOverwriteExisting"
+  | "writeback.settingOverwriteExistingTooltip"
+  | "writeback.settingAllowUnassign"
+  | "writeback.settingAllowUnassignTooltip"
+  | "writeback.settingAllowReassign"
+  | "writeback.settingAllowReassignTooltip"
+  | "writeback.settingMaxRetries"
+  | "writeback.settingMaxRetriesTooltip"
+  | "writeback.settingRequireFresh"
+  | "writeback.settingRequireFreshTooltip"
+  | "writeback.settingMaxSnapshotAge"
+  | "writeback.settingMaxSnapshotAgeTooltip"
+  | "writeback.settingQueueSmartHands"
+  | "writeback.settingQueueSmartHandsTooltip"
+  | "writeback.settingQueueCrossConnect"
+  | "writeback.settingQueueCrossConnectTooltip"
+  | "writeback.settingQueueTrouble"
+  | "writeback.settingQueueTroubleTooltip"
+  | "writeback.settingQueueDeinstall"
+  | "writeback.settingQueueDeinstallTooltip"
+  | "writeback.settingAllowOtherTeams"
+  | "writeback.settingAllowOtherTeamsTooltip"
+  | "writeback.settingRequireApprovalUnassign"
+  | "writeback.settingRequireApprovalUnassignTooltip"
+  | "writeback.settingRequireApprovalReassign"
+  | "writeback.settingRequireApprovalReassignTooltip";
 
 /* ─────────────────────────────────────────────────────────────────────── */
 /*  TRANSLATIONS                                                           */
@@ -1191,6 +1286,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "header.uploadButton": { de: "Bilder hochladen", en: "Upload images" },
   "header.fileFormats": { de: "JPG, PNG, WebP, GIF · max. 20 MB pro Datei", en: "JPG, PNG, WebP, GIF · max. 20 MB per file" },
   "header.noImagesAvailable": { de: "Keine Event-Bilder vorhanden", en: "No event images available" },
+  "header.events": { de: "Events", en: "Events" },
   "header.imageVisibleHint": { de: "Sichtbar – klicken zum Ausblenden", en: "Visible – click to hide" },
   "header.imageHiddenHint": { de: "Ausgeblendet – klicken zum Einblenden", en: "Hidden – click to show" },
   "header.deleteTooltip": { de: "Löschen", en: "Delete" },
@@ -1251,6 +1347,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "nav.statistics": { de: "Statistiken", en: "Statistics" },
   "nav.ticketAudit": { de: "Ticket-Audit", en: "Ticket audit" },
   "nav.weekPlanning": { de: "Wochenplanung", en: "Week planning" },
+  "nav.dayPlanning": { de: "Tagesplanung", en: "Day planning" },
   "nav.teamsNotifications": { de: "Teams Benachrichtigungen", en: "Teams notifications" },
   "nav.automatedAssignment": { de: "Automatisierte Zuweisung", en: "Automated assignment" },
   "nav.operationsNode": { de: "Operations Dispatching and Intelligence Node", en: "Operations Dispatching and Intelligence Node" },
@@ -1321,7 +1418,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
 
   /* ── ODIN Logic ── */
   "odin.title": { de: "ODIN-Logik", en: "ODIN Logic" },
-  "odin.subtitle": { de: "Assignment Engine · Shadow Mode · Entscheidungstransparenz", en: "Assignment engine · shadow mode · decision transparency" },
+  "odin.subtitle": { de: "Hier steuerst du die automatische Ticketzuweisung — teste, prüfe Ergebnisse und aktiviere den Live-Modus wenn alles passt.", en: "Control automatic ticket assignment here — test, review results, and activate live mode when ready." },
   "odin.liveConfirmTitle": { de: "Produktive automatische Zuweisung aktivieren", en: "Enable productive auto-assignment" },
   "odin.liveConfirmMessage": { de: "Du bist dabei, die produktive automatische Zuweisung zu aktivieren. Tickets werden ab sofort automatisch zugewiesen.", en: "You are about to enable productive automatic assignment. Tickets will be assigned automatically from now on." },
   "odin.liveConfirmButton": { de: "Ja, Live-Automatik aktivieren", en: "Yes, enable live automation" },
@@ -1331,10 +1428,10 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "odin.stopConfirmTitle": { de: "Automatische Zuweisung stoppen", en: "Stop automatic assignment" },
   "odin.stopConfirmMessage": { de: "Möchtest du die automatische Zuweisungslogik stoppen?", en: "Do you want to stop the automatic assignment logic?" },
   "odin.stopConfirmButton": { de: "Ja, Automatik stoppen", en: "Yes, stop automation" },
-  "odin.runsTab": { de: "Runs & Logs", en: "Runs & logs" },
-  "odin.decisionsTab": { de: "Ticketentscheidungen", en: "Ticket decisions" },
-  "odin.reportTab": { de: "Run-Report", en: "Run report" },
-  "odin.logicTreeTab": { de: "Logikbaum", en: "Logic tree" },
+  "odin.runsTab": { de: "Lauf-Historie", en: "Run history" },
+  "odin.decisionsTab": { de: "Ticket-Entscheidungen", en: "Ticket decisions" },
+  "odin.reportTab": { de: "Lauf-Bericht", en: "Run report" },
+  "odin.logicTreeTab": { de: "Regelwerk", en: "Rule engine" },
   "odin.flowTab": { de: "Zuweisungsfluss", en: "Assignment flow" },
   "odin.settingsTab": { de: "Einstellungen", en: "Settings" },
   "odin.crawlerOverride": { de: "Crawler-Override", en: "Crawler override" },
@@ -1353,7 +1450,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "odin.startShadowAutomation": { de: "Shadow-Automatik starten", en: "Start shadow automation" },
   "odin.startLiveAutomation": { de: "Live-Automatik starten", en: "Start live automation" },
   "odin.stopAutomation": { de: "Automatik stoppen", en: "Stop automation" },
-  "odin.engineSettings": { de: "Engine Einstellungen", en: "Engine settings" },
+  "odin.engineSettings": { de: "Regeln & Schwellenwerte anpassen", en: "Adjust rules & thresholds" },
   "odin.selectRunForReport": { de: "Wähle zuerst einen Run im Tab \u201ERuns & Logs\u201C.", en: 'Select a run in the "Runs & logs" tab first.' },
   "odin.loadReport": { de: "Report laden", en: "Load report" },
   "odin.validationConsistent": { de: "✓ Ticketzählung konsistent", en: "✓ Ticket count consistent" },
@@ -1436,7 +1533,9 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "addUser.note": { de: "Nutzer können auch ohne vorhandenen Schichtplan-Eintrag angelegt werden.", en: "Users can also be created without an existing shift plan entry." },
   "addUser.firstName": { de: "Vorname", en: "First name" },
   "addUser.lastName": { de: "Nachname", en: "Last name" },
-  "addUser.email": { de: "E-Mail", en: "Email" },
+  "addUser.loginName": { de: "Benutzerkennung", en: "User ID" },
+  "addUser.loginNamePlaceholder": { de: "Vorname@Nachname", en: "Firstname@Lastname" },
+  "addUser.email": { de: "E-Mail (optional)", en: "Email (optional)" },
   "addUser.initialPassword": { de: "Startpasswort", en: "Initial password" },
   "addUser.passwordPlaceholder": { de: "Initiales Passwort für den ersten Login", en: "Initial password for the first login" },
   "addUser.location": { de: "Standort (IBX)", en: "Location (IBX)" },
@@ -1460,9 +1559,10 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "holidays.generic": { de: "Feiertag", en: "Public holiday" },
   /* ── Login ── */
   "login.loginFailed": { de: "Anmeldung fehlgeschlagen. Bitte Daten prüfen.", en: "Sign-in failed. Please check your credentials." },
-  "login.emailHint": { de: "Melde dich mit deiner Firmen-E-Mail-Adresse an. Falls du noch kein Konto hast, kannst du dich unten registrieren.", en: "Sign in with your corporate email address. If you do not have an account yet, you can register below." },
-  "login.email": { de: "E-Mail", en: "Email" },
-  "login.emailPlaceholder": { de: "vorname.nachname@eu.equinix.com", en: "firstname.lastname@eu.equinix.com" },
+  "login.emailHint": { de: "Melde dich mit deiner Benutzerkennung an.", en: "Sign in with your user ID." },
+  "login.email": { de: "Benutzerkennung", en: "User ID" },
+  "login.emailPlaceholder": { de: "Vorname@Nachname", en: "Firstname@Lastname" },
+  "login.userIdInvalid": { de: "Bitte Benutzerkennung im Format Vorname@Nachname eingeben.", en: "Please enter your user ID in the format Firstname@Lastname." },
   "login.password": { de: "Passwort", en: "Password" },
   "login.hidePassword": { de: "Passwort verbergen", en: "Hide password" },
   "login.showPassword": { de: "Passwort anzeigen", en: "Show password" },
@@ -1485,7 +1585,7 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   /* ── CommitCompliance ── */
   "commitCompliance.pdfOnlyError": { de: "Nur PDF-Dateien erlaubt.", en: "Only PDF files are allowed." },
   "commitCompliance.uploadFailedError": { de: "Upload fehlgeschlagen.", en: "Upload failed." },
-  "commitCompliance.subtitle": { de: "PDF-Dateien hochladen für Analyse", en: "Upload PDF files for analysis" },
+  "commitCompliance.subtitle": { de: "Crawler-Ergebnisse hochladen und SLA-Abweichungen automatisch erkennen", en: "Upload crawler results and automatically detect SLA deviations" },
   "commitCompliance.uploadSection": { de: "PDF-Upload", en: "PDF upload" },
   "commitCompliance.uploadingButton": { de: "Wird hochgeladen...", en: "Uploading..." },
   "commitCompliance.uploadButton": { de: "Hochladen", en: "Upload" },
@@ -1542,12 +1642,14 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "register.registerFailed": { de: "Registrierung fehlgeschlagen", en: "Registration failed" },
   "register.title": { de: "Konto registrieren", en: "Register account" },
   "register.subtitle": { de: "Registrierung erfordert Admin-Freigabe", en: "Registration requires administrator approval" },
-  "register.infoLineOne": { de: "Verwende deine Firmen-E-Mail-Adresse, zum Beispiel vorname.nachname@firma.de.", en: "Use your corporate email address, for example first.last@company.com." },
+  "register.infoLineOne": { de: "Verwende deine interne Benutzerkennung im Format Vorname@Nachname.", en: "Use your internal user ID in the format Firstname@Lastname." },
   "register.infoLineTwo": { de: "Nach der Registrierung muss ein Admin dein Konto freigeben, bevor du dich einloggen kannst.", en: "After registration, an administrator must approve your account before you can sign in." },
   "register.firstName": { de: "Vorname", en: "First name" },
   "register.lastName": { de: "Nachname", en: "Last name" },
-  "register.email": { de: "E-Mail", en: "Email" },
-  "register.emailPlaceholder": { de: "vorname.nachname@eu.equinix.com", en: "firstname.lastname@eu.equinix.com" },
+  "register.loginName": { de: "Benutzerkennung", en: "User ID" },
+  "register.loginNamePlaceholder": { de: "Vorname@Nachname", en: "Firstname@Lastname" },
+  "register.email": { de: "E-Mail (optional)", en: "Email (optional)" },
+  "register.emailPlaceholder": { de: "kontakt@firma.de", en: "contact@company.com" },
   "register.location": { de: "Standort (IBX)", en: "Location (IBX)" },
   "register.locationPlaceholder": { de: "Standort auswählen", en: "Select location" },
   "register.department": { de: "Abteilung", en: "Department" },
@@ -2208,8 +2310,8 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "weekplan.daysSelected": { de: "Tage ausgewählt", en: "days selected" },
 
   /* ── Handover ── */
-  "handover.title": { de: "Schichtübergabe & Aufgabenverwaltung", en: "Shift handover & task management" },
-  "handover.subtitle": { de: "Schichtübergabe & Aufgabenverwaltung", en: "Shift handover & task management" },
+  "handover.title": { de: "Schichtübergabe", en: "Shift Handover" },
+  "handover.subtitle": { de: "Offene Aufgaben zwischen Schichten übergeben — nichts geht verloren.", en: "Hand over open tasks between shifts — nothing gets lost." },
   "handover.newTask": { de: "Neue Aufgabe", en: "New task" },
   "handover.hideCompleted": { de: "Erledigte ausblenden", en: "Hide completed" },
   "handover.showCompleted": { de: "Erledigte anzeigen", en: "Show completed" },
@@ -2328,6 +2430,94 @@ const TRANSLATIONS: Record<TranslationKey, Record<LanguageCode, string>> = {
   "competency.notesPlaceholder": { de: "Notizen (optional)", en: "Notes (optional)" },
   "competency.add": { de: "Hinzufügen", en: "Add" },
   "competency.addCompetency": { de: "Kompetenz hinzufügen", en: "Add competency" },
+
+  /* ── Assignment Writeback ── */
+  "writeback.panelTitle": { de: "Zuweisung Ausführung", en: "Assignment Execution" },
+  "writeback.panelSubtitle": { de: "Kontrollierte Jarvis-Schreiboperationen mit Audit-Protokoll", en: "Controlled Jarvis write-back with full audit trail" },
+  "writeback.tabPending": { de: "Ausstehend", en: "Pending" },
+  "writeback.tabShadow": { de: "Shadow geprüft", en: "Shadow Validated" },
+  "writeback.tabConfirm": { de: "Warte Bestätigung", en: "Awaiting Confirmation" },
+  "writeback.tabApplied": { de: "Angewendet", en: "Applied" },
+  "writeback.tabUnassign": { de: "Abweisung nötig", en: "Unassign Required" },
+  "writeback.tabReassign": { de: "Neuzuweisung nötig", en: "Reassign Required" },
+  "writeback.tabManualReview": { de: "Manuelle Prüfung", en: "Manual Review" },
+  "writeback.tabFailed": { de: "Fehlgeschlagen", en: "Failed" },
+  "writeback.tabOther": { de: "Sonstige", en: "Other" },
+  "writeback.empty": { de: "Keine Aktionen in dieser Kategorie.", en: "No actions in this category." },
+  "writeback.loading": { de: "Lade Aktionen…", en: "Loading actions…" },
+  "writeback.refresh": { de: "Aktualisieren", en: "Refresh" },
+  "writeback.reconcile": { de: "Abgleichen", en: "Reconcile" },
+  "writeback.reconcileInfo": { de: "Vergleicht Snapshot-Zustand mit aktuellem ODIN-Zustand.", en: "Compares snapshot state with current ODIN state." },
+  "writeback.reconcileResult": { de: "Abgleich-Ergebnis:", en: "Reconcile result:" },
+  "writeback.snapshotCount": { de: "Snapshots:", en: "Snapshots:" },
+  "writeback.discrepancies": { de: "Abweichungen:", en: "Discrepancies:" },
+  "writeback.killSwitchActive": { de: "Kill-Switch aktiv — alle Schreiboperationen gesperrt.", en: "Kill switch active — all write operations are blocked." },
+  "writeback.shadowModeActive": { de: "Shadow-Modus: Aktionen werden geprüft, aber Jarvis wird nicht geändert.", en: "Shadow mode: actions are validated but Jarvis is not modified." },
+  "writeback.shadowBanner": { de: "Shadow-Modus aktiv: ODIN würde diese Zuweisung vornehmen, Jarvis wird jedoch nicht geändert.", en: "Shadow mode active: ODIN would apply this assignment, but Jarvis will not be changed." },
+  "writeback.manualReviewNote": { de: "Manuelle Prüfung erforderlich", en: "Manual review required" },
+  "writeback.btnValidate": { de: "Prüfen", en: "Validate" },
+  "writeback.btnApprove": { de: "Freigeben", en: "Approve" },
+  "writeback.btnExecute": { de: "Ausführen", en: "Execute" },
+  "writeback.btnCancel": { de: "Abbrechen", en: "Cancel" },
+  "writeback.btnAudit": { de: "Protokoll", en: "Audit Log" },
+  "writeback.confirmExecute": { de: "Ausführung wirklich starten? Diese Aktion ändert den Jarvis-Owner.", en: "Really execute? This will change the Jarvis owner." },
+  "writeback.confirmCancel": { de: "Aktion wirklich abbrechen?", en: "Really cancel this action?" },
+  "writeback.fieldActivity": { de: "Aktivität", en: "Activity" },
+  "writeback.fieldSO": { de: "Auftragsnr.", en: "Sales Order" },
+  "writeback.fieldQueue": { de: "Queue", en: "Queue" },
+  "writeback.fieldSubType": { de: "Sub-Typ", en: "Sub Type" },
+  "writeback.fieldSystem": { de: "System", en: "System" },
+  "writeback.fieldCurrentOwner": { de: "Aktueller Jarvis-Owner", en: "Current Jarvis Owner" },
+  "writeback.fieldSelectedEmployee": { de: "ODIN-Auswahl", en: "ODIN Selection" },
+  "writeback.fieldOwnerCode": { de: "Owner-Code", en: "Owner Code" },
+  "writeback.fieldActionType": { de: "Aktion", en: "Action" },
+  "writeback.fieldMode": { de: "Modus", en: "Mode" },
+  "writeback.fieldStatus": { de: "Status", en: "Status" },
+  "writeback.fieldCreated": { de: "Erstellt", en: "Created" },
+  "writeback.fieldLastAttempt": { de: "Letzter Versuch", en: "Last Attempt" },
+  "writeback.fieldFailureReason": { de: "Fehlergrund", en: "Failure Reason" },
+  "writeback.fieldHardReason": { de: "Grund (hart)", en: "Hard Reason" },
+  "writeback.fieldRetryCount": { de: "Versuche", en: "Attempts" },
+  "writeback.auditTitle": { de: "Audit-Protokoll", en: "Audit Log" },
+  "writeback.auditLoading": { de: "Lade Audit-Protokoll…", en: "Loading audit log…" },
+  "writeback.auditEmpty": { de: "Keine Audit-Einträge vorhanden.", en: "No audit entries found." },
+  "writeback.auditBefore": { de: "Vorher", en: "Before" },
+  "writeback.auditAfter": { de: "Nachher", en: "After" },
+  "writeback.auditValidation": { de: "Validierung", en: "Validation" },
+  "writeback.auditScreenshot": { de: "Screenshot", en: "Screenshot" },
+  "writeback.auditDiagnostics": { de: "Diagnose-HTML", en: "Diagnostic HTML" },
+  "writeback.settingEnabled": { de: "Writeback aktiviert", en: "Writeback enabled" },
+  "writeback.settingEnabledTooltip": { de: "Aktiviert das Jarvis-Writeback-System. Standardmäßig deaktiviert. Muss explizit eingeschaltet werden.", en: "Enables the Jarvis write-back system. Disabled by default. Must be explicitly turned on." },
+  "writeback.settingMode": { de: "Ausführungsmodus", en: "Execution mode" },
+  "writeback.settingModeTooltip": { de: "shadow_only: nur Protokollierung, keine Schreiboperationen. manual_confirm: jede Aktion erfordert manuelle Bestätigung. assisted_auto: ODIN führt aus, Dispatcher wird informiert. full_auto: vollautomatisch.", en: "shadow_only: log only, no writes. manual_confirm: each action requires human approval. assisted_auto: ODIN executes, dispatcher is notified. full_auto: fully automatic." },
+  "writeback.settingKillSwitch": { de: "Kill-Switch (Notfallstopp)", en: "Kill switch (emergency stop)" },
+  "writeback.settingKillSwitchTooltip": { de: "Blockiert sofort alle Schreiboperationen. Kann ohne Deploymentzyklus aktiviert werden.", en: "Immediately blocks all write operations. Can be activated without a deployment cycle." },
+  "writeback.settingOverwriteExisting": { de: "Bestehende Zuweisung überschreiben", en: "Overwrite existing assignee" },
+  "writeback.settingOverwriteExistingTooltip": { de: "Erlaubt ODIN, einen bereits zugewiesenen Jarvis-Owner zu überschreiben.", en: "Allows ODIN to overwrite an already assigned Jarvis owner." },
+  "writeback.settingAllowUnassign": { de: "Auto-Abweisung erlauben", en: "Allow auto-unassign" },
+  "writeback.settingAllowUnassignTooltip": { de: "Erlaubt ODIN, automatisch abzuweisen (z.B. bei Krankheit, Dispatcher-Rolle).", en: "Allows ODIN to automatically unassign (e.g. sick, Dispatcher role)." },
+  "writeback.settingAllowReassign": { de: "Auto-Neuzuweisung erlauben", en: "Allow auto-reassign" },
+  "writeback.settingAllowReassignTooltip": { de: "Erlaubt ODIN, automatisch neu zuzuweisen, wenn ein besserer Kandidat verfügbar ist.", en: "Allows ODIN to automatically reassign when a better candidate is available." },
+  "writeback.settingMaxRetries": { de: "Max. Wiederholungsversuche", en: "Max execution retries" },
+  "writeback.settingMaxRetriesTooltip": { de: "Maximale Anzahl an Ausführungsversuchen, bevor die Aktion als fehlgeschlagen markiert wird.", en: "Maximum number of execution attempts before the action is marked as failed." },
+  "writeback.settingRequireFresh": { de: "Frische Crawler-Daten erforderlich", en: "Require fresh crawler data" },
+  "writeback.settingRequireFreshTooltip": { de: "Blockiert Ausführungen, wenn die Crawler-Daten älter als das konfigurierte Maximum sind.", en: "Blocks executions when crawler data is older than the configured maximum." },
+  "writeback.settingMaxSnapshotAge": { de: "Max. Snapshot-Alter (Minuten)", en: "Max snapshot age (minutes)" },
+  "writeback.settingMaxSnapshotAgeTooltip": { de: "Maximales Alter der Crawler-Daten in Minuten, bevor Ausführungen blockiert werden.", en: "Maximum age of crawler data in minutes before executions are blocked." },
+  "writeback.settingQueueSmartHands": { de: "Queue: Smart Hands aktiviert", en: "Queue: Smart Hands enabled" },
+  "writeback.settingQueueSmartHandsTooltip": { de: "Erlaubt Writeback-Operationen für Smart-Hands-Tickets.", en: "Allows write-back operations for Smart Hands tickets." },
+  "writeback.settingQueueCrossConnect": { de: "Queue: Cross Connect aktiviert", en: "Queue: Cross Connect enabled" },
+  "writeback.settingQueueCrossConnectTooltip": { de: "Erlaubt Writeback-Operationen für Cross-Connect-Tickets.", en: "Allows write-back operations for Cross Connect tickets." },
+  "writeback.settingQueueTrouble": { de: "Queue: Trouble Tickets aktiviert", en: "Queue: Trouble Tickets enabled" },
+  "writeback.settingQueueTroubleTooltip": { de: "Erlaubt Writeback-Operationen für Trouble-Tickets.", en: "Allows write-back operations for Trouble Tickets." },
+  "writeback.settingQueueDeinstall": { de: "Queue: Deinstall aktiviert", en: "Queue: Deinstall enabled" },
+  "writeback.settingQueueDeinstallTooltip": { de: "Erlaubt Writeback-Operationen für Deinstall-Tickets.", en: "Allows write-back operations for Deinstall tickets." },
+  "writeback.settingAllowOtherTeams": { de: "Andere Teams zuweisen erlauben", en: "Allow other teams assignment" },
+  "writeback.settingAllowOtherTeamsTooltip": { de: "Erlaubt Zuweisungen an Mitarbeiter außerhalb des primären Teams.", en: "Allows assignments to employees outside the primary team." },
+  "writeback.settingRequireApprovalUnassign": { de: "Manuelle Freigabe für Abweisung", en: "Require approval for unassign" },
+  "writeback.settingRequireApprovalUnassignTooltip": { de: "Abweisungen müssen manuell bestätigt werden, bevor ODIN sie ausführt.", en: "Unassignments must be manually confirmed before ODIN executes them." },
+  "writeback.settingRequireApprovalReassign": { de: "Manuelle Freigabe für Neuzuweisung", en: "Require approval for reassign" },
+  "writeback.settingRequireApprovalReassignTooltip": { de: "Neuzuweisungen müssen manuell bestätigt werden, bevor ODIN sie ausführt.", en: "Reassignments must be manually confirmed before ODIN executes them." },
 };
 
 /* ─────────────────────────────────────────────────────────────────────── */
@@ -2353,6 +2543,7 @@ export function getLanguageLocale(language: LanguageCode): string {
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [language, setLanguageState] = useState<LanguageCode>(getStoredLanguage);
+  const languageHydrationSourceRef = useRef<"storage" | "server" | "user">("storage");
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -2363,13 +2554,15 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    languageHydrationSourceRef.current = "storage";
 
     async function loadUserLanguage() {
       if (!user) return;
       try {
         const { data } = await api.get("/user/settings");
         const nextLanguage = isLanguageCode(data?.language) ? data.language : DEFAULT_LANGUAGE;
-        if (!cancelled) {
+        if (!cancelled && languageHydrationSourceRef.current !== "user") {
+          languageHydrationSourceRef.current = "server";
           setLanguageState(nextLanguage);
         }
       } catch {
@@ -2385,9 +2578,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const setLanguage = useCallback(async (nextLanguage: LanguageCode, options?: { persist?: boolean }) => {
     const persist = options?.persist !== false;
+    languageHydrationSourceRef.current = "user";
     setLanguageState(nextLanguage);
     if (persist && user) {
-      await api.put("/user/settings", { language: nextLanguage });
+      try {
+        await api.put("/user/settings", { language: nextLanguage });
+      } catch (error) {
+        console.error("Failed to persist language setting", error);
+      }
     }
   }, [user]);
 

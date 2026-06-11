@@ -324,54 +324,224 @@ type TreeNodeLocalization = {
 };
 
 const LOGIC_TREE_EN: Record<string, TreeNodeLocalization> = {
-  "crawler-guard": { label: "Crawler data check", description: "Checks whether Jarvis crawler ticket data is still fresh. Stale data stops the entire run immediately." },
-  "crawler-stale": { label: "Data is stale -> engine stops", description: "If crawler data is older than the configured threshold, the full assignment run is aborted and no ticket is processed." },
-  "crawler-fresh": { label: "Data is fresh -> continue to ticket processing", description: "Crawler data is within the allowed age and the engine continues with ticket loading and normalization." },
-  "ticket-load": { label: "Load and normalize tickets", description: "Active tickets are loaded from queue_items and normalized into a unified internal format through alias tables." },
-  "handover-routing": { label: "Handover routing", description: "Tickets with a handover marker are routed specially: workload handovers continue normally, scheduled handovers become scheduled tickets, and other-teams handovers go only to dispatchers." },
-  "ho-workload": { label: "Workload handover -> normal ticket", description: "Handled as a regular open ticket and sent through the full pipeline." },
-  "ho-terminiert": { label: "Scheduled handover -> Scheduled (Tier 4)", description: "Converted internally to a scheduled ticket with priority tier 4." },
-  "ho-other-teams": { label: "Other teams handover -> dispatcher only", description: "Assigned only to the active dispatcher. Regular technicians are excluded immediately." },
-  "relevance-check": { label: "Relevance check", description: "Checks whether a ticket is fundamentally assignable. Closed, unsupported, or manually blocked tickets are marked as not relevant early." },
-  "priority-sort": { label: "Prioritization (6 levels)", description: "All relevant tickets are sorted deterministically by a fixed tier model before candidate selection starts." },
-  "tier-1": { label: "Tier 1: Trouble Ticket High / Critical", description: "Highest priority. Critical disruptions that require immediate action. Critical ranks above High." },
+  "crawler-guard": {
+    label: "Crawler data check",
+    description: "Checks whether Jarvis crawler ticket data is still fresh. Stale data stops the entire run immediately.",
+    detail: (
+      <>
+        <p><strong>What is checked:</strong> Timestamp of the last successful crawler import. The difference to the current time is compared against the configured threshold.</p>
+        <p><strong>Why:</strong> ODIN makes assignment decisions based on the ticket data in the system. If data is outdated, closed or manually assigned tickets could be reassigned incorrectly.</p>
+        <p><strong>On threshold breach:</strong> The <em>entire</em> run is immediately aborted — no single ticket is processed. The run is logged as "crawler_stale". This is the only global protection rule that blocks the complete run.</p>
+        <p><strong>Configuration:</strong> The threshold can be set under Settings → "Crawler max age".</p>
+      </>
+    ),
+  },
+  "crawler-stale": {
+    label: "Data is stale → engine stops",
+    description: "If crawler data is older than the configured threshold, the full assignment run is aborted and no ticket is processed.",
+    detail: (
+      <>
+        <p>This hard protection rule prevents misassignments on outdated data. The run is saved as "failed" with reason "crawler_stale".</p>
+        <p>Possible causes: crawler down, network problem, Jarvis system unreachable, ingest endpoint blocked.</p>
+      </>
+    ),
+  },
+  "crawler-fresh": { label: "Data is fresh → continue to ticket processing", description: "Crawler data is within the allowed age and the engine continues with ticket loading and normalization." },
+  "ticket-load": {
+    label: "Load and normalize tickets",
+    description: "Active tickets are loaded from queue_items and normalized into a unified internal format through alias tables.",
+    detail: (
+      <>
+        <p><strong>Normalization:</strong> Each field is mapped individually — ticket type (20+ variants), status (13+ variants), priority (15+ variants), site, handover type, system name. Unknown values are classified as "Unknown", never silently ignored.</p>
+        <p><strong>Data source:</strong> Table <code>queue_items</code>, populated by the Jarvis crawler. Contains SmartHands, TroubleTickets, CrossConnect installations and other ticket types.</p>
+        <p><strong>Limit:</strong> Maximum number of tickets loaded per run is configurable under "Max tickets per run".</p>
+      </>
+    ),
+  },
+  "handover-routing": {
+    label: "Handover routing",
+    description: "Tickets with a handover marker are routed specially: workload handovers continue normally, scheduled handovers become scheduled tickets, and other-teams handovers go only to dispatchers.",
+    detail: (
+      <>
+        <p><strong>Workload Handover:</strong> The ticket stays as a normal open ticket and is treated like any new ticket in the next shift. No type change.</p>
+        <p><strong>Scheduled Handover:</strong> The ticket is internally converted to "Scheduled" (priority tier 4). The handover type signals that a scheduled handoff is expected.</p>
+        <p><strong>Other Teams Handover:</strong> This ticket may <em>only</em> be assigned to the active dispatcher. All regular technicians are immediately excluded as candidates. This rule is hard-coded and cannot be disabled.</p>
+      </>
+    ),
+  },
+  "ho-workload": { label: "Workload handover → normal ticket", description: "Handled as a regular open ticket and sent through the full pipeline. The next shift takes over." },
+  "ho-terminiert": { label: "Scheduled handover → Scheduled (Tier 4)", description: "Converted internally to a scheduled ticket with priority tier 4. Planned for the scheduled time." },
+  "ho-other-teams": { label: "Other teams handover → dispatcher only", description: "Assigned only to the active dispatcher. Regular technicians are excluded immediately. This ensures cross-team communication is centrally coordinated." },
+  "relevance-check": {
+    label: "Relevance check",
+    description: "Checks whether a ticket is fundamentally assignable. Closed, unsupported, or manually blocked tickets are marked as not relevant early.",
+    detail: (
+      <>
+        <p><strong>Exclusion criteria:</strong></p>
+        <ul className="list-disc ml-4 space-y-0.5">
+          <li>Status is "closed" or "cancelled"</li>
+          <li>Status is not in the active status list</li>
+          <li>Ticket has a manual hold (manualHold = true)</li>
+          <li>autoAssignable flag is false</li>
+          <li>Ticket type not in the supported types list</li>
+          <li>Commit time is outside the planning window</li>
+          <li>Required fields missing (e.g. no ticket ID)</li>
+        </ul>
+        <p><strong>Result:</strong> Non-relevant tickets are logged as "not_relevant" and skipped.</p>
+      </>
+    ),
+  },
+  "priority-sort": {
+    label: "Prioritization (6 levels)",
+    description: "All relevant tickets are sorted deterministically by a fixed tier model before candidate selection starts.",
+    detail: (
+      <>
+        <p><strong>Important:</strong> Sorting happens <em>before</em> the actual assignment. A ticket in Tier 1 is processed before a Tier 3 ticket and can claim the best candidate.</p>
+        <p><strong>Within a tier:</strong> Sorted by remaining time (least first), then creation time (oldest first), then ticket ID (lexicographic).</p>
+        <p><strong>Missing remaining time:</strong> Tickets without a commit time are sorted to the end of their tier (remaining time = ∞).</p>
+      </>
+    ),
+  },
+  "tier-1": { label: "Tier 1: Trouble Ticket High / Critical", description: "Highest priority. Critical disruptions that require immediate action. Critical ranks above High.", detail: <p>TT-High is imported by the crawler with high urgency. These tickets are always assigned first because they are typically linked to SLA violations or customer outages.</p> },
   "tier-2": { label: "Tier 2: Trouble Ticket Medium", description: "Second-highest priority for medium urgency incidents that still require timely handling." },
-  "tier-3": { label: "Tier 3: KPI queues (Smart Hands, Cross Connect)", description: "Main operational ticket mass. Sorted by shortest remaining time until commit." },
+  "tier-3": { label: "Tier 3: KPI queues (Smart Hands, Cross Connect)", description: "Main operational ticket mass. Sorted by shortest remaining time until commit.", detail: <p>These tickets have a concrete commit time and are prioritized by remaining time. A SmartHands ticket with 2h remaining is processed before one with 12h remaining.</p> },
   "tier-4": { label: "Tier 4: Scheduled tickets", description: "Scheduled tickets, including scheduled handovers, ordered by planned start time." },
   "tier-5": { label: "Tier 5: Trouble Ticket Low", description: "Low-priority trouble tickets that are assigned only after higher tiers are covered." },
   "tier-6": { label: "Tier 6: All remaining tickets", description: "Fallback tier for everything not matched above, sorted by remaining time and age." },
-  "per-ticket": { label: "Per-ticket processing", description: "Each ticket is processed sequentially through the full assignment pipeline in priority order. Earlier assignments change the candidate situation for later tickets." },
-  "override-check": { label: "Override check", description: "Checks for manual interventions on the ticket. Overrides always take precedence over automatic logic." },
-  "exclusion-check": { label: "Exclusion list (system name)", description: "Checks whether the system name is on the manual exclusion list. Excluded systems are always routed to manual review." },
-  "subtype-exclusion": { label: "Exclusion list (subtype / trouble type)", description: "Checks whether the customer trouble type is on the subtype exclusion list. Certain incident types are handled manually only." },
-  "eligibility": { label: "Candidate filtering (hard rules)", description: "All available employees in the current shift are checked against the hard eligibility gates. Softer signals such as queue purity are evaluated later during worker selection." },
-  "elig-auto": { label: "1. Auto assignable?", description: "The employee must be marked as autoAssignable. This is a per-person flag controlled in the dispatcher view." },
-  "elig-available": { label: "2. Available (not blocked)?", description: "The employee must not be marked as blocked." },
-  "elig-break": { label: "3. Not on break?", description: "Employees on an active break do not receive new tickets." },
-  "elig-absent": { label: "4. Not absent?", description: "Absent employees are excluded based on imported shift plan absences." },
-  "elig-shift": { label: "5. Shift active?", description: "The employee must belong to an active shift right now." },
-  "elig-role": { label: "6. Role filter", description: "Checks whether the ticket type is allowed based on the employee's current daily role." },
-  "role-dispatcher": { label: "Dispatcher", description: "Receives only other-teams handovers. No regular tickets." },
-  "role-large-order": { label: "Large order", description: "Employees on large-order projects receive no automatic assignments." },
-  "role-projekt": { label: "Project", description: "Project staff receive no regular tickets because they work on planned project tasks." },
+  "per-ticket": {
+    label: "Per-ticket processing",
+    description: "Each ticket is processed sequentially through the full assignment pipeline in priority order. Earlier assignments change the candidate situation for later tickets.",
+    detail: (
+      <>
+        <p><strong>Sequential:</strong> Ticket by ticket, in the priority order defined above. An assigned employee may no longer be available to the next ticket (increased workload).</p>
+        <p><strong>Results per ticket:</strong> assigned, manual_review (routed to dispatcher), no_candidate (no eligible candidate), not_relevant (pre-check), blocked (manually blocked), error (processing error).</p>
+      </>
+    ),
+  },
+  "override-check": {
+    label: "Override check",
+    description: "Checks for manual interventions on the ticket. Overrides always take precedence over automatic logic.",
+    detail: (
+      <>
+        <p><strong>force_assign:</strong> Ticket is assigned directly to the specified person without further checks.</p>
+        <p><strong>force_block:</strong> Ticket is blocked and not assigned. Appears as "blocked" in the log.</p>
+        <p><strong>force_manual:</strong> Ticket is immediately classified as "manual_review" and goes to the dispatcher.</p>
+        <p>Overrides can be configured in the "Manual assignment" section.</p>
+      </>
+    ),
+  },
+  "exclusion-check": {
+    label: "Exclusion list (system name)",
+    description: "Checks whether the system name is on the manual exclusion list. Excluded systems are always routed to manual review.",
+    detail: (
+      <>
+        <p><strong>Purpose:</strong> Certain systems (e.g. particularly sensitive customer installations) should never be assigned automatically. The exclusion list is managed in the "Manual assignment" tab.</p>
+        <p><strong>Result:</strong> Hit → "manual_review". No hit → continue to next step.</p>
+      </>
+    ),
+  },
+  "subtype-exclusion": {
+    label: "Exclusion list (subtype / trouble type)",
+    description: "Checks whether the customer trouble type is on the subtype exclusion list. Certain incident types are handled manually only.",
+    detail: (
+      <>
+        <p><strong>Example:</strong> EIS tickets (earthing/isolation faults) can be placed on the subtype exclusion list if they require special qualifications.</p>
+        <p><strong>Management:</strong> Via "Manual assignment" → Subtypes tab.</p>
+      </>
+    ),
+  },
+  "eligibility": {
+    label: "Candidate filtering (hard rules)",
+    description: "All available employees in the current shift are checked against the hard eligibility gates. Softer signals such as queue purity are evaluated later during worker selection.",
+    detail: (
+      <>
+        <p><strong>Principle:</strong> Hard rules are true yes/no gates. If any such rule fails, the employee is <em>completely</em> excluded for this ticket.</p>
+        <p><strong>Order:</strong> Rules are checked in a fixed sequence. The first failed rule is recorded as the exclusion reason in the decision log.</p>
+      </>
+    ),
+  },
+  "elig-auto": { label: "1. Auto assignable?", description: "The employee must be marked as autoAssignable. This is a per-person flag controlled in the dispatcher view.", detail: <p>If an employee is, for example, currently being onboarded or only handles specific tasks, this flag can be deactivated.</p> },
+  "elig-available": { label: "2. Available (not blocked)?", description: "The employee must not be marked as blocked. Blocking is typically done by the dispatcher in special situations." },
+  "elig-break": { label: "3. Not on break?", description: "Employees on an active break (onBreak = true) do not receive new tickets. The break is controlled via the shift view." },
+  "elig-absent": { label: "4. Not absent?", description: "Absent employees (absent = true) are excluded. Absences are imported from the shift plan." },
+  "elig-shift": { label: "5. Shift active?", description: "The employee must be assigned to a currently active shift (shiftActive = true). Employees outside their shift time do not receive tickets." },
+  "elig-role": {
+    label: "6. Role filter",
+    description: "Checks whether the ticket type is allowed based on the employee's current daily role.",
+    detail: (
+      <>
+        <p><strong>Data source:</strong> The daily role comes from the week plan (weekplan_roles). If no role is set in the week plan, the static default role from user management applies.</p>
+        <p><strong>Week plan takes precedence:</strong> This allows shift-specific role assignments that can change daily.</p>
+      </>
+    ),
+  },
+  "role-dispatcher": { label: "Dispatcher", description: "Receives only other-teams handovers. No regular tickets. The dispatcher coordinates the shift and should not be burdened with own tickets." },
+  "role-large-order": { label: "Large order", description: "Employees on large-order projects receive no automatic assignments. They are already reserved for major contracts." },
+  "role-projekt": { label: "Project", description: "Project staff receive no regular tickets. They work on planned projects, not operational queues." },
   "role-leads": { label: "Leads", description: "Team leads receive no automatic ticket assignments. Their role is coordination and escalation." },
-  "role-db": { label: "Deutsche Borse", description: "Special role: receives only trouble tickets and cross connects, with extra runtime constraints for cross connects." },
-  "role-cc": { label: "Cross Connect", description: "Pure CC specialists receive only cross-connect installation tickets." },
-  "role-support": { label: "Support", description: "Secondary role. These employees support when needed but are not assigned as ticket owners." },
-  "role-kolo": { label: "Colocation", description: "Colocation specialists: deployed on site-specific colocation customer projects. Receive regular tickets only when no colocation tasks are pending." },
-  "role-buddy": { label: "Buddy / new starter", description: "Informal onboarding roles. Currently treated like normal employees, with stricter logic planned later." },
+  "role-db": { label: "Deutsche Börse", description: "Special role: receives only trouble tickets and cross connects — the latter only if remaining time exceeds 24 hours. This protects time-critical Deutsche Börse orders." },
+  "role-cc": { label: "Cross Connect", description: "Pure CC specialists: receive only cross-connect installation tickets. No SmartHands, no TroubleTickets." },
+  "role-support": { label: "Support", description: "Secondary role — these employees are not assigned as ticket owners. They support when needed but do not receive own assignments." },
+  "role-kolo": { label: "Colocation", description: "Colocation specialists: deployed on site-specific customer projects. Receive regular tickets only when no colocation tasks are pending." },
+  "role-buddy": { label: "Buddy / new starter", description: "Informal onboarding roles. Currently treated like normal employees — stricter logic is planned for later." },
   "role-normal": { label: "Normal", description: "Default role: receives all ticket types according to normal prioritization. No special restrictions or preferences." },
-  "elig-site": { label: "7. Site matches?", description: "If site strictness is active, the employee must belong to the same site as the ticket." },
-  "elig-purity": { label: "Info: Queue purity", description: "ODIN evaluates whether the employee's queue stays type-consistent. This is now a later ranking preference, not a standalone exclusion on its own." },
-  "purity-exception": { label: "Exception: resource shortage + CC > 24h", description: "If the resource shortage flag is active, CC workers may receive trouble tickets when all active CC tickets still have more than 24 hours remaining." },
-  "elig-resp": { label: "9. Responsibility area?", description: "If responsibility strictness is active, the worker must match the ticket's responsibility area." },
-  "worker-selection": { label: "Worker selection (tie-breaking)", description: "The final employee is chosen from all valid candidates through a five-stage selection cascade." },
-  "tb-grouping": { label: "1. System grouping", description: "Prefers employees who already work on tickets for the same system to improve on-site efficiency." },
+  "elig-site": { label: "7. Site matches?", description: "If site strictness is active, the employee must belong to the same site as the ticket.", detail: <p>Configuration under Settings → "Site strictness". Deactivation allows cross-site assignment during understaffing.</p> },
+  "elig-purity": {
+    label: "Info: Queue purity",
+    description: "ODIN evaluates whether the employee's queue stays type-consistent. This is now a later ranking preference, not a standalone exclusion on its own.",
+    detail: (
+      <>
+        <p><strong>Preference:</strong> SmartHands and CrossConnect queues should stay as clean as possible. TroubleTickets and Scheduled can more easily run together.</p>
+        <p><strong>Important:</strong> If only mixed candidates remain, ODIN still assigns the best available worker. Queue purity in V2 is a ranking signal, no longer a standalone hard block.</p>
+        <p><strong>Exception:</strong> With the resource shortage flag active, CC workers may additionally receive TroubleTickets — but only if all their current CC tickets have more than 24 hours remaining.</p>
+      </>
+    ),
+  },
+  "purity-exception": { label: "Exception: resource shortage + CC > 24h", description: "If the resource shortage flag is active, CC workers may receive trouble tickets when all active CC tickets still have more than 24 hours remaining.", detail: <p><strong>⚠ Open point:</strong> The exact business definition of "resource shortage" is not finalized. Activation is done manually via settings.</p> },
+  "elig-resp": { label: "9. Responsibility area?", description: "If responsibility strictness is active, the worker must match the ticket's responsibility area.", detail: <p>Configuration under Settings → "Responsibility area strictness".</p> },
+  "worker-selection": {
+    label: "Worker selection (tie-breaking)",
+    description: "The final employee is chosen from all valid candidates through a five-stage selection cascade.",
+    detail: (
+      <>
+        <p><strong>Determinism:</strong> Given identical input data, the algorithm always produces the same result. The selection is fully reproducible and auditable.</p>
+        <p><strong>Cascade:</strong> Each stage is only consulted if the previous one resulted in a tie.</p>
+      </>
+    ),
+  },
+  "tb-grouping": {
+    label: "1. System grouping",
+    description: "Prefers employees who already work on tickets for the same system to improve on-site efficiency.",
+    detail: (
+      <>
+        <p><strong>SmartHands:</strong> Max. 3 SH tickets per person per system (configurable). At 3+ the employee is blocked for that system.</p>
+        <p><strong>CrossConnect:</strong> Grouping only when remaining times are similar (threshold: 6 hours difference, configurable).</p>
+        <p><strong>Score:</strong> 10 + number of existing tickets on the same system. Higher score = stronger preference.</p>
+      </>
+    ),
+  },
   "tb-purity": { label: "2. Queue purity", description: "Employees with a pure queue are preferred over mixed queues, but ODIN still assigns the best remaining worker if only mixed candidates are left." },
-  "tb-workload": { label: "3. Lowest workload", description: "If there is still a tie, the employee with the fewest active tickets is preferred." },
+  "tb-workload": { label: "3. Lowest workload", description: "If there is still a tie, the employee with the fewest active tickets is preferred. Goal: even workload distribution across the shift." },
   "tb-colleague": { label: "4. Colleague proximity", description: "Late soft signal from preferred-colleague or buddy relationships. It matters only if stronger criteria are tied." },
-  "tb-id": { label: "5. Configured final tie-breaker", description: "Final run-level stage: if everything else is still tied, ODIN applies the configured closing policy. Depending on that policy the decision can be resolved by round-robin, random choice, or reproducible worker ID fallback." },
-  "decision-log": { label: "Log decision", description: "The result of every ticket decision is stored fully in the database, including candidates, exclusion reasons, and scores." },
+  "tb-id": { label: "5. Configured final tie-breaker", description: "Final run-level stage: if everything else is still tied, ODIN applies the configured closing policy. Depending on that policy the decision can be resolved by round-robin, random choice, or reproducible worker ID fallback.", detail: <p>The policy badge "Fallback Tie-Breaker" shows the configured closing mode. The actual run badge then shows whether the decision was ultimately resolved by round-robin, random, or worker number.</p> },
+  "decision-log": {
+    label: "Log decision",
+    description: "The result of every ticket decision is stored fully in the database, including candidates, exclusion reasons, and scores.",
+    detail: (
+      <>
+        <p><strong>Logged information:</strong> Ticket ID, chosen employee, all candidates with scores, exclusion reasons per candidate, applied rules, tie-breaker details, timestamps.</p>
+        <p><strong>Possible results:</strong></p>
+        <ul className="list-disc ml-4 space-y-0.5">
+          <li><strong>assigned</strong> — Ticket successfully assigned to an employee</li>
+          <li><strong>manual_review</strong> — No automatically suitable candidate; dispatcher must decide</li>
+          <li><strong>no_candidate</strong> — No eligible employees available</li>
+          <li><strong>not_relevant</strong> — Ticket did not pass relevance check</li>
+          <li><strong>blocked</strong> — Manually blocked via override</li>
+          <li><strong>error</strong> — Processing error on this ticket</li>
+        </ul>
+      </>
+    ),
+  },
 };
 
 function localizeTreeNodes(nodes: TreeNode[], localizations: Record<string, TreeNodeLocalization>): TreeNode[] {
@@ -461,6 +631,78 @@ const ROLE_MATRIX = [
   { role: 'Buddy / Neustarter', sh: '✅', cc: '✅', tt: '✅', de: '✅', ho: '❌' },
 ];
 
+/* ---- Concept Overview Data ---- */
+
+const CONCEPTS_DE = [
+  {
+    term: 'Queue Purity (Sortenreinheit)',
+    explanation: 'Bedeutet: Bekommt ein Mitarbeiter nur eine Ticketart (z. B. nur SmartHands) oder gemischte Typen? ODIN bevorzugt „reine" Queues, weil ein Techniker effizienter arbeitet, wenn er sich auf einen Tickettyp konzentrieren kann. Seit V2 ist Queue Purity aber kein harter Blocker mehr — wenn nur noch „gemischte" Kandidaten übrig sind, weist ODIN trotzdem zu.',
+  },
+  {
+    term: 'Tie-Breaking (Gleichstandsauflösung)',
+    explanation: 'Wenn mehrere Mitarbeiter alle harten Regeln bestehen und gleichwertig sind, entscheidet eine 5-stufige Kaskade: 1. System-Gruppierung → 2. Queue-Reinheit → 3. Geringste Auslastung → 4. Kollegen-Nähe → 5. Konfigurierter Schluss-Tie-Breaker. Jede Stufe wird nur herangezogen, wenn die vorherige keinen eindeutigen Gewinner liefert.',
+  },
+  {
+    term: 'Prioritäts-Tiers (Stufen 1–6)',
+    explanation: 'Tickets werden VOR der Zuweisung in 6 Stufen sortiert. Tier 1 (TT High/Critical) wird immer zuerst bearbeitet und bekommt den besten Kandidaten. Erst danach folgt Tier 2, 3 usw. Innerhalb eines Tiers wird nach Restlaufzeit und Alter sortiert. Die Reihenfolge entscheidet also, welche Tickets die stärksten Kandidaten „verbrauchen".',
+  },
+  {
+    term: 'Harte Regeln vs. Weiche Signale',
+    explanation: 'Harte Regeln (z. B. Schicht aktiv, Rolle erlaubt, nicht abwesend) sind echte Ja/Nein-Gates — wer durchfällt, wird komplett ausgeschlossen. Weiche Signale (z. B. Queue Purity, Kollegen-Nähe, Auslastung) beeinflussen nur die Rangfolge unter den verbleibenden Kandidaten. Ein weiches Signal allein schließt niemanden aus.',
+  },
+  {
+    term: 'System-Gruppierung (Grouping Score)',
+    explanation: 'ODIN bevorzugt Mitarbeiter, die bereits Tickets am gleichen System/Standort bearbeiten. Das vermeidet unnötige Fahrtwege und ermöglicht gebündelte Vor-Ort-Arbeit. Limit: Max. 3 SmartHands-Tickets pro Person am gleichen System (konfigurierbar).',
+  },
+  {
+    term: 'Crawler-Freshness (Datenaktualität)',
+    explanation: 'ODIN verlässt sich auf aktuelle Daten aus dem Jarvis-Crawler. Sind die Daten älter als der eingestellte Schwellenwert, wird der gesamte Lauf abgebrochen. So wird verhindert, dass ODIN auf Basis veralteter oder falscher Tickets entscheidet.',
+  },
+  {
+    term: 'Decision Log (Entscheidungsprotokoll)',
+    explanation: 'Jede einzelne Ticketentscheidung wird vollständig gespeichert: Welcher Mitarbeiter wurde gewählt, wer wurde ausgeschlossen und warum, welche Scores hatten die Kandidaten, welcher Tie-Breaker hat entschieden. Das ermöglicht jederzeit eine lückenlose Nachverfolgung.',
+  },
+  {
+    term: 'Handover-Routing',
+    explanation: 'Tickets mit einem Handover-Kennzeichen werden gesondert behandelt: „Workload"-Handovers laufen normal weiter, „Terminiert"-Handovers werden als Scheduled (Tier 4) eingeplant, „Other Teams"-Handovers gehen ausschließlich an den Dispatcher. Normaltechniker erhalten diese nie.',
+  },
+];
+
+const CONCEPTS_EN = [
+  {
+    term: 'Queue Purity',
+    explanation: 'Means: Does an employee only get one ticket type (e.g. only SmartHands) or mixed types? ODIN prefers "pure" queues because a technician works more efficiently when focused on one type. Since V2, queue purity is no longer a hard blocker — if only "mixed" candidates remain, ODIN still assigns.',
+  },
+  {
+    term: 'Tie-Breaking',
+    explanation: 'When multiple employees pass all hard rules and are equally qualified, a 5-stage cascade decides: 1. System grouping → 2. Queue purity → 3. Lowest workload → 4. Colleague proximity → 5. Configured final tie-breaker. Each stage is only consulted if the previous one did not produce a clear winner.',
+  },
+  {
+    term: 'Priority Tiers (Levels 1–6)',
+    explanation: 'Tickets are sorted BEFORE assignment into 6 levels. Tier 1 (TT High/Critical) is always processed first and gets the best candidate. Then Tier 2, 3, etc. Within a tier, tickets are sorted by remaining time and age. The order determines which tickets "consume" the strongest candidates.',
+  },
+  {
+    term: 'Hard Rules vs. Soft Signals',
+    explanation: 'Hard rules (e.g. shift active, role allowed, not absent) are true yes/no gates — anyone who fails is completely excluded. Soft signals (e.g. queue purity, colleague proximity, workload) only influence ranking among remaining candidates. A soft signal alone never excludes anyone.',
+  },
+  {
+    term: 'System Grouping (Grouping Score)',
+    explanation: 'ODIN prefers employees who already work on tickets at the same system/location. This avoids unnecessary travel and enables bundled on-site work. Limit: Max. 3 SmartHands tickets per person per system (configurable).',
+  },
+  {
+    term: 'Crawler Freshness',
+    explanation: 'ODIN relies on current data from the Jarvis crawler. If data is older than the configured threshold, the entire run is aborted. This prevents ODIN from making decisions based on outdated or incorrect tickets.',
+  },
+  {
+    term: 'Decision Log',
+    explanation: 'Every single ticket decision is fully stored: Which employee was chosen, who was excluded and why, what scores candidates had, which tie-breaker resolved the decision. This enables complete traceability at any time.',
+  },
+  {
+    term: 'Handover Routing',
+    explanation: 'Tickets with a handover marker are handled specially: "Workload" handovers continue normally, "Scheduled" handovers are planned as Scheduled (Tier 4), "Other Teams" handovers go exclusively to the dispatcher. Regular technicians never receive these.',
+  },
+];
+
 /* ---- Main Export ---- */
 
 export default function OdinLogicTree() {
@@ -476,6 +718,31 @@ export default function OdinLogicTree() {
         <p className="text-xs text-muted-foreground mt-1">
           {t("logicTree.description")}
         </p>
+      </div>
+
+      {/* ---- Concept Overview / Konzeptübersicht ---- */}
+      <div className="mb-6 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <HelpCircle className="w-4 h-4 text-cyan-400" />
+          <h4 className="font-semibold text-sm text-cyan-300">
+            {isGerman ? 'Konzeptübersicht — Was bedeutet was?' : 'Concept Overview — What means what?'}
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          {isGerman
+            ? 'Bevor du den Entscheidungsbaum liest, hier die wichtigsten Begriffe auf einen Blick erklärt:'
+            : 'Before reading the decision tree, here are the most important terms explained at a glance:'}
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          {(isGerman ? CONCEPTS_DE : CONCEPTS_EN).map((concept) => (
+            <div key={concept.term} className="rounded border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-bold text-cyan-300">{concept.term}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{concept.explanation}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="space-y-1">

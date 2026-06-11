@@ -29,7 +29,8 @@ export type AccessLevel = "none" | "view" | "write";
 
 type User = {
   id: number;
-  email: string;
+  loginName: string | null;
+  email: string | null;
 
   /* PERSON */
   firstName: string;
@@ -55,7 +56,7 @@ type User = {
 type AuthContextType = {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (loginName: string, password: string) => Promise<void>;
   logout: () => void;
   completeForcedPasswordChange: () => void;
 
@@ -110,11 +111,13 @@ function normalizeUser(raw: any): User {
   const displayName =
     [firstName, lastName].filter(Boolean).join(" ") ||
     raw.displayName ||
+    raw.loginName ||
     raw.email;
 
   return {
     id: raw.id,
-    email: raw.email,
+    loginName: raw.loginName ?? null,
+    email: raw.email ?? null,
 
     firstName,
     lastName,
@@ -211,8 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* LOGIN                                           */
   /* ------------------------------------------------ */
 
-  const login = async (email: string, password: string) => {
-    const res = await api.post("/auth/login", { email, password });
+  const login = async (loginName: string, password: string) => {
+    const res = await api.post("/auth/login", { loginName, password });
     const { token, user } = res.data;
 
     const normalized = normalizeUser(user);

@@ -4,7 +4,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./router/ProtectedRoute";
 import { PageGuard } from "./router/PageGuard";
-import { OdinStartupAnimation } from "./components/OdinStartupAnimation";
 
 /* Public – small, always needed immediately */
 import Login from "./components/pages/Login";
@@ -16,23 +15,19 @@ import PendingApproval from "./components/users/PendingApproval";
 /* Lazy-loaded pages – code split per route */
 const Dashboard              = lazy(() => import("./components/pages/Dashboard"));
 const DashboardStatistik     = lazy(() => import("./components/pages/DashboardStatistik"));
-const TicketAudit            = lazy(() => import("./components/pages/TicketAudit"));
+const OdinLogicPage          = lazy(() => import("./components/pages/OdinLogicPage"));
 const Shiftplan              = lazy(() => import("./components/pages/Shiftplan"));
 const Weekplan               = lazy(() => import("./components/pages/Weekplan"));
+const TagesplanungPage       = lazy(() => import("./components/pages/TagesplanungPage"));
 const Handover               = lazy(() => import("./components/pages/Handover"));
 const Tickets                = lazy(() => import("./components/pages/Tickets"));
 const TVDashboard            = lazy(() => import("./components/pages/TVDashboard"));
 const Dispatcher             = lazy(() => import("./components/pages/Dispatcher"));
 const Settings               = lazy(() => import("./components/pages/Settings"));
 const Users                  = lazy(() => import("./components/pages/Users"));
-const Protokoll              = lazy(() => import("./components/pages/Protokoll"));
-const TeamsBenachrichtigungen = lazy(() => import("./components/pages/TeamsBenachrichtigungen"));
-const AutomatedAssignment    = lazy(() => import("./components/pages/AutomatedAssignment"));
 const CommitCompliance       = lazy(() => import("./components/pages/CommitCompliance"));
-const OdinLogicPage          = lazy(() => import("./components/pages/OdinLogicPage"));
 const TeamsCommunicationCenter = lazy(() => import("./components/pages/TeamsCommunicationCenter"));
 const AdminSettings          = lazy(() => import("./components/pages/AdminSettings"));
-const AssignmentRulesEditor  = lazy(() => import("./components/pages/AssignmentRulesEditor"));
 const ShiftplanControlCenter = lazy(() => import("./components/pages/ShiftplanControlCenter"));
 
 /* Loading fallback */
@@ -46,9 +41,7 @@ function PageLoader() {
 
 export default function App() {
   return (
-    <>
-      <OdinStartupAnimation />
-      <Router>
+    <Router>
       <Suspense fallback={<PageLoader />}>
       <Routes>
 
@@ -103,11 +96,7 @@ export default function App() {
 
             <Route
               path="dashboard/ticket-audit"
-              element={
-                <PageGuard pageKey="ticket_audit" min="write">
-                  <TicketAudit />
-                </PageGuard>
-              }
+              element={<Navigate to="/dashboard/statistiken" replace />}
             />
 
             <Route
@@ -124,6 +113,24 @@ export default function App() {
               element={
                 <PageGuard pageKey="shiftplan">
                   <Weekplan />
+                </PageGuard>
+              }
+            />
+
+            <Route
+              path="shiftplan/day"
+              element={
+                <PageGuard pageKey="shiftplan">
+                  <TagesplanungPage />
+                </PageGuard>
+              }
+            />
+
+            <Route
+              path="tagesplanung"
+              element={
+                <PageGuard pageKey="shiftplan">
+                  <TagesplanungPage />
                 </PageGuard>
               }
             />
@@ -185,27 +192,15 @@ export default function App() {
             />
             <Route
               path="protokoll"
-              element={
-                <PageGuard pageKey="protokoll">
-                  <Protokoll />
-                </PageGuard>
-              }
+              element={<Navigate to="/admin-settings?section=audit" replace />}
             />
             <Route
               path="protokoll/teams-benachrichtigungen"
-              element={
-                <PageGuard pageKey="protokoll">
-                  <TeamsBenachrichtigungen />
-                </PageGuard>
-              }
+              element={<Navigate to="/admin-settings?section=teams" replace />}
             />
             <Route
               path="protokoll/automated-assignment"
-              element={
-                <PageGuard pageKey="protokoll">
-                  <AutomatedAssignment />
-                </PageGuard>
-              }
+              element={<Navigate to="/admin-settings?section=odin" replace />}
             />
 
             <Route
@@ -217,7 +212,7 @@ export default function App() {
               }
             />
 
-            {/* ODIN-Logik (Assignment Engine) */}
+            {/* ODIN-Logik */}
             <Route
               path="odin-logic"
               element={
@@ -227,14 +222,10 @@ export default function App() {
               }
             />
 
-            {/* Assignment Rules Editor */}
+            {/* Legacy ODIN rules route redirected into Admin Settings */}
             <Route
               path="odin-logic/rules"
-              element={
-                <PageGuard pageKey="odin_logic" min="write">
-                  <AssignmentRulesEditor />
-                </PageGuard>
-              }
+              element={<Navigate to="/admin-settings?section=odin" replace />}
             />
 
             {/* Shiftplan Control Center */}
@@ -273,6 +264,7 @@ export default function App() {
                     { pageKey: "teams_center" },
                     { pageKey: "shiftplan_control" },
                     { pageKey: "odin_logic" },
+                    { pageKey: "protokoll" },
                   ]}
                 >
                   <AdminSettings />
@@ -299,6 +291,5 @@ export default function App() {
       </Routes>
       </Suspense>
     </Router>
-    </>
   );
 }

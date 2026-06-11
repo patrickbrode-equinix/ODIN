@@ -2,12 +2,13 @@
 /* REGISTER – ODIN                    */
 /* ------------------------------------------------ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Eye, EyeOff, Info, CheckCircle2 } from "lucide-react";
 
 import { api } from "../../api/api";
 import { useLanguage } from "../../context/LanguageContext";
+import { buildLoginNameSuggestion, validateLoginName } from "../../utils/loginName";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -34,8 +35,10 @@ export default function Register() {
   const { t } = useLanguage();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [loginName, setLoginName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loginNameDirty, setLoginNameDirty] = useState(false);
 
   const [location, setLocation] = useState(""); // IBX
   const [department, setDepartment] = useState(""); // c-ops / f-ops / other
@@ -53,6 +56,8 @@ export default function Register() {
     infoLineTwo: t("register.infoLineTwo"),
     firstName: t("register.firstName"),
     lastName: t("register.lastName"),
+    loginName: t("register.loginName"),
+    loginNamePlaceholder: t("register.loginNamePlaceholder"),
     email: t("register.email"),
     emailPlaceholder: t("register.emailPlaceholder"),
     location: t("register.location"),
@@ -70,6 +75,11 @@ export default function Register() {
     backToLogin: t("register.backToLogin"),
   };
 
+  useEffect(() => {
+    if (loginNameDirty) return;
+    setLoginName(buildLoginNameSuggestion(firstName, lastName));
+  }, [firstName, lastName, loginNameDirty]);
+
   /* ------------------------------------------------ */
   /* HANDLER                                          */
   /* ------------------------------------------------ */
@@ -77,12 +87,20 @@ export default function Register() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const validation = validateLoginName(loginName);
+    if (!validation.ok) {
+      setError(t("login.userIdInvalid"));
+      return;
+    }
+
     setLoading(true);
 
     try {
       await api.post("/auth/register", {
         firstName,
         lastName,
+        loginName: validation.value,
         email,
         password,
         ibx: location,
@@ -94,6 +112,8 @@ export default function Register() {
       // reset
       setFirstName("");
       setLastName("");
+      setLoginName("");
+      setLoginNameDirty(false);
       setEmail("");
       setPassword("");
       setLocation("");
@@ -119,22 +139,41 @@ export default function Register() {
         className="absolute inset-0 -z-20 bg-cover bg-center"
         style={{ backgroundImage: "url('/app/login-background.jpg')" }}
       />
-      <div className="absolute inset-0 -z-10 bg-black/60 backdrop-blur-[1px]" />
+      <div className="absolute inset-0 -z-10 bg-black/65 backdrop-blur-[2px]" />
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
-        <Card className="w-full max-w-md border border-border/50 bg-background/85 backdrop-blur-xl shadow-2xl">
-          <CardHeader className="text-center space-y-4">
-            <img
-              src="/app/Dispatcher-transparent.png"
-              alt="ODIN"
-              className="mx-auto h-14 w-auto"
-            />
+      {/* Animated ambient orbs */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(0,229,255,0.12),transparent_70%)] blur-[100px] animate-[pulse_8s_ease-in-out_infinite]" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(79,70,229,0.10),transparent_70%)] blur-[90px] animate-[pulse_10s_ease-in-out_infinite_2s]" />
+      <div className="pointer-events-none absolute top-1/3 right-1/4 h-[500px] w-[500px] rounded-full bg-[radial-gradient(circle,rgba(0,180,255,0.05),transparent_60%)] blur-[80px]" />
 
-            <CardTitle className="text-2xl font-bold">
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-8">
+        <Card className="w-full max-w-lg overflow-hidden rounded-[28px] border border-cyan-400/20 bg-background/88 backdrop-blur-2xl shadow-[0_40px_100px_rgba(0,0,0,0.5),0_0_64px_rgba(0,180,255,0.12),inset_0_1px_0_rgba(255,255,255,0.08)]">
+          {/* Top neon edge */}
+          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent_5%,rgba(0,229,255,0.5)_20%,rgba(0,229,255,0.9)_50%,rgba(0,229,255,0.5)_80%,transparent_95%)] shadow-[0_0_20px_rgba(0,229,255,0.4)]" />
+
+          <CardHeader className="relative text-center space-y-4 pb-2 pt-8">
+            {/* Logo with glow ring */}
+            <div className="relative mx-auto">
+              <div className="absolute inset-0 -m-3 rounded-full bg-[conic-gradient(from_0deg,rgba(0,229,255,0.3),rgba(59,130,246,0.3),rgba(79,70,229,0.3),rgba(0,229,255,0.3))] blur-xl animate-[spin_12s_linear_infinite] opacity-60" />
+              <img
+                src="/app/ODIN_Logo.png"
+                alt="ODIN"
+                className="relative mx-auto h-16 w-auto drop-shadow-[0_0_24px_rgba(0,229,255,0.7)]"
+              />
+            </div>
+
+            {/* App name — premium gradient text */}
+            <CardTitle
+              className="text-3xl font-black tracking-[0.3em] uppercase bg-gradient-to-r from-cyan-200 via-white to-blue-200 bg-clip-text text-transparent"
+              style={{
+                textShadow: "0 0 24px rgba(0,229,255,0.5)",
+                filter: "drop-shadow(0 0 8px rgba(0,229,255,0.3))",
+              }}
+            >
               {copy.title}
             </CardTitle>
 
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[11px] text-cyan-200/50 tracking-[0.18em] uppercase font-bold">
               {copy.subtitle}
             </p>
           </CardHeader>
@@ -173,6 +212,22 @@ export default function Register() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label>{copy.loginName}</Label>
+                <Input
+                  type="text"
+                  placeholder={copy.loginNamePlaceholder}
+                  value={loginName}
+                  onChange={(e) => {
+                    setLoginNameDirty(true);
+                    setLoginName(e.target.value);
+                  }}
+                  required
+                  disabled={loading}
+                  autoComplete="username"
+                />
+              </div>
+
               {/* EMAIL */}
               <div className="space-y-2">
                 <Label>{copy.email}</Label>
@@ -181,7 +236,6 @@ export default function Register() {
                   placeholder={copy.emailPlaceholder}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
                   disabled={loading}
                 />
               </div>
@@ -279,7 +333,7 @@ export default function Register() {
 
               <Button
                 type="submit"
-                className="w-full h-11"
+                className="w-full h-12 text-base font-bold tracking-wide rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white shadow-[0_0_24px_rgba(0,180,255,0.3),0_12px_32px_rgba(59,130,246,0.20)] transition-all duration-300 hover:shadow-[0_0_32px_rgba(0,229,255,0.4),0_16px_40px_rgba(59,130,246,0.30)] hover:scale-[1.01]"
                 disabled={loading}
               >
                 {loading
@@ -289,7 +343,7 @@ export default function Register() {
             </form>
 
             <div className="text-center text-sm">
-              <Link to="/login" className="text-primary hover:underline">
+              <Link to="/login" className="text-cyan-300/70 hover:text-cyan-200 transition-colors">
                 {copy.backToLogin}
               </Link>
             </div>

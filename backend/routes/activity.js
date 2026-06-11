@@ -1,10 +1,45 @@
 import express from 'express';
 import { query } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
-import { requirePageAccess } from '../middleware/requirePageAccess.js';
 
 const router = express.Router();
 router.use(requireAuth); // All /api/activity/* routes require a valid JWT
+
+function normalizeLevel(raw) {
+    const level = String(raw || '').toLowerCase().trim();
+    if (level === 'write') return 2;
+    if (level === 'view') return 1;
+    return 0;
+}
+
+function requireActivityAccess(req, res, next) {
+    const user = req.user;
+    if (!user) {
+        return res.status(401).json({ message: 'Not authenticated' });
+    }
+    if (user.is_root === true) {
+        return next();
+    }
+    if (user.approved !== true) {
+        return res.status(403).json({ code: 'ACCOUNT_NOT_APPROVED', message: 'Account wartet auf Freigabe' });
+    }
+
+    const protokollLevel = normalizeLevel(user.accessPolicy?.protokoll);
+    const adminLevel = normalizeLevel(user.accessPolicy?.admin_settings);
+    if (Math.max(protokollLevel, adminLevel) < 1) {
+        return res.status(403).json({ code: 'INSUFFICIENT_PERMISSION', message: 'Access denied (activity:view)' });
+    }
+
+    return next();
+}
+
+function resolveActorName(user) {
+    return user?.displayName
+        || user?.name
+        || user?.email
+        || user?.username
+        || 'Frontend';
+}
 
 /**
  * GET /api/activity
@@ -17,13 +52,24 @@ router.use(requireAuth); // All /api/activity/* routes require a valid JWT
  *  - start (optional ISO date)
  *  - end (optional ISO date)
  */
-router.get('/', requirePageAccess('protokoll', 'view'), async (req, res) => {
+router.get('/', requireActivityAccess, async (req, res) => {
     try {
         const { limit = 50, offset = 0, module, action, actor, start, end } = req.query;
 
         const params = [];
         let sql = `
-      SELECT * FROM activity_log
+            SELECT
+                id,
+                ts,
+                actor_user_id,
+                actor_name AS actor,
+                action_type,
+                module,
+                entity_type,
+                entity_id,
+                correlation_id,
+                payload
+            FROM activity_log
       WHERE 1=1
     `;
 
@@ -71,7 +117,7 @@ router.get('/', requirePageAccess('protokoll', 'view'), async (req, res) => {
  * GET /api/activity/stats
  * Returns simple stats (e.g. counts per module today)
  */
-router.get('/stats', requirePageAccess('protokoll', 'view'), async (req, res) => {
+router.get('/stats', requireActivityAccess, async (req, res) => {
     try {
         const sql = `
             SELECT module, COUNT(*) as count 
@@ -130,28 +176,17 @@ export async function logActivity(
  */
 router.post('/log', async (req, res) => {
     try {
-        const { action, module, details } = req.body;
-        const user = req.user; // Requires auth middleware? Yes, check if mounted with auth. 
-        // activity.js is mounted as app.use("/api/activity", activityRoutes);
-        // It does NOT have requireAuth on the router itself in server.js usually?
-        // Let's assume we need to check auth or pass user id if available.
-        // Better: frontend should use this only if logged in.
-
-        // If req.user is missing (no middleware on this route), we might need to handle it.
-        // But usually api routes are protected?
-        // Let's assume req.user implies auth middleware usage in server.js or we add it here?
-        // server.js: app.use("/api/activity", activityRoutes); -> No requireAuth? 
-        // We should add it to the route or check.
-        // For now, let's just log what we have.
+        const { action, module, details, entityType, entityId, correlationId } = req.body;
+        const user = req.user;
 
         await logActivity(
             user?.id || null,
-            user?.displayName || "Frontend",
+            resolveActorName(user),
             action || "FRONTEND_ACTION",
             module || "FRONTEND",
-            null,
-            null,
-            null,
+            entityType || null,
+            entityId || null,
+            correlationId || null,
             details || {}
         );
         res.json({ success: true });

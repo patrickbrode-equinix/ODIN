@@ -15,6 +15,10 @@
 
 import express from "express";
 import { query } from "../db.js";
+import {
+  buildEmptyCriticalWorkloadSnapshot,
+  getCriticalWorkloadSnapshot,
+} from "../assignment/services/criticalWorkload.js";
 import { getVerificationStatusMap } from "../services/shiftVerification.js";
 
 const router = express.Router();
@@ -348,6 +352,22 @@ router.get("/crawler-meta", async (_req, res) => {
   } catch (err) {
     console.error("[TV] /crawler-meta error:", err.message);
     res.json({ lastUpdate: null, count: 0 });
+  }
+});
+
+/* ------------------------------------------------ */
+/* GET /api/tv/critical-workload                    */
+/* Shared critical workload snapshot for the kiosk  */
+/* command center. Returns a safe empty snapshot on */
+/* failure so TV rotation never crashes.            */
+/* ------------------------------------------------ */
+router.get("/critical-workload", async (_req, res) => {
+  try {
+    const snapshot = await getCriticalWorkloadSnapshot({ queryFn: query });
+    res.json(snapshot);
+  } catch (err) {
+    console.error("[TV] /critical-workload error:", err.message);
+    res.json(buildEmptyCriticalWorkloadSnapshot());
   }
 });
 

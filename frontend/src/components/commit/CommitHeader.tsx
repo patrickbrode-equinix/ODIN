@@ -13,6 +13,7 @@ import { api } from "../../api/api";
 import { Dialog } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* Store */
 import { useCommitStore } from "../../store/commitStore";
@@ -47,7 +48,28 @@ export function CommitHeader({
   commitStats,
   onUpload,
 }: CommitHeaderProps) {
+  const { language } = useLanguage();
   const [showSettings, setShowSettings] = useState(false);
+
+  const copy = language === "de"
+    ? {
+        title: "Commit Date Dashboard",
+        lastImport: "Letzter Import",
+        settings: "Commit Einstellungen",
+        upload: "Hochladen",
+        settingsTitle: "Commit Einstellungen",
+        filtersTab: "Filter",
+        subTypesTab: "Subtypen",
+      }
+    : {
+        title: "Commit Date Dashboard",
+        lastImport: "Last import",
+        settings: "Commit settings",
+        upload: "Upload",
+        settingsTitle: "Commit settings",
+        filtersTab: "Filters",
+        subTypesTab: "Sub-types",
+      };
 
   /* STORE */
   const filters = useCommitStore((s) => s.filters);
@@ -135,10 +157,10 @@ export function CommitHeader({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Commit Date Dashboard
+            {copy.title}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Letzter Import: {lastImportAt}
+            {copy.lastImport}: {lastImportAt}
           </p>
         </div>
 
@@ -149,12 +171,12 @@ export function CommitHeader({
             className="flex items-center gap-2"
           >
             <SlidersHorizontal className="w-4 h-4" />
-            Commit Settings
+            {copy.settings}
           </Button>
 
           <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground cursor-pointer hover:opacity-90 transition">
             <Upload className="w-4 h-4" />
-            Upload
+            {copy.upload}
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
@@ -232,7 +254,7 @@ export function CommitHeader({
             >
               {/* HEADER */}
               <div className="px-8 py-5 border-b flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Commit Settings</h2>
+                <h2 className="text-xl font-semibold">{copy.settingsTitle}</h2>
                 <button
                   onClick={() => setShowSettings(false)}
                   className="text-muted-foreground hover:text-foreground transition"
@@ -245,8 +267,8 @@ export function CommitHeader({
               <div className="flex-1 overflow-hidden px-8 py-6">
                 <Tabs defaultValue="filters" className="h-full flex flex-col">
                   <TabsList className="mb-6">
-                    <TabsTrigger value="filters">Filters</TabsTrigger>
-                    <TabsTrigger value="subtypes">Sub-Types</TabsTrigger>
+                    <TabsTrigger value="filters">{copy.filtersTab}</TabsTrigger>
+                    <TabsTrigger value="subtypes">{copy.subTypesTab}</TabsTrigger>
                   </TabsList>
 
                   <div className="flex-1 overflow-hidden">

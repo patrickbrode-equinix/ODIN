@@ -12,6 +12,10 @@ export interface FeatureToggles {
     [key: string]: boolean;
 }
 
+export interface DashboardOperationalConfig {
+    criticalTicketWindowHours: number;
+}
+
 export async function getDashboardInfo(): Promise<DashboardInfo | null> {
     const res = await api.get("/dashboard/info");
     return res.data?.data ?? null;
@@ -25,6 +29,11 @@ export async function updateDashboardInfo(content: string, is_visible: boolean):
 export async function getFeatureToggles(): Promise<FeatureToggles> {
     const res = await api.get("/dashboard/toggles");
     return res.data?.data ?? {};
+}
+
+export async function getDashboardOperationalConfig(): Promise<DashboardOperationalConfig> {
+    const res = await api.get("/dashboard/config");
+    return res.data?.data ?? { criticalTicketWindowHours: 72 };
 }
 
 export async function updateFeatureToggle(key: string, is_enabled: boolean): Promise<{ key: string, is_enabled: boolean }> {

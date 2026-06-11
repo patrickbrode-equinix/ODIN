@@ -4,14 +4,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EyeOff, ChevronRight, ChevronDown } from "lucide-react";
+import { logActivityEventSafe } from "../../api/activity";
 import { Card, CardContent } from "../ui/card";
 import { shiftTypes } from "../../store/shiftStore";
 import { EmployeeYearlyStats } from "./EmployeeYearlyChart"; // [NEW]
+import type { ShiftHoursEmployee } from "../../api/shiftHours";
 import type { HolidayMap } from "../../utils/deHolidays";
 import type { UnderstaffWarning } from "./shiftplan.warnings";
-import { EmployeeMonthlyStats, DayHourInfo, WeekHourInfo } from "./shiftplan.hours";
+import { EmployeeMonthlyStats } from "./shiftplan.hours";
 import { WellbeingConfig, WellbeingMetric } from "../../api/wellbeing"; // [NEW]
-import { ShiftViolation, ViolationType } from "../../api/shiftValidation"; // [NEW]
+import { ShiftViolation } from "../../api/shiftValidation"; // [NEW]
 
 // [NEW] Imports
 import { EmployeeSkills, CoverageViolation } from "../../api/coverage";
@@ -25,6 +27,7 @@ import { RamadanMeta, SunTime } from "../../api/ramadan"; // [NEW]
 import { useCommitStore } from "../../store/commitStore";
 import { useLanguage } from "../../context/LanguageContext";
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import type { AttendanceRecord } from "../../api/attendance";
 
 interface ShiftplanTableProps {
   schedule: Record<string, Record<number, string>>;
@@ -39,12 +42,15 @@ interface ShiftplanTableProps {
 
   isEditMode?: boolean;
   selectedCells: Set<string>;
-  onCellClick: (employeeName: string, day: number, modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => void;
-  onHideEmployee: (name: string) => void;
-  onCellContextMenu: (e: React.MouseEvent, args: { employeeName: string; day: number; current: string }) => void;
+  onCellClick?: (employeeName: string, day: number, modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => void;
+  onHideEmployee?: (name: string) => void;
+  onCellContextMenu?: (e: React.MouseEvent, args: { employeeName: string; day: number; current: string }) => void;
+  employeeBadges?: Record<string, Array<{ label: string; tone?: 'success' | 'warning' | 'neutral' }>>;
 
   // 2027
   employeeHours?: Map<string, EmployeeMonthlyStats>; // Type mismatch fixed below? No, it was EmployeeMonthlyStats in import?
+  employeeYearProgress?: Map<string, ShiftHoursEmployee>;
+  employeeYearProgressLoading?: boolean;
   highlightRequest?: number;
   wellbeingMetrics?: WellbeingMetric[];
   wellbeingConfig?: WellbeingConfig | null;
@@ -67,6 +73,7 @@ interface ShiftplanTableProps {
   showSunTimesHints?: boolean;
   ramadanMeta?: RamadanMeta | null;
   ramadanTimings?: SunTime[];
+  attendanceMap?: Record<string, AttendanceRecord>;
 }
 
 
@@ -130,9 +137,12 @@ export function ShiftplanTable({
   onCellClick,
   onHideEmployee,
   onCellContextMenu,
+  employeeBadges = {},
 
   // 2027
   employeeHours,
+  employeeYearProgress,
+  employeeYearProgressLoading,
   highlightRequest,
   wellbeingMetrics = [],
   wellbeingConfig,
@@ -150,7 +160,8 @@ export function ShiftplanTable({
   showRamadanOverlay = false,
   showSunTimesHints = false,
   ramadanMeta = null,
-  ramadanTimings = []
+  ramadanTimings = [],
+  attendanceMap = {},
 }: ShiftplanTableProps) {
   const tableRef = useRef<HTMLTableElement | null>(null);
   const [selectedRow, setSelectedRow] = useState<string | null>(null);
@@ -204,6 +215,22 @@ export function ShiftplanTable({
   const employees = Object.keys(schedule);
   const canNav = false; // Removed feature for now or kept as inactive
   const canCtx = true;  // Always enable context menu for now
+  const handleYearProgressToggle = (employeeName: string) => {
+    setExpandedEmp((prev) => {
+      const nextExpandedEmployee = prev === employeeName ? null : employeeName;
+      logActivityEventSafe({
+        action: "SHIFTPLAN_EMPLOYEE_EXPAND_TOGGLE",
+        module: "SHIFTPLAN",
+        details: {
+          employeeName,
+          expanded: nextExpandedEmployee === employeeName,
+          year,
+          month: monthIndex1,
+        },
+      });
+      return nextExpandedEmployee;
+    });
+  };
 
   // [NEW] Violations Map
   const violationsMap = useMemo(() => {
@@ -341,14 +368,6 @@ export function ShiftplanTable({
                   </th>
                 ))}
 
-                {/* Hours columns header */}
-                {employeeHours && (
-                  <>
-                    <th className="sticky right-[100px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Soll" : "Plan"}</th>
-                    <th className="sticky right-[50px] bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>{isGerman ? "Ist" : "Actual"}</th>
-                    <th className="sticky right-0 bg-[#0f111a] border-l border-white/5 p-2 w-[50px] z-50 text-[10px] text-muted-foreground tracking-widest uppercase text-center" rowSpan={2}>Diff</th>
-                  </>
-                )}
               </tr>
 
               {/* DAY HEADERS */}
@@ -490,6 +509,7 @@ export function ShiftplanTable({
               {Array.isArray(employees) && employees.map((name) => {
                 const isSelected = selectedRow === name;
                 const hasRowSelected = selectedRow !== null;
+                const monthlyStats = employeeHours?.get(name) || null;
                 return (
                   <>
                     <tr
@@ -514,19 +534,49 @@ export function ShiftplanTable({
                         <div className="flex flex-col justify-center min-h-[44px]">
                           {/* Name + Hide Button */}
                           <div className="flex items-center justify-between gap-2">
-                            <span className={`text-[13px] font-semibold tracking-wide transition-colors ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-foreground group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300"}`}>{name}</span>
-                            <button
-                              type="button"
-                              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-1 rounded-md hover:bg-white/10 text-muted-foreground"
-                              title="Mitarbeiter ausblenden"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onHideEmployee(name);
-                              }}
-                            >
-                              <EyeOff size={14} />
-                            </button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[13px] font-semibold tracking-wide transition-colors ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-foreground group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300"}`}>{name}</span>
+                              {(employeeBadges[name] || []).map((badge, index) => {
+                                const tone = badge.tone || 'neutral';
+                                const toneClass = tone === 'success'
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                  : tone === 'warning'
+                                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                    : 'border-white/15 bg-white/5 text-slate-300';
+                                return (
+                                  <span key={`${name}-badge-${index}`} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${toneClass}`}>
+                                    {badge.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {onHideEmployee ? (
+                              <button
+                                type="button"
+                                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-1 rounded-md hover:bg-white/10 text-muted-foreground"
+                                title="Mitarbeiter ausblenden"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onHideEmployee(name);
+                                }}
+                              >
+                                <EyeOff size={14} />
+                              </button>
+                            ) : null}
                           </div>
+                          {monthlyStats ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]">
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">
+                                {isGerman ? "Soll" : "Target"} {monthlyStats.soll.toFixed(1)}h
+                              </span>
+                              <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-cyan-100">
+                                {isGerman ? "Ist" : "Actual"} {monthlyStats.ist.toFixed(1)}h
+                              </span>
+                              <span className={`rounded-full border px-2 py-0.5 ${monthlyStats.diff > 0 ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/20 bg-amber-500/10 text-amber-100'}`}>
+                                {monthlyStats.diff > 0 ? '+' : ''}{monthlyStats.diff.toFixed(1)}h
+                              </span>
+                            </div>
+                          ) : null}
                           {/* [NEW] Wellbeing Badges & Score Ampel */}
                           {getMetric(name) && wellbeingConfig && (
                             <div className="flex items-center gap-1.5 mt-1 test-[9px] font-mono leading-none text-muted-foreground/60">
@@ -542,31 +592,6 @@ export function ShiftplanTable({
                               </div>
                             </div>
                           )}
-
-                          {/* Hours summary */}
-                          {employeeHours && (
-                            (() => {
-                              const stats = employeeHours.get(name);
-                              if (!stats) return null;
-                              const weekViolations = Object.values(stats.weekHours).filter(w => w.exceeded);
-                              return (
-                                <div className="text-[10px] font-normal mt-1 space-y-0.5">
-                                  <div className="grid grid-cols-2 gap-x-2 text-muted-foreground">
-                                    <span>{isGerman ? "Soll" : "Plan"}: {stats.soll}h</span>
-                                    <span>{isGerman ? "Ist" : "Actual"}: {stats.ist}h</span>
-                                  </div>
-                                  {weekViolations.length > 0 && (
-                                    <div className={`flex items-center gap-1 ${weekViolations[0].mode === 'block' ? 'text-red-400' : 'text-amber-400'}`}>
-                                      <AlertTriangle size={10} />
-                                      <span>
-                                        {weekViolations.map(w => `KW${w.weekNo}: ${w.totalHours}h`).join(", ")}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          )}
                         </div>
                       </td>
 
@@ -574,9 +599,9 @@ export function ShiftplanTable({
                         className="border-r border-white/5 p-1 text-center w-8 bg-background transition-colors cursor-pointer text-muted-foreground/50 hover:text-foreground dark:bg-[#0f111a] group-hover:bg-accent dark:group-hover:bg-[#1a1c23] dark:hover:text-white"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedEmp(prev => prev === name ? null : name);
+                          handleYearProgressToggle(name);
                         }}
-                        title={isGerman ? "Jahresstatistik anzeigen" : "Show yearly statistics"}
+                        title={isGerman ? "Jahresziel anzeigen" : "Show yearly target"}
                       >
                         {expandedEmp === name ? <ChevronDown size={14} className="mx-auto" /> : <ChevronRight size={14} className="mx-auto" />}
                       </td>
@@ -619,6 +644,11 @@ export function ShiftplanTable({
                         }
 
                         const isCellSelected = selectedCells?.has(cellKey(name, day)) ?? false;
+                        const attendanceRecord = attendanceMap?.[`${name}|||${key}`];
+                        const hasAttendanceRecord = Boolean(attendanceRecord?.arrival_time || attendanceRecord?.departure_time);
+                        const attendanceLabel = hasAttendanceRecord
+                          ? `${attendanceRecord?.arrival_time?.substring(0, 5) || "??"}-${attendanceRecord?.departure_time?.substring(0, 5) || "??"}`
+                          : "";
 
                         // [NEW] Absence Logic
                         // Check if this cell falls into an absence range
@@ -698,7 +728,7 @@ export function ShiftplanTable({
                               }
                             }}
                             onContextMenu={(e) => {
-                              if (!canCtx) return;
+                              if (!canCtx || !onCellContextMenu) return;
                               e.preventDefault();
                               e.stopPropagation();
                               onCellContextMenu(e, {
@@ -745,6 +775,14 @@ export function ShiftplanTable({
                               </div>
                             )}
 
+                            {hasAttendanceRecord && (
+                              <div className="absolute bottom-0.5 right-0.5 z-20" title={attendanceLabel}>
+                                <span className="rounded border border-emerald-400/40 bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-200">
+                                  K/G
+                                </span>
+                              </div>
+                            )}
+
                             {/* [NEW] Absence Chip (only if NO shift is present OR if we want to overlay) */}
                             {/* Design choice: If shift exists, show shift + Conflict Badge. If no shift, show Absence Chip. */}
                             {!shift && absence && (
@@ -766,22 +804,6 @@ export function ShiftplanTable({
                             {info || shift ? (
                               <div className="flex flex-col items-center w-full gap-0.5">
                                 <ShiftBadge code={shift} hasWarning={hasWarning} />
-                                {/* Daily hours indicator */}
-                                {(() => {
-                                  const dayInfo = employeeHours?.get(name)?.dayHours?.[day];
-                                  if (!dayInfo || dayInfo.hours <= 0) return null;
-                                  const exceeded = dayInfo.exceeded;
-                                  const isBlock = exceeded && dayInfo.mode === 'block';
-                                  const isWarn = exceeded && dayInfo.mode === 'warn';
-                                  return (
-                                    <div
-                                      className={`text-[8px] font-mono leading-none ${isBlock ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-muted-foreground/40'}`}
-                                      title={exceeded ? (isGerman ? `Tageslimit überschritten (${dayInfo.hours}h)` : `Daily limit exceeded (${dayInfo.hours}h)`) : `${dayInfo.hours}h`}
-                                    >
-                                      {dayInfo.hours}h{exceeded && ' ⚠'}
-                                    </div>
-                                  );
-                                })()}
                               </div>
                             ) : (
                               <div className="text-[12px] font-bold text-white/10 group-hover:text-white/20 transition-colors select-none flex items-center justify-center w-full h-[22px]">—</div>
@@ -789,45 +811,20 @@ export function ShiftplanTable({
                           </td>
                         );
                       })}
-
-                      {/* Hours Stats Columns */}
-                      {employeeHours && (
-                        (() => {
-                          const stats = employeeHours?.get(name);
-                          const isOver = stats ? stats.diff > 0 : false;
-                          const isUnder = stats ? stats.diff < 0 : false;
-                          // Check for any weekly violation
-                          const hasWeeklyViolation = stats && Object.values(stats.weekHours).some(w => w.exceeded);
-                          return (
-                            <>
-                              <td className="p-2 border-l border-white/5 text-center text-xs font-semibold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-[100px] z-30 shadow-[-1px_0_0_0_rgba(255,255,255,0.05)] text-muted-foreground/80">
-                                {stats?.soll ?? "—"}
-                              </td>
-                              <td className={`p-2 border-l border-white/5 text-center text-xs font-semibold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-[50px] z-30 ${hasWeeklyViolation ? "text-amber-400" : "text-muted-foreground/80"}`}>
-                                {stats?.ist ?? "—"}
-                              </td>
-                              <td className={`p-2 border-l border-white/5 text-center text-xs font-bold bg-[#0f111a] group-hover:bg-[#1a1c23] sticky right-0 z-30
-                                    ${isOver ? "text-green-400" : ""}
-                                    ${isUnder ? "text-red-400" : ""}
-                                `}>
-                                {stats ? (stats.diff > 0 ? `+${stats.diff}` : stats.diff) : "—"}
-                              </td>
-                            </>
-                          );
-                        })()
-                      )}
                     </tr>
 
                     {/* EXPANDABLE CHART ROW */}
                     {
                       expandedEmp === name && (
                         <tr className="bg-muted/10">
-                          <td colSpan={daysInMonth + 1} className="p-4 border-b border-border">
+                          <td colSpan={daysInMonth + 2} className="p-4 border-b border-border">
                             <EmployeeYearlyStats
                               employeeName={name}
                               year={year}
-                            // Preloaded not strictly available here unless passed via props, 
-                            // but component handles fetching if missing.
+                              stats={employeeYearProgress?.get(name) ?? null}
+                              loading={employeeYearProgressLoading}
+                              monthStats={monthlyStats}
+                              monthLabel={`${String(monthIndex1).padStart(2, '0')}/${year}`}
                             />
                           </td>
                         </tr>

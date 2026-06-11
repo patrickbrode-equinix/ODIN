@@ -6,15 +6,17 @@ import { useState, useRef } from "react";
 import { Upload, FileText, Check, AlertCircle } from "lucide-react";
 import { api } from "../../api/api";
 import { Button } from "../ui/button";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
 import { useLanguage } from "../../context/LanguageContext";
 
 export default function CommitCompliance() {
     const fileRef = useRef<HTMLInputElement>(null);
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const [uploading, setUploading] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [error, setError] = useState("");
+
+    const title = language === "de" ? "Commit Compliance" : "Commit compliance";
 
     const handleUpload = async () => {
         const file = fileRef.current?.files?.[0];
@@ -48,13 +50,25 @@ export default function CommitCompliance() {
     return (
         <EnterprisePageShell>
             <EnterpriseHeader
-                title="COMMIT COMPLIANCE"
+                title={title}
                 subtitle={<span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t("commitCompliance.subtitle")}</span>}
                 icon={<Upload className="w-5 h-5 text-indigo-400" />}
             />
 
+            <EnterpriseFeatureHero
+                tone="amber"
+                eyebrow={t("commitCompliance.subtitle")}
+                title={title}
+                description={t("commitCompliance.uploadSection")}
+                metrics={[
+                    { label: t("commitCompliance.uploadedFiles"), value: uploadedFiles.length },
+                    { label: t("commitCompliance.uploadButton"), value: uploading ? t("commitCompliance.uploadingButton") : t("commitCompliance.uploadButton") },
+                    { label: "PDF", value: ".pdf" },
+                ]}
+            />
+
             <EnterpriseCard noPadding={false} className="max-w-2xl flex flex-col gap-4">
-                <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
+                <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/50 pb-2">
                     {t("commitCompliance.uploadSection")}
                 </div>
                 <div className="flex items-center gap-3">
@@ -78,15 +92,15 @@ export default function CommitCompliance() {
 
             {uploadedFiles.length > 0 && (
                 <EnterpriseCard noPadding={false} className="max-w-2xl flex flex-col gap-4 mt-4">
-                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 pb-2">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/50 pb-2">
                         {t("commitCompliance.uploadedFiles")}
                     </div>
                     <div className="space-y-2">
                         {uploadedFiles.map((name, i) => (
-                            <div key={i} className="flex items-center gap-2 text-[13px] text-[#4b5563]">
+                            <div key={i} className="flex items-center gap-2 text-[13px] text-muted-foreground">
                                 <Check className="w-4 h-4 text-emerald-400" />
                                 <FileText className="w-4 h-4" />
-                                <span className="text-white">{name}</span>
+                                <span className="text-foreground">{name}</span>
                             </div>
                         ))}
                     </div>

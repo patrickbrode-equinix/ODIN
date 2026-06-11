@@ -9,6 +9,10 @@ import {
   isEmailLike,
   splitEmployeeName,
 } from "../lib/employeeIdentity.js";
+import {
+  buildLoginNameSuggestion,
+  normalizeLoginNameForLookup,
+} from "../lib/loginName.js";
 
 const DEFAULT_GROUP = "c-ops";
 const DEFAULT_IBX = "FR2";
@@ -33,11 +37,12 @@ function buildCandidate(employee) {
 
   const sourceEmail = employee.email || (sourceKind === "email" ? employee.employeeName : "");
   const preferredEmail = normalizeEmail(sourceEmail || generateEmailFromName(parts.displayName));
+  const preferredLoginName = buildLoginNameSuggestion(parts.firstName, parts.lastName);
   const usernameBase = buildUsernameBase(parts.firstName, parts.lastName);
   const fullNameKey = buildNameKeyFromParts(parts.firstName, parts.lastName);
   const shortNameKey = buildShortNameKeyFromParts(parts.firstName, parts.lastName);
 
-  if (!preferredEmail || !usernameBase || !fullNameKey) return null;
+  if (!preferredLoginName || !preferredEmail || !usernameBase || !fullNameKey) return null;
 
   return {
     employeeName: employee.employeeName,
@@ -45,6 +50,7 @@ function buildCandidate(employee) {
     firstName: parts.firstName,
     lastName: parts.lastName,
     sourceKind,
+    preferredLoginName,
     preferredEmail,
     usernameBase,
     fullNameKey,
@@ -76,13 +82,21 @@ function isEquivalentSeenCandidate(candidate, seenCandidates) {
 }
 
 function buildExistingIndexes(existingUsers) {
+  const byLoginName = new Map();
   const byEmail = new Map();
   const byName = new Map();
   const byShortName = new Map();
+  const usedLoginNames = new Set();
   const usedEmails = new Set();
   const usedUsernames = new Set();
 
   for (const user of existingUsers) {
+    const loginName = normalizeLoginNameForLookup(user.login_name);
+    if (loginName) {
+      byLoginName.set(loginName, user);
+      usedLoginNames.add(loginName);
+    }
+
     const email = normalizeEmail(user.email);
     if (email) {
       byEmail.set(email, user);
@@ -108,9 +122,11 @@ function buildExistingIndexes(existingUsers) {
   }
 
   return {
+    byLoginName,
     byEmail,
     byName,
     byShortName,
+    usedLoginNames,
     usedEmails,
     usedUsernames,
   };
@@ -121,6 +137,7 @@ function summarizeExistingUser(existingUser) {
 
   return {
     id: existingUser.id,
+    loginName: existingUser.login_name || null,
     email: existingUser.email || null,
     username: existingUser.username || null,
     displayName: buildExistingUserName(existingUser) || existingUser.email || existingUser.username || null,
@@ -153,10 +170,15 @@ function isCompatibleExistingUser(candidate, existingUser) {
 }
 
 function resolveExistingUserMatch(candidate, indexes) {
+  const loginNameMatch = indexes.byLoginName.get(normalizeLoginNameForLookup(candidate.preferredLoginName));
   const emailMatch = indexes.byEmail.get(candidate.preferredEmail);
   const nameMatch = indexes.byName.get(candidate.fullNameKey)
     || indexes.byName.get(`provisioned:${normalizeName(candidate.employeeName)}`)
     || indexes.byShortName.get(candidate.shortNameKey);
+
+  if (isCompatibleExistingUser(candidate, loginNameMatch)) {
+    return loginNameMatch ? { user: loginNameMatch, match: "loginName" } : null;
+  }
 
   if (isCompatibleExistingUser(candidate, emailMatch)) {
     return emailMatch ? { user: emailMatch, match: "email" } : null;
@@ -178,6 +200,23 @@ function nextAvailableEmail(baseEmail, usedEmails) {
   while (counter < 1000) {
     const candidate = `${localPart}+odin${counter}@${domainPart}`;
     if (!usedEmails.has(candidate)) return candidate;
+    counter += 1;
+  }
+
+  return null;
+}
+
+function nextAvailableLoginName(baseLoginName, usedLoginNames) {
+  if (!baseLoginName) return null;
+
+  const normalizedBase = normalizeLoginNameForLookup(baseLoginName);
+  if (!usedLoginNames.has(normalizedBase)) return baseLoginName;
+
+  const [leftSide, rightSide] = baseLoginName.split("@");
+  let counter = 2;
+  while (counter < 1000) {
+    const candidate = `${leftSide}${counter}@${rightSide}`;
+    if (!usedLoginNames.has(normalizeLoginNameForLookup(candidate))) return candidate;
     counter += 1;
   }
 
@@ -267,9 +306,10 @@ export function buildProvisioningAssessment({
       continue;
     }
 
+    const loginName = nextAvailableLoginName(candidate.preferredLoginName, indexes.usedLoginNames);
     const email = nextAvailableEmail(candidate.preferredEmail, indexes.usedEmails);
     const username = nextAvailableUsername(candidate.usernameBase, indexes.usedUsernames);
-    if (!email || !username) {
+    if (!loginName || !email || !username) {
       assessments.push({
         employeeName: candidate.employeeName,
         displayName: candidate.displayName,
@@ -279,6 +319,7 @@ export function buildProvisioningAssessment({
       continue;
     }
 
+    indexes.usedLoginNames.add(normalizeLoginNameForLookup(loginName));
     indexes.usedEmails.add(email);
     indexes.usedUsernames.add(username);
 
@@ -291,6 +332,7 @@ export function buildProvisioningAssessment({
         firstName: candidate.firstName,
         lastName: candidate.lastName,
         username,
+        loginName,
         email,
         group: defaultGroup,
         department: defaultGroup,
@@ -329,6 +371,7 @@ export function buildProvisioningPlan({ employees, existingUsers, defaultGroup =
       updates.push({
         employeeName: item.employeeName,
         userId: item.user.id,
+        loginName: item.user.loginName,
         email: item.user.email,
         match: item.match,
         patch: item.patch,
@@ -360,8 +403,8 @@ function summarizePlan(plan, dryRun) {
     created: plan.creates.length,
     updated: plan.updates.length,
     skipped: plan.skipped.length,
-    createdUsers: plan.creates.map((user) => ({ email: user.email, username: user.username })),
-    updatedUsers: plan.updates.map((user) => ({ userId: user.userId, email: user.email, match: user.match, patch: user.patch })),
+    createdUsers: plan.creates.map((user) => ({ loginName: user.loginName, email: user.email, username: user.username })),
+    updatedUsers: plan.updates.map((user) => ({ userId: user.userId, loginName: user.loginName, email: user.email, match: user.match, patch: user.patch })),
     skippedUsers: plan.skipped,
   };
 }
@@ -398,7 +441,7 @@ export async function provisionUsersForEmployees({
       )).rows;
 
     const existingUsersRes = await client.query(
-      `SELECT id, email, username, first_name, last_name, approved,
+      `SELECT id, login_name, email, username, first_name, last_name, approved,
               provisioned_from_shiftplan, provisioned_employee_name,
               is_admin, is_root
        FROM users
@@ -431,6 +474,7 @@ export async function provisionUsersForEmployees({
            first_name,
            last_name,
            username,
+            login_name,
            email,
            password_hash,
            user_group,
@@ -442,11 +486,12 @@ export async function provisionUsersForEmployees({
            must_change_password,
            provisioned_from_shiftplan,
            provisioned_employee_name
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           create.firstName,
           create.lastName,
           create.username,
+          create.loginName,
           create.email,
           passwordHash,
           create.group,

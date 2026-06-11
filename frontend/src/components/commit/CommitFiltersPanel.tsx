@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Trash2, Plus, Save, X, CheckCircle2 } from "lucide-react";
 import { api } from "../../api/api";
 import { useCommitStore } from "../../store/commitStore";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* UI */
 import { Button } from "../ui/button";
@@ -38,6 +39,18 @@ const FILTER_FIELDS: Array<{ key: string; label: string }> = [
   { key: "product", label: "Product" },
   { key: "activityStatus", label: "Status" },
 ];
+
+function getFieldLabel(key: string, language: "de" | "en") {
+  const labels: Record<string, { de: string; en: string }> = {
+    ibx: { de: "IBX", en: "IBX" },
+    group: { de: "Gruppe", en: "Group" },
+    activityType: { de: "Typ", en: "Type" },
+    activitySubType: { de: "Subtyp", en: "Sub-type" },
+    product: { de: "Produkt", en: "Product" },
+    activityStatus: { de: "Status", en: "Status" },
+  };
+  return labels[key]?.[language] ?? key;
+}
 
 /* ------------------------------------------------ */
 /* HELPERS                                          */
@@ -82,6 +95,7 @@ function buildRulesFromMap(map: Record<string, string[]>) {
 /* ------------------------------------------------ */
 
 export function CommitFiltersPanel() {
+  const { language } = useLanguage();
   const registry = useCommitStore((s) => s.registry);
   const setStoreFilters = useCommitStore((s) => s.setFilters);
 
@@ -103,6 +117,50 @@ export function CommitFiltersPanel() {
   // feedback / UX
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const copy = language === "de"
+    ? {
+        confirmDelete: "Filter wirklich löschen?",
+        saved: "Filter gespeichert.",
+        updated: "Änderungen gespeichert.",
+        deleted: "Filter gelöscht.",
+        placeholder: "Filter-Name (z. B. Commit Relevant – FR2)",
+        saving: "Speichert…",
+        saveChanges: "Änderungen speichern",
+        discard: "Verwerfen",
+        createFilter: "Filter speichern",
+        createTitle: "Neuen Filter anlegen",
+        savedFilters: "Gespeicherte Filter",
+        loading: "Lade…",
+        empty: "Keine Filter vorhanden.",
+        editHint: "Klicken zum Laden / Bearbeiten",
+        deleteLabel: "Löschen",
+        editing: "Du bearbeitest gerade einen gespeicherten Filter.",
+        unsaved: "Ungespeicherte Änderungen vorhanden.",
+        unchanged: "Keine Änderungen.",
+        selected: "ausgewählt",
+      }
+    : {
+        confirmDelete: "Delete this filter?",
+        saved: "Filter saved.",
+        updated: "Changes saved.",
+        deleted: "Filter deleted.",
+        placeholder: "Filter name (e.g. Commit Relevant – FR2)",
+        saving: "Saving…",
+        saveChanges: "Save changes",
+        discard: "Discard",
+        createFilter: "Save filter",
+        createTitle: "Create new filter",
+        savedFilters: "Saved filters",
+        loading: "Loading…",
+        empty: "No filters available.",
+        editHint: "Click to load / edit",
+        deleteLabel: "Delete",
+        editing: "You are currently editing a saved filter.",
+        unsaved: "Unsaved changes present.",
+        unchanged: "No changes.",
+        selected: "selected",
+      };
 
   /* ------------------------------------------------ */
   /* LOAD FILTERS                                    */
@@ -218,7 +276,7 @@ export function CommitFiltersPanel() {
     try {
       await api.post("/commit/filters", { label, rules });
       await loadFilters();
-      showSavedFeedback("Filter gespeichert.");
+      showSavedFeedback(copy.saved);
     } finally {
       setSaving(false);
     }
@@ -250,7 +308,7 @@ export function CommitFiltersPanel() {
       await loadFilters();
 
       // After reload, the dirty button will disappear by itself (baseline updated)
-      showSavedFeedback("Änderungen gespeichert.");
+      showSavedFeedback(copy.updated);
     } finally {
       setSaving(false);
     }
@@ -261,7 +319,7 @@ export function CommitFiltersPanel() {
   /* ------------------------------------------------ */
 
   async function deleteFilter(id: string) {
-    if (!confirm("Filter wirklich löschen?")) return;
+    if (!confirm(copy.confirmDelete)) return;
 
     setSaving(true);
     try {
@@ -280,7 +338,7 @@ export function CommitFiltersPanel() {
       });
 
       await loadFilters();
-      showSavedFeedback("Filter gelöscht.");
+      showSavedFeedback(copy.deleted);
     } finally {
       setSaving(false);
     }
@@ -297,7 +355,7 @@ export function CommitFiltersPanel() {
         {/* EDIT BAR */}
         <div className="flex gap-3 items-center">
           <Input
-            placeholder="Filter-Name (z. B. Commit Relevant – FR2)"
+            placeholder={copy.placeholder}
             value={draftLabel}
             onChange={(e) => setDraftLabel(e.target.value)}
           />
@@ -306,17 +364,17 @@ export function CommitFiltersPanel() {
             <div className="flex gap-2">
               <Button onClick={saveChanges} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
-                {saving ? "Speichert…" : "Änderungen speichern"}
+                {saving ? copy.saving : copy.saveChanges}
               </Button>
               <Button variant="secondary" onClick={resetToSaved} disabled={saving}>
                 <X className="w-4 h-4 mr-2" />
-                Verwerfen
+                {copy.discard}
               </Button>
             </div>
           ) : (
-            <Button onClick={createNewFilter} disabled={saving} title="Neuen Filter anlegen">
+            <Button onClick={createNewFilter} disabled={saving} title={copy.createTitle}>
               <Plus className="w-4 h-4 mr-2" />
-              {saving ? "Speichert…" : "Filter speichern"}
+              {saving ? copy.saving : copy.createFilter}
             </Button>
           )}
         </div>
@@ -331,15 +389,15 @@ export function CommitFiltersPanel() {
 
         {/* SAVED FILTERS */}
         <div>
-          <div className="text-sm font-medium mb-2">Gespeicherte Filter</div>
+          <div className="text-sm font-medium mb-2">{copy.savedFilters}</div>
 
           {loading && (
-            <div className="text-sm text-muted-foreground">Lade…</div>
+            <div className="text-sm text-muted-foreground">{copy.loading}</div>
           )}
 
           {!loading && filters.length === 0 && (
             <div className="text-sm text-muted-foreground">
-              Keine Filter vorhanden.
+              {copy.empty}
             </div>
           )}
 
@@ -357,7 +415,7 @@ export function CommitFiltersPanel() {
                       ? "bg-primary text-primary-foreground border-primary"
                       : "hover:bg-accent"
                   }`}
-                  title="Klicken zum Laden / Bearbeiten"
+                  title={copy.editHint}
                 >
                   <span>{f.label}</span>
 
@@ -370,7 +428,7 @@ export function CommitFiltersPanel() {
                           ? "text-primary-foreground/80 hover:text-primary-foreground"
                           : "text-muted-foreground hover:text-red-500"
                       }`}
-                      title="Löschen"
+                      title={copy.deleteLabel}
                       disabled={saving}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -383,8 +441,7 @@ export function CommitFiltersPanel() {
 
           {activeSavedId && (
             <div className="mt-2 text-xs text-muted-foreground">
-              Du bearbeitest gerade einen gespeicherten Filter.
-              {isDirty ? " Ungespeicherte Änderungen vorhanden." : " Keine Änderungen."}
+              {copy.editing} {isDirty ? copy.unsaved : copy.unchanged}
             </div>
           )}
         </div>
@@ -403,11 +460,11 @@ export function CommitFiltersPanel() {
           return (
             <div key={field.key} className="border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="font-medium">{field.label}</div>
+                <div className="font-medium">{getFieldLabel(field.key, language as "de" | "en")}</div>
 
                 {count > 0 && (
                   <span className="text-xs px-2 py-0.5 rounded-full border text-muted-foreground">
-                    {count} selected
+                    {count} {copy.selected}
                   </span>
                 )}
               </div>

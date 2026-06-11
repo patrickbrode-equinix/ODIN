@@ -4,7 +4,7 @@
 /* ------------------------------------------------ */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import {
   fetchTeamsStatus, fetchTeamsDiagnostics, fetchTeamsEvents, updateTeamsEvent,
   fetchTeamsRouting, createTeamsRoutingRule, updateTeamsRoutingRule, deleteTeamsRoutingRule,
@@ -49,26 +49,34 @@ const TABS: { id: TabId; icon: React.ElementType }[] = [
   { id: "settings", icon: Settings },
 ];
 
+const TEAMS_INPUT_CLASS = "border border-border/60 rounded-xl px-3 py-1.5 text-sm bg-background/85 shadow-[0_12px_24px_rgba(148,163,184,0.10),inset_0_1px_0_rgba(255,255,255,0.72)] outline-none transition focus:border-sky-300/70 focus:ring-4 focus:ring-sky-100 dark:focus:ring-sky-500/10";
+const TEAMS_BUTTON_NEUTRAL_CLASS = "flex items-center gap-2 rounded-xl border border-border/60 bg-background/85 px-3 py-1.5 text-sm shadow-[0_12px_24px_rgba(148,163,184,0.10)] transition hover:bg-accent/40";
+const TEAMS_BUTTON_PRIMARY_CLASS = "flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-1.5 text-sm text-white shadow-[0_14px_30px_rgba(37,99,235,0.26)] transition hover:bg-blue-700 disabled:opacity-50";
+const TEAMS_BUTTON_SUCCESS_CLASS = "flex items-center gap-2 rounded-xl bg-green-600 px-3 py-1.5 text-sm text-white shadow-[0_14px_30px_rgba(22,163,74,0.22)] transition hover:bg-green-700 disabled:opacity-50";
+const TEAMS_TABLE_HEAD_CLASS = "text-left text-muted-foreground border-b border-border/60";
+const TEAMS_TABLE_ROW_CLASS = "border-b border-border/40 hover:bg-accent/30";
+const TEAMS_SOFT_PANEL_CLASS = "rounded-xl border border-border/60 bg-background/72 shadow-[0_16px_36px_rgba(148,163,184,0.12)]";
+
 const TAB_SUMMARIES_DE: Record<TabId, { title: string; description: string }> = {
   overview: {
-    title: "SchnellÃ¼berblick",
+    title: "Schnellueberblick",
     description: "Status, Versandlage und die wichtigsten Blocker in einer kompakten Leitwarte.",
   },
   diagnostics: {
     title: "Fehlercenter",
-    description: "Technische Checks mit Klartext-ErklÃ¤rung: was geprÃ¼ft wurde, warum es wichtig ist und welcher nÃ¤chste Schritt nÃ¶tig ist.",
+    description: "Technische Checks mit Klartext-Erklaerung: was geprueft wurde, warum es wichtig ist und welcher naechste Schritt noetig ist.",
   },
   employees: {
     title: "Gemappte Mitarbeiter",
-    description: "Alle vorhandenen Teams-Mappings aus der Datenbank inklusive Mailquelle, Override-Status und verknÃ¼pftem ODIN-User.",
+    description: "Alle vorhandenen Teams-Mappings aus der Datenbank inklusive Mailquelle, Override-Status und verknuepftem ODIN-User.",
   },
   events: {
     title: "Events",
-    description: "Steuert, welche ODIN-Ereignisse Ã¼berhaupt Teams-Nachrichten auslÃ¶sen und wie aggressiv diese ausgeliefert werden.",
+    description: "Steuert, welche ODIN-Ereignisse ueberhaupt Teams-Nachrichten ausloesen und wie aggressiv diese ausgeliefert werden.",
   },
   routing: {
     title: "Routing",
-    description: "Ordnet Ereignisse Personen, Rollen, Schichten oder gespeicherten EmpfÃ¤ngergruppen zu.",
+    description: "Ordnet Ereignisse Personen, Rollen, Schichten oder gespeicherten Empfaengergruppen zu.",
   },
   templates: {
     title: "Templates",
@@ -76,11 +84,11 @@ const TAB_SUMMARIES_DE: Record<TabId, { title: string; description: string }> = 
   },
   test: {
     title: "Test Center",
-    description: "Validiert Webhooks, Bot-Pfade und Templates ohne ein echtes produktives Event auszulÃ¶sen.",
+    description: "Validiert Webhooks, Bot-Pfade und Templates ohne ein echtes produktives Event auszuloesen.",
   },
   log: {
     title: "Verlauf",
-    description: "Chronologischer Ãœberblick Ã¼ber bereits gesendete oder fehlgeschlagene Teams-Nachrichten.",
+    description: "Chronologischer Ueberblick ueber bereits gesendete oder fehlgeschlagene Teams-Nachrichten.",
   },
   errors: {
     title: "Fehler & Retry",
@@ -92,7 +100,7 @@ const TAB_SUMMARIES_DE: Record<TabId, { title: string; description: string }> = 
   },
   verification: {
     title: "Schicht-Verifizierung",
-    description: "Automatische Anwesenheitspr\u00fcfung per Teams nach Schichtbeginn. Status, Konfiguration und Audit-Log.",
+    description: "Automatische Anwesenheitspruefung per Teams nach Schichtbeginn. Status, Konfiguration und Audit-Log.",
   },
 };
 
@@ -114,13 +122,13 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
   de: {
     pageTitle: "Teams Communication Center",
     pageSubtitle: "Microsoft Teams Nachrichtensteuerung",
-    strapline: "Teams Center Â· transparent, aber operativ nutzbar",
-    tabs: { overview: "Ãœbersicht", diagnostics: "Fehlercenter", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test Center", log: "Verlauf", errors: "Fehler & Retry", verification: "Schicht-Verifizierung", settings: "Einstellungen" },
+    strapline: "Teams Center - transparent und operativ nutzbar",
+    tabs: { overview: "Uebersicht", diagnostics: "Fehlercenter", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test Center", log: "Verlauf", errors: "Fehler & Retry", verification: "Schicht-Verifizierung", settings: "Einstellungen" },
     summaries: TAB_SUMMARIES_DE,
     statusError: "Status konnte nicht geladen werden",
     diagnosticsError: "Fehlercenter konnte nicht geladen werden",
     refresh: "Aktualisieren",
-    recheck: "Neu prÃ¼fen",
+    recheck: "Neu pruefen",
     ready: "Bereit",
     blocked: "Blockiert",
     teamsReady: "Teams bereit",
@@ -133,12 +141,12 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
     lastError: "Letzter Fehler",
     time: "Zeit",
     type: "Typ",
-    recipient: "EmpfÃ¤nger",
+    recipient: "Empfaenger",
     status: "Status",
     noSend: "Noch keine Sendung",
     noErrors: "Keine Fehler",
     quickStatus: "Fehlercenter-Schnellstatus",
-    whatChecks: "Was das Fehlercenter prÃ¼ft",
+    whatChecks: "Was das Fehlercenter prueft",
     commonFailures: "Typische Fehlerbilder",
     operationsUsage: "Operative Nutzung",
     latestDiagnosis: "Letzte Diagnose",
@@ -146,7 +154,7 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
     blockingPoints: "Blockierende Punkte",
     noBlockingPoints: "Aktuell wurden keine blockierenden Teams-Probleme erkannt.",
     activeMappings: "Aktive Teams-Mappings",
-    linkedUsers: "Mit ODIN-User verknÃ¼pft",
+    linkedUsers: "Mit ODIN-User verknuepft",
     manualOverrides: "Manuelle Overrides",
     employeeMappings: "Mitarbeiter-Mappings",
     filterHint: "Filterbar nach Mitarbeitername, E-Mail oder Mailquelle.",
@@ -159,31 +167,31 @@ const TEAMS_COPY: Record<LanguageCode, any> = {
     lastUpdated: "Zuletzt aktualisiert",
     manual: "Manuell",
     automatic: "Automatisch",
-    notLinked: "Nicht verknÃ¼pft",
+    notLinked: "Nicht verknuepft",
     noEmployees: "Keine Mitarbeiter-Mappings passend zum aktuellen Filter.",
     active: "Aktiv",
     inactive: "Inaktiv",
     statusFilterAll: "Alle Status",
     sent: "Gesendet",
     failed: "Fehlgeschlagen",
-    entriesTotal: "EintrÃ¤ge gesamt",
+    entriesTotal: "Eintraege gesamt",
     content: "Inhalt",
     error: "Fehler",
-    failedMessages: "Fehlgeschlagene Nachrichten â€“ manuelles Retry mÃ¶glich",
+    failedMessages: "Fehlgeschlagene Nachrichten - manuelles Retry moeglich",
     noFailedMessages: "Keine fehlgeschlagenen Nachrichten",
     retry: "Retry",
     remove: "Entfernen",
     disabledLabel: "deaktiviert",
     errorsRetryTooltipTitle: "Fehler & Retry",
-    errorsRetryTooltipIntro: "Hier werden alle Nachrichten aufgelistet, deren Zustellung fehlgeschlagen ist. MÃ¶gliche Ursachen:",
-    errorsRetryWebhook: "Die URL ist abgelaufen oder wurde in Teams gelÃ¶scht.",
+    errorsRetryTooltipIntro: "Hier werden alle Nachrichten aufgelistet, deren Zustellung fehlgeschlagen ist. Moegliche Ursachen:",
+    errorsRetryWebhook: "Die URL ist abgelaufen oder wurde in Teams geloescht.",
     errorsRetryNetwork: "Der Backend-Server konnte die Teams-API nicht erreichen.",
     errorsRetryToken: "Das OAuth-Token muss erneuert werden.",
-    errorsRetryRateLimit: "Zu viele Nachrichten in kurzer Zeit â€“ Teams drosselt die API.",
+    errorsRetryRateLimit: "Zu viele Nachrichten in kurzer Zeit - Teams drosselt die API.",
     errorsRetryHelp: "Klicken Sie auf Retry, um die Nachricht erneut zu senden. Bei Erfolg wird sie aus der Liste entfernt und im Log als sent vermerkt.",
     save: "Speichern",
   },
-  en: { pageTitle: "Teams Communication Center", pageSubtitle: "Microsoft Teams message control", strapline: "Teams Center Â· transparent and operational", tabs: { overview: "Overview", diagnostics: "Diagnostics", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test center", log: "History", errors: "Errors & retry", verification: "Shift verification", settings: "Settings" }, summaries: TAB_SUMMARIES_EN, statusError: "Status could not be loaded", diagnosticsError: "Diagnostics could not be loaded", refresh: "Refresh", recheck: "Run again", ready: "Ready", blocked: "Blocked", teamsReady: "Teams ready", teamsBlocked: "Teams blocked", sentToday: "Sent today", failedToday: "Failed today", openRetries: "Open retries (24h)", mappedEmployees: "Mapped employees", lastSuccess: "Last successful delivery", lastError: "Last error", time: "Time", type: "Type", recipient: "Recipient", status: "Status", noSend: "No delivery yet", noErrors: "No errors", quickStatus: "Diagnostics quick status", whatChecks: "What diagnostics checks", commonFailures: "Typical failure patterns", operationsUsage: "Operational usage", latestDiagnosis: "Latest diagnosis", asOf: "As of", blockingPoints: "Blocking issues", noBlockingPoints: "No blocking Teams issues were detected.", activeMappings: "Active Teams mappings", linkedUsers: "Linked to ODIN user", manualOverrides: "Manual overrides", employeeMappings: "Employee mappings", filterHint: "Filter by employee name, email or email source.", searchNameOrMail: "Search by name or email", employee: "Employee", teamsMail: "Teams email", mailSource: "Mail source", override: "Override", odinUser: "ODIN user", lastUpdated: "Last updated", manual: "Manual", automatic: "Automatic", notLinked: "Not linked", noEmployees: "No employee mappings match the current filter.", active: "Active", inactive: "Inactive", statusFilterAll: "All statuses", sent: "Sent", failed: "Failed", entriesTotal: "entries total", content: "Content", error: "Error", failedMessages: "Failed messages â€“ manual retry available", noFailedMessages: "No failed messages", retry: "Retry", remove: "Remove", disabledLabel: "disabled", errorsRetryTooltipTitle: "Errors & retry", errorsRetryTooltipIntro: "All messages whose delivery failed are listed here. Common causes:", errorsRetryWebhook: "The URL expired or was deleted in Teams.", errorsRetryNetwork: "The backend server could not reach the Teams API.", errorsRetryToken: "The OAuth token needs to be renewed.", errorsRetryRateLimit: "Too many messages were sent in a short time, so Teams is throttling the API.", errorsRetryHelp: "Click Retry to send the message again. On success it is removed from the list and marked as sent in the log.", save: "Save" },
+  en: { pageTitle: "Teams Communication Center", pageSubtitle: "Microsoft Teams message control", strapline: "Teams Center - transparent and operational", tabs: { overview: "Overview", diagnostics: "Diagnostics", employees: "Mappings", events: "Events", routing: "Routing", templates: "Templates", test: "Test center", log: "History", errors: "Errors & retry", verification: "Shift verification", settings: "Settings" }, summaries: TAB_SUMMARIES_EN, statusError: "Status could not be loaded", diagnosticsError: "Diagnostics could not be loaded", refresh: "Refresh", recheck: "Run again", ready: "Ready", blocked: "Blocked", teamsReady: "Teams ready", teamsBlocked: "Teams blocked", sentToday: "Sent today", failedToday: "Failed today", openRetries: "Open retries (24h)", mappedEmployees: "Mapped employees", lastSuccess: "Last successful delivery", lastError: "Last error", time: "Time", type: "Type", recipient: "Recipient", status: "Status", noSend: "No delivery yet", noErrors: "No errors", quickStatus: "Diagnostics quick status", whatChecks: "What diagnostics checks", commonFailures: "Typical failure patterns", operationsUsage: "Operational usage", latestDiagnosis: "Latest diagnosis", asOf: "As of", blockingPoints: "Blocking issues", noBlockingPoints: "No blocking Teams issues were detected.", activeMappings: "Active Teams mappings", linkedUsers: "Linked to ODIN user", manualOverrides: "Manual overrides", employeeMappings: "Employee mappings", filterHint: "Filter by employee name, email or email source.", searchNameOrMail: "Search by name or email", employee: "Employee", teamsMail: "Teams email", mailSource: "Mail source", override: "Override", odinUser: "ODIN user", lastUpdated: "Last updated", manual: "Manual", automatic: "Automatic", notLinked: "Not linked", noEmployees: "No employee mappings match the current filter.", active: "Active", inactive: "Inactive", statusFilterAll: "All statuses", sent: "Sent", failed: "Failed", entriesTotal: "entries total", content: "Content", error: "Error", failedMessages: "Failed messages - manual retry available", noFailedMessages: "No failed messages", retry: "Retry", remove: "Remove", disabledLabel: "disabled", errorsRetryTooltipTitle: "Errors & retry", errorsRetryTooltipIntro: "All messages whose delivery failed are listed here. Common causes:", errorsRetryWebhook: "The URL expired or was deleted in Teams.", errorsRetryNetwork: "The backend server could not reach the Teams API.", errorsRetryToken: "The OAuth token needs to be renewed.", errorsRetryRateLimit: "Too many messages were sent in a short time, so Teams is throttling the API.", errorsRetryHelp: "Click Retry to send the message again. On success it is removed from the list and marked as sent in the log.", save: "Save" },
 };
 
 function useTeamsUi() {
@@ -202,29 +210,29 @@ function useTeamsUi() {
 
 const DIAGNOSTIC_HELP_DE: Record<string, { title: string; summary: string; detail: string }> = {
   channel_webhook: {
-    title: "Webhook-PrÃ¼fung",
-    summary: "PrÃ¼ft, ob Ã¼berhaupt ein Teams-Ziel fÃ¼r Kanalnachrichten konfiguriert ist.",
-    detail: "Ohne Webhook kann ODIN keine Kanalnachrichten an Teams Ã¼bergeben. Der Check prÃ¼ft nur die Konfiguration, nicht den tatsÃ¤chlichen Versand einer Nachricht.",
+    title: "Webhook-Pruefung",
+    summary: "Prueft, ob ueberhaupt ein Teams-Ziel fuer Kanalnachrichten konfiguriert ist.",
+    detail: "Ohne Webhook kann ODIN keine Kanalnachrichten an Teams uebergeben. Der Check prueft nur die Konfiguration, nicht den tatsaechlichen Versand einer Nachricht.",
   },
   bot_api: {
     title: "Bot-Pfad",
-    summary: "Bewertet, ob persÃ¶nliche 1:1-Nachrichten Ã¼ber die interne Bot-Anbindung vorbereitet sind.",
-    detail: "Der Bot-Pfad ist fÃ¼r private Nachrichten relevant. Fehlt er, kann Kanalversand trotzdem funktionieren, persÃ¶nliche Zustellung aber unvollstÃ¤ndig bleiben.",
+    summary: "Bewertet, ob persoenliche 1:1-Nachrichten ueber die interne Bot-Anbindung vorbereitet sind.",
+    detail: "Der Bot-Pfad ist fuer private Nachrichten relevant. Fehlt er, kann Kanalversand trotzdem funktionieren, persoenliche Zustellung aber unvollstaendig bleiben.",
   },
   graph_credentials: {
     title: "Graph-Credentials",
-    summary: "PrÃ¼ft, ob Tenant, Client und Secret fÃ¼r Entra ID vollstÃ¤ndig vorhanden sind.",
-    detail: "Fehlende oder vertauschte Werte blockieren die Authentifizierung, bevor Ã¼berhaupt ein Graph-Aufruf stattfinden kann.",
+    summary: "Prueft, ob Tenant, Client und Secret fuer Entra ID vollstaendig vorhanden sind.",
+    detail: "Fehlende oder vertauschte Werte blockieren die Authentifizierung, bevor ueberhaupt ein Graph-Aufruf stattfinden kann.",
   },
   graph_token: {
     title: "Graph-Authentifizierung",
-    summary: "Versucht aktiv, Ã¼ber Client Credentials ein Access Token von Entra ID zu holen.",
-    detail: "Damit sieht man sofort, ob das Problem an falschen Secrets, ungÃ¼ltiger App-Registrierung oder an Netzwerk/Proxy liegt.",
+    summary: "Versucht aktiv, ueber Client Credentials ein Access Token von Entra ID zu holen.",
+    detail: "Damit sieht man sofort, ob das Problem an falschen Secrets, ungueltiger App-Registrierung oder an Netzwerk/Proxy liegt.",
   },
   graph_permissions: {
     title: "Graph-Berechtigungen",
     summary: "Liest Rollen und Scopes direkt aus dem ausgestellten Token.",
-    detail: "Ein technisch gÃ¼ltiges Token ohne Rollen ist in der Praxis trotzdem wertlos. Genau das zeigt dieser Check.",
+    detail: "Ein technisch gueltiges Token ohne Rollen ist in der Praxis trotzdem wertlos. Genau das zeigt dieser Check.",
   },
   graph_users_probe: {
     title: "Graph-/users-Probe",
@@ -232,14 +240,14 @@ const DIAGNOSTIC_HELP_DE: Record<string, { title: string; summary: string; detai
     detail: "So wird sichtbar, ob die Berechtigungen in Azure zwar hinterlegt, aber noch nicht per Admin Consent freigegeben wurden.",
   },
   recipient_mapping: {
-    title: "EmpfÃ¤nger-AuflÃ¶sung",
-    summary: "PrÃ¼ft, ob ODIN Ã¼berhaupt reale Zieladressen oder einen Fallback hat.",
-    detail: "Auch wenn Graph technisch funktioniert, kÃ¶nnen persÃ¶nliche Nachrichten ohne Mitarbeiter-Mapping oder Fallback nicht zielgerichtet zugestellt werden.",
+    title: "Empfaenger-Aufloesung",
+    summary: "Prueft, ob ODIN ueberhaupt reale Zieladressen oder einen Fallback hat.",
+    detail: "Auch wenn Graph technisch funktioniert, koennen persoenliche Nachrichten ohne Mitarbeiter-Mapping oder Fallback nicht zielgerichtet zugestellt werden.",
   },
   delivery_health: {
     title: "Aktuelle Versandlage",
     summary: "Wertet das Nachrichtenlog auf aktuelle Fehler und offene Retries aus.",
-    detail: "Das ist der operative Check: selbst bei korrekter Konfiguration kann der Versand an Rate Limits, ungÃ¼ltigen URLs oder temporÃ¤ren Teams-Fehlern scheitern.",
+    detail: "Das ist der operative Check: selbst bei korrekter Konfiguration kann der Versand an Rate Limits, ungueltigen URLs oder temporaeren Teams-Fehlern scheitern.",
   },
 };
 
@@ -256,8 +264,8 @@ const DIAGNOSTIC_HELP_EN: Record<string, { title: string; summary: string; detai
 
 const CAPABILITY_HELP_DE: Record<string, string> = {
   "Kanalversand": "Kanalversand ist aktiv, wenn ein Webhook vorhanden ist. Damit kann ODIN Nachrichten in einen Teams-Kanal posten.",
-  "Graph Lookup": "Graph Lookup ist aktiv, wenn ODIN erfolgreich Benutzerdaten aus Microsoft Graph lesen kann. Das ist die Grundlage fÃ¼r User-AuflÃ¶sung.",
-  "Persoenliche Nachrichten": "PersÃ¶nliche Nachrichten benÃ¶tigen sowohl Graph-Zugriff als auch den Bot-Pfad. Fehlt eines davon, bleibt nur Kanal- oder Fallback-Versand.",
+  "Graph Lookup": "Graph Lookup ist aktiv, wenn ODIN erfolgreich Benutzerdaten aus Microsoft Graph lesen kann. Das ist die Grundlage fuer User-Aufloesung.",
+  "Persoenliche Nachrichten": "Persoenliche Nachrichten benoetigen sowohl Graph-Zugriff als auch den Bot-Pfad. Fehlt eines davon, bleibt nur Kanal- oder Fallback-Versand.",
 };
 
 const CAPABILITY_HELP_EN: Record<string, string> = {
@@ -301,7 +309,7 @@ export function TeamsCommunicationCenterPanel({ embedded = false, initialTab = "
 
   const content = (
     <>
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200 pb-2 dark:border-gray-700">
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border/60 pb-2">
         {TABS.map(t => (
           <button
             key={t.id}
@@ -309,7 +317,7 @@ export function TeamsCommunicationCenterPanel({ embedded = false, initialTab = "
             className={`shrink-0 flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
               activeTab === t.id
                 ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <t.icon className="w-4 h-4" />
@@ -321,10 +329,10 @@ export function TeamsCommunicationCenterPanel({ embedded = false, initialTab = "
       <EnterpriseCard className="mb-6">
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{tabSummary.title}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">{tabSummary.description}</div>
+            <div className="text-sm font-semibold text-foreground">{tabSummary.title}</div>
+            <div className="text-sm text-muted-foreground">{tabSummary.description}</div>
           </div>
-          <div className="text-xs text-gray-400">{copy.strapline}</div>
+          <div className="text-xs text-muted-foreground">{copy.strapline}</div>
         </div>
       </EnterpriseCard>
 
@@ -348,6 +356,17 @@ export function TeamsCommunicationCenterPanel({ embedded = false, initialTab = "
     <TextRepairBoundary>
       <EnterprisePageShell>
         <EnterpriseHeader title={copy.pageTitle} subtitle={copy.pageSubtitle} />
+        <EnterpriseFeatureHero
+          tone="cyan"
+          eyebrow={copy.strapline}
+          title={copy.pageTitle}
+          description={copy.pageSubtitle}
+          metrics={[
+            { label: 'Tabs', value: TABS.length },
+            { label: 'Primary', value: copy.tabs.overview },
+            { label: 'Verification', value: copy.tabs.verification },
+          ]}
+        />
         {content}
       </EnterprisePageShell>
     </TextRepairBoundary>
@@ -397,30 +416,30 @@ function OverviewTab() {
         <div className="flex items-center gap-1">
           <StatusBadge ok={status.webhook_configured} label="Webhook" />
           <InfoTooltip title="Webhook-Status">
-            <p><strong>Bedeutung:</strong> Zeigt an, ob der Microsoft Teams Webhook-Endpunkt konfiguriert ist. Der Webhook wird benÃ¶tigt, um Nachrichten in Teams-KanÃ¤le zu senden.</p>
-            <p><strong>Nicht konfiguriert:</strong> Es fehlt die Webhook-URL in den Umgebungsvariablen. Ohne diesen Endpunkt kÃ¶nnen keine Kanalnachrichten gesendet werden.</p>
+            <p><strong>Bedeutung:</strong> Zeigt an, ob der Microsoft Teams Webhook-Endpunkt konfiguriert ist. Der Webhook wird benoetigt, um Nachrichten in Teams-Kanaele zu senden.</p>
+            <p><strong>Nicht konfiguriert:</strong> Es fehlt die Webhook-URL in den Umgebungsvariablen. Ohne diesen Endpunkt koennen keine Kanalnachrichten gesendet werden.</p>
           </InfoTooltip>
         </div>
         <div className="flex items-center gap-1">
           <StatusBadge ok={status.bot_configured} label="Bot API" />
           <InfoTooltip title="Bot API Status">
-            <p><strong>Bedeutung:</strong> Zeigt an, ob der Microsoft Bot Framework Endpunkt konfiguriert ist. Der Bot wird fÃ¼r persÃ¶nliche 1:1-Nachrichten an Mitarbeiter benÃ¶tigt.</p>
-            <p><strong>Voraussetzung:</strong> Azure Bot Registration, gÃ¼ltige App-ID und Secret. Ohne Bot-Konfiguration kÃ¶nnen keine persÃ¶nlichen Benachrichtigungen versendet werden.</p>
+            <p><strong>Bedeutung:</strong> Zeigt an, ob der Microsoft Bot Framework Endpunkt konfiguriert ist. Der Bot wird fuer persoenliche 1:1-Nachrichten an Mitarbeiter benoetigt.</p>
+            <p><strong>Voraussetzung:</strong> Azure Bot Registration, gueltige App-ID und Secret. Ohne Bot-Konfiguration koennen keine persoenlichen Benachrichtigungen versendet werden.</p>
           </InfoTooltip>
         </div>
         <div className="flex items-center gap-1">
           <StatusBadge ok={status.graph_configured} label="Graph API" />
           <InfoTooltip title="Microsoft Graph API">
             <p><strong>Bedeutung:</strong> Zeigt an, ob die Microsoft Graph API Credentials (Tenant-ID, Client-ID, Client-Secret) hinterlegt sind.</p>
-            <p><strong>WofÃ¼r:</strong> Graph API wird benÃ¶tigt, um Teams-Benutzer aufzulÃ¶sen (User Resolve), Chat-Installationen zu erstellen und Conversation References zu verwalten.</p>
-            <p><strong>Nicht konfiguriert:</strong> User-Mapping und persÃ¶nliche Nachrichten funktionieren nicht.</p>
+            <p><strong>Wofuer:</strong> Graph API wird benoetigt, um Teams-Benutzer aufzuloesen (User Resolve), Chat-Installationen zu erstellen und Conversation References zu verwalten.</p>
+            <p><strong>Nicht konfiguriert:</strong> User-Mapping und persoenliche Nachrichten funktionieren nicht.</p>
           </InfoTooltip>
         </div>
         <div className="flex items-center gap-1">
           <StatusBadge ok={status.mapped_employees > 0} label={`${status.mapped_employees} Mappings`} />
           <InfoTooltip title="Employee Mappings">
-            <p><strong>Bedeutung:</strong> Anzahl der Mitarbeiter, deren ODIN-Account mit einem Teams-Benutzer verknÃ¼pft ist.</p>
-            <p><strong>Wichtig:</strong> Nur gemappte Mitarbeiter kÃ¶nnen persÃ¶nliche Teams-Nachrichten erhalten. Mitarbeiter ohne Mapping werden bei persÃ¶nlichen Benachrichtigungen Ã¼bersprungen.</p>
+            <p><strong>Bedeutung:</strong> Anzahl der Mitarbeiter, deren ODIN-Account mit einem Teams-Benutzer verknuepft ist.</p>
+            <p><strong>Wichtig:</strong> Nur gemappte Mitarbeiter koennen persoenliche Teams-Nachrichten erhalten. Mitarbeiter ohne Mapping werden bei persoenlichen Benachrichtigungen uebersprungen.</p>
           </InfoTooltip>
         </div>
       </div>
@@ -543,7 +562,7 @@ function DiagnosticsTab() {
       <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <EnterpriseCard>
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <ShieldAlert className="w-4 h-4" />
             {copy.whatChecks}
             <InfoTooltip title={isGerman ? "PrÃ¼fumfang" : "Scope"} side="right">
@@ -551,39 +570,39 @@ function DiagnosticsTab() {
               <p>{isGerman ? <>Dadurch sieht man nicht nur <strong>dass</strong> Teams nicht funktioniert, sondern <strong>woran</strong> es konkret scheitert.</> : <>This shows not only <strong>that</strong> Teams is failing, but also <strong>why</strong> it is failing.</>}</p>
             </InfoTooltip>
           </div>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{isGerman ? "Jeder Check dokumentiert PrÃ¼fschritt, Ergebnis, technische Details und den nÃ¤chsten sinnvollen Arbeitsschritt." : "Each check documents the verification step, the result, technical details, and the next sensible action."}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{isGerman ? "Jeder Check dokumentiert Pruefschritt, Ergebnis, technische Details und den naechsten sinnvollen Arbeitsschritt." : "Each check documents the verification step, the result, technical details, and the next sensible action."}</p>
         </EnterpriseCard>
         <EnterpriseCard>
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Mail className="w-4 h-4" />
             {copy.commonFailures}
             <InfoTooltip title={isGerman ? "HÃ¤ufige Ursachen" : "Common causes"} side="right">
               <p>{isGerman ? "In der Praxis blockieren am hÃ¤ufigsten drei Dinge: fehlender Webhook, fehlende Graph-Rechte oder ein gÃ¼ltiges Token ohne Admin Consent." : "In practice, three things block delivery most often: a missing webhook, missing Graph permissions, or a valid token without admin consent."}</p>
             </InfoTooltip>
           </div>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{isGerman ? "Wenn Kanalversand lÃ¤uft, persÃ¶nliche Nachrichten aber nicht, liegt die Ursache fast immer im Graph- oder Bot-Pfad." : "If channel delivery works but personal messages do not, the root cause is almost always the Graph or bot path."}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{isGerman ? "Wenn Kanalversand laeuft, persoenliche Nachrichten aber nicht, liegt die Ursache fast immer im Graph- oder Bot-Pfad." : "If channel delivery works but personal messages do not, the root cause is almost always the Graph or bot path."}</p>
         </EnterpriseCard>
         <EnterpriseCard>
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Activity className="w-4 h-4" />
             {copy.operationsUsage}
             <InfoTooltip title={isGerman ? "Wie man es nutzt" : "How to use it"} side="right">
               <p>{isGerman ? "Erst die roten Blocker beheben, dann die Hinweise prÃ¼fen, danach im Test Center mit Kanal- und Personaltest verifizieren." : "Fix the red blockers first, review the warnings second, then verify the result in the test center with channel and personal tests."}</p>
             </InfoTooltip>
           </div>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{isGerman ? "So bleibt die Fehleranalyse nachvollziehbar und endet nicht bei einem reinen Konfigurations-Check." : "This keeps troubleshooting traceable instead of ending at a pure configuration check."}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{isGerman ? "So bleibt die Fehleranalyse nachvollziehbar und endet nicht bei einem reinen Konfigurations-Check." : "This keeps troubleshooting traceable instead of ending at a pure configuration check."}</p>
         </EnterpriseCard>
       </div>
 
       <EnterpriseCard>
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Activity className="w-4 h-4" />
               {copy.latestDiagnosis}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-300">{diagnostics.summary}</div>
-            <div className="text-xs text-gray-400">{copy.asOf}: {new Date(diagnostics.generated_at).toLocaleString(locale)}</div>
+            <div className="text-sm text-muted-foreground">{diagnostics.summary}</div>
+            <div className="text-xs text-muted-foreground">{copy.asOf}: {new Date(diagnostics.generated_at).toLocaleString(locale)}</div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -591,7 +610,7 @@ function DiagnosticsTab() {
               {diagnostics.ready ? <CheckCircle2 className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
               {diagnostics.ready ? copy.teamsReady : copy.teamsBlocked}
             </div>
-            <button onClick={load} className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
+            <button onClick={load} className={TEAMS_BUTTON_NEUTRAL_CLASS}>
               <RefreshCw className="w-4 h-4" /> {copy.recheck}
             </button>
           </div>
@@ -668,15 +687,15 @@ function EmployeesTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <EnterpriseCard>
           <div className="text-3xl font-bold text-blue-600">{activeMappings}</div>
-          <div className="text-sm text-gray-500">{copy.activeMappings}</div>
+          <div className="text-sm text-muted-foreground">{copy.activeMappings}</div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-3xl font-bold text-green-600">{linkedUsers}</div>
-          <div className="text-sm text-gray-500">{copy.linkedUsers}</div>
+          <div className="text-sm text-muted-foreground">{copy.linkedUsers}</div>
         </EnterpriseCard>
         <EnterpriseCard>
           <div className="text-3xl font-bold text-amber-600">{manualOverrides}</div>
-          <div className="text-sm text-gray-500">{copy.manualOverrides}</div>
+          <div className="text-sm text-muted-foreground">{copy.manualOverrides}</div>
         </EnterpriseCard>
       </div>
 
@@ -685,20 +704,20 @@ function EmployeesTab() {
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-1.5">{copy.employeeMappings}
               <InfoTooltip title="Was hier sichtbar ist" side="right" width="w-96">
-                <p>Hier sehen Sie die Datenbasis fÃ¼r persÃ¶nliche Teams-Nachrichten. Ohne Mapping kann ODIN einen Mitarbeiter zwar fachlich auswÃ¤hlen, aber nicht persÃ¶nlich in Teams adressieren.</p>
+                <p>Hier sehen Sie die Datenbasis fuer persoenliche Teams-Nachrichten. Ohne Mapping kann ODIN einen Mitarbeiter zwar fachlich auswaehlen, aber nicht persoenlich in Teams adressieren.</p>
                 <p><strong>Mailquelle:</strong> Zeigt, aus welchem Prozess die Adresse stammt. <strong>Override:</strong> Markiert manuell gepflegte Werte.</p>
               </InfoTooltip>
             </h3>
-            <p className="text-sm text-gray-500">{copy.filterHint}</p>
+            <p className="text-sm text-muted-foreground">{copy.filterHint}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={copy.searchNameOrMail}
-              className="w-72 border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
+              className={`w-72 ${TEAMS_INPUT_CLASS}`}
             />
-            <button onClick={load} className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
+            <button onClick={load} className={TEAMS_BUTTON_NEUTRAL_CLASS}>
               <RefreshCw className="w-4 h-4" /> {copy.refresh}
             </button>
           </div>
@@ -707,7 +726,7 @@ function EmployeesTab() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+              <tr className={TEAMS_TABLE_HEAD_CLASS}>
                 <th className="py-2 px-3">{copy.employee}</th>
                 <th className="py-2 px-3">{copy.teamsMail}</th>
                 <th className="py-2 px-3">{copy.mailSource}</th>
@@ -718,17 +737,17 @@ function EmployeesTab() {
             </thead>
             <tbody>
               {filteredEmployees.map((employee) => (
-                <tr key={`${employee.employee_name}-${employee.email || 'nomail'}`} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <tr key={`${employee.employee_name}-${employee.email || 'nomail'}`} className={TEAMS_TABLE_ROW_CLASS}>
                   <td className="py-2 px-3 font-medium">{employee.employee_name}</td>
-                  <td className="py-2 px-3">{employee.email || "â€“"}</td>
-                  <td className="py-2 px-3 text-xs text-gray-500">{employee.email_source || "â€“"}</td>
+                  <td className="py-2 px-3">{employee.email || "-"}</td>
+                  <td className="py-2 px-3 text-xs text-muted-foreground">{employee.email_source || "-"}</td>
                   <td className="py-2 px-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${employee.manual_override ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>
                       {employee.manual_override ? copy.manual : copy.automatic}
                     </span>
                   </td>
                   <td className="py-2 px-3">{employee.user_id ? `User #${employee.user_id}` : copy.notLinked}</td>
-                  <td className="py-2 px-3 text-xs text-gray-500">{new Date(employee.updated_at).toLocaleString(locale)}</td>
+                  <td className="py-2 px-3 text-xs text-muted-foreground">{new Date(employee.updated_at).toLocaleString(locale)}</td>
                 </tr>
               ))}
             </tbody>
@@ -736,7 +755,7 @@ function EmployeesTab() {
         </div>
 
         {filteredEmployees.length === 0 && (
-          <div className="py-8 text-center text-sm text-gray-400">{copy.noEmployees}</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">{copy.noEmployees}</div>
         )}
       </EnterpriseCard>
       </div>
@@ -774,25 +793,25 @@ function EventsTab() {
   return (
     <TextRepairBoundary>
       <div className="space-y-2">
-      <p className="text-sm text-gray-500 mb-4">{t('teams.eventDescription')}</p>
+      <p className="mb-4 text-sm text-muted-foreground">{t('teams.eventDescription')}</p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+            <tr className={TEAMS_TABLE_HEAD_CLASS}>
               <th className="py-2 px-3">
                 <span className="flex items-center gap-1">{t('common.active')}
                   <InfoTooltip title={isGerman ? "Event aktiv/inaktiv" : "Event active/inactive"}>
-                    <p>{isGerman ? <>Schaltet das Event ein oder aus. Inaktive Events lÃ¶sen <em>keine</em> Teams-Nachrichten aus, auch wenn die Bedingung im System eintritt.</> : <>Turns the event on or off. Inactive events trigger <em>no</em> Teams messages even if the condition occurs in the system.</>}</p>
+                    <p>{isGerman ? <>Schaltet das Event ein oder aus. Inaktive Events loesen <em>keine</em> Teams-Nachrichten aus, auch wenn die Bedingung im System eintritt.</> : <>Turns the event on or off. Inactive events trigger <em>no</em> Teams messages even if the condition occurs in the system.</>}</p>
                     <p><strong>{isGerman ? "Wichtig" : "Important"}:</strong> {isGerman ? "Deaktivierung betrifft nur den Nachrichtenversand. Das Event selbst wird weiterhin im System erkannt und geloggt." : "Disabling only affects message delivery. The event itself is still recognized and logged by the system."}</p>
                   </InfoTooltip>
                 </span>
               </th>
               <th className="py-2 px-3">Event</th>
               <th className="py-2 px-3">
-                <span className="flex items-center gap-1">{isGerman ? "PrioritÃ¤t" : "Priority"}
-                  <InfoTooltip title={isGerman ? "Event-PrioritÃ¤t" : "Event priority"}>
-                    <p>{isGerman ? "Bestimmt die Dringlichkeit der Nachricht. P1 = hÃ¶chste PrioritÃ¤t (z. B. kritische StÃ¶rungen), P5 = niedrigste." : "Determines message urgency. P1 is the highest priority, for example critical incidents, and P5 is the lowest."}</p>
-                    <p><strong>{isGerman ? "Auswirkung" : "Effect"}:</strong> {isGerman ? "HÃ¶here PrioritÃ¤ten umgehen ggf. Quiet Hours und Digest-BÃ¼ndelung. P1-Nachrichten werden auch nachts gesendet, wenn nur kritische Nachtzustellung aktiv ist." : "Higher priorities can bypass quiet hours and digest bundling. P1 messages are also sent overnight when only critical overnight delivery is enabled."}</p>
+                <span className="flex items-center gap-1">{isGerman ? "Prioritaet" : "Priority"}
+                  <InfoTooltip title={isGerman ? "Event-Prioritaet" : "Event priority"}>
+                    <p>{isGerman ? "Bestimmt die Dringlichkeit der Nachricht. P1 = hoechste Prioritaet, zum Beispiel kritische Stoerungen, P5 = niedrigste." : "Determines message urgency. P1 is the highest priority, for example critical incidents, and P5 is the lowest."}</p>
+                    <p><strong>{isGerman ? "Auswirkung" : "Effect"}:</strong> {isGerman ? "Hoehere Prioritaeten umgehen gegebenenfalls Quiet Hours und Digest-Buendelung. P1-Nachrichten werden auch nachts gesendet, wenn nur kritische Nachtzustellung aktiv ist." : "Higher priorities can bypass quiet hours and digest bundling. P1 messages are also sent overnight when only critical overnight delivery is enabled."}</p>
                   </InfoTooltip>
                 </span>
               </th>
@@ -800,14 +819,14 @@ function EventsTab() {
                 <span className="flex items-center gap-1">{isGerman ? "Modus" : "Mode"}
                   <InfoTooltip title={isGerman ? "Sendemodus" : "Send mode"}>
                     <p><strong>{isGerman ? "Sofort" : "Immediate"}:</strong> {isGerman ? "Nachricht wird unmittelbar bei Event-Eintritt versendet." : "The message is sent immediately when the event occurs."}</p>
-                    <p><strong>Digest:</strong> {isGerman ? "Nachricht wird gesammelt und im nÃ¤chsten Digest-Intervall gebÃ¼ndelt versendet. Reduziert die Anzahl einzelner Benachrichtigungen." : "The message is collected and sent in the next digest interval. This reduces the number of individual notifications."}</p>
+                    <p><strong>Digest:</strong> {isGerman ? "Nachricht wird gesammelt und im naechsten Digest-Intervall gebuendelt versendet. Reduziert die Anzahl einzelner Benachrichtigungen." : "The message is collected and sent in the next digest interval. This reduces the number of individual notifications."}</p>
                   </InfoTooltip>
                 </span>
               </th>
               <th className="py-2 px-3">
                 <span className="flex items-center gap-1">Quiet Hours
                   <InfoTooltip title={isGerman ? "Quiet Hours beachten" : "Respect quiet hours"}>
-                    <p>{isGerman ? "Bei Ja wird die Nachricht auÃŸerhalb der konfigurierten Betriebszeiten zurÃ¼ckgehalten und erst nach Ende der Quiet Hours gesendet." : "If enabled, the message is held outside the configured operating hours and sent only after quiet hours end."}</p>
+                    <p>{isGerman ? "Bei Ja wird die Nachricht ausserhalb der konfigurierten Betriebszeiten zurueckgehalten und erst nach Ende der Quiet Hours gesendet." : "If enabled, the message is held outside the configured operating hours and sent only after quiet hours end."}</p>
                     <p>{isGerman ? "Bei Nein wird die Nachricht unabhÃ¤ngig von der Uhrzeit sofort gesendet." : "If disabled, the message is sent immediately regardless of time."}</p>
                   </InfoTooltip>
                 </span>
@@ -815,8 +834,8 @@ function EventsTab() {
               <th className="py-2 px-3">
                 <span className="flex items-center gap-1">Cooldown
                   <InfoTooltip title={isGerman ? "Cooldown-Dauer" : "Cooldown duration"}>
-                    <p>{isGerman ? "Mindestzeit zwischen zwei aufeinanderfolgenden Nachrichten desselben Event-Typs. Verhindert Nachrichtenflut bei hÃ¤ufig auftretenden Events." : "Minimum time between two consecutive messages of the same event type. Prevents message floods for frequently occurring events."}</p>
-                    <p><strong>{isGerman ? "Beispiel" : "Example"}:</strong> {isGerman ? "30 min Cooldown bedeutet, dass nach einer Crawler-stale-Nachricht frÃ¼hestens 30 Minuten spÃ¤ter die nÃ¤chste gesendet wird." : "30 minute cooldown means that after one crawler stale message, the next one is sent no earlier than 30 minutes later."}</p>
+                    <p>{isGerman ? "Mindestzeit zwischen zwei aufeinanderfolgenden Nachrichten desselben Event-Typs. Verhindert Nachrichtenflut bei haeufig auftretenden Events." : "Minimum time between two consecutive messages of the same event type. Prevents message floods for frequently occurring events."}</p>
+                    <p><strong>{isGerman ? "Beispiel" : "Example"}:</strong> {isGerman ? "30 min Cooldown bedeutet, dass nach einer Crawler-stale-Nachricht fruehestens 30 Minuten spaeter die naechste gesendet wird." : "30 minute cooldown means that after one crawler stale message, the next one is sent no earlier than 30 minutes later."}</p>
                   </InfoTooltip>
                 </span>
               </th>
@@ -832,7 +851,7 @@ function EventsTab() {
           </thead>
           <tbody>
             {events.map(e => (
-              <tr key={e.event_key} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              <tr key={e.event_key} className={TEAMS_TABLE_ROW_CLASS}>
                 <td className="py-2 px-3">
                   <button onClick={() => toggleEvent(e)} className="focus:outline-none">
                     {e.enabled
@@ -846,10 +865,10 @@ function EventsTab() {
                     P{e.priority}
                   </span>
                 </td>
-                <td className="py-2 px-3 text-gray-500">{e.send_mode === "immediate" ? t('teams.immediate') : "Digest"}</td>
+                <td className="py-2 px-3 text-muted-foreground">{e.send_mode === "immediate" ? t('teams.immediate') : "Digest"}</td>
                 <td className="py-2 px-3">{e.respect_quiet_hours ? t('teams.yes') : t('teams.no')}</td>
-                <td className="py-2 px-3">{e.cooldown_minutes > 0 ? `${e.cooldown_minutes} min` : "â€“"}</td>
-                <td className="py-2 px-3">{e.deduplicate ? t('teams.yes') : "–"}</td>
+                <td className="py-2 px-3">{e.cooldown_minutes > 0 ? `${e.cooldown_minutes} min` : "-"}</td>
+                <td className="py-2 px-3">{e.deduplicate ? t('teams.yes') : "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -953,42 +972,42 @@ function RoutingTab() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-1.5 text-sm font-semibold">
-              {isGerman ? "EmpfÃ¤ngergruppen" : "Recipient groups"}
-              <InfoTooltip title={isGerman ? "EmpfÃ¤ngergruppen" : "Recipient groups"} side="right" width="w-96">
-                <p>{isGerman ? "Hier definieren Sie wiederverwendbare Gruppenbezeichnungen fÃ¼r das Routing, zum Beispiel Dispatcher, Shift Leads oder Management." : "Define reusable group names for routing here, for example Dispatcher, Shift Leads, or Management."}</p>
+              {isGerman ? "Empfaengergruppen" : "Recipient groups"}
+              <InfoTooltip title={isGerman ? "Empfaengergruppen" : "Recipient groups"} side="right" width="w-96">
+                <p>{isGerman ? "Hier definieren Sie wiederverwendbare Gruppenbezeichnungen fuer das Routing, zum Beispiel Dispatcher, Shift Leads oder Management." : "Define reusable group names for routing here, for example Dispatcher, Shift Leads, or Management."}</p>
                 <p>{isGerman ? <>Die Gruppe wird danach im Routing als Zieltyp <strong>Gruppe</strong> verwendet und muss nicht jedes Mal neu getippt werden.</> : <>The group can then be used in routing as the target type <strong>Group</strong> instead of being typed again every time.</>}</p>
               </InfoTooltip>
             </div>
-            <p className="mt-1 text-sm text-gray-500">{isGerman ? "Speichert saubere, nachvollziehbare Routing-Ziele statt freier Einzelfelder." : "Stores clean, traceable routing targets instead of free-form one-off entries."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{isGerman ? "Speichert saubere, nachvollziehbare Routing-Ziele statt freier Einzelfelder." : "Stores clean, traceable routing targets instead of free-form one-off entries."}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {groups.length === 0 && <div className="text-sm text-gray-400">{isGerman ? "Noch keine EmpfÃ¤ngergruppen gespeichert." : "No recipient groups have been saved yet."}</div>}
+              {groups.length === 0 && <div className="text-sm text-muted-foreground">{isGerman ? "Noch keine Empfaengergruppen gespeichert." : "No recipient groups have been saved yet."}</div>}
               {groups.map((group) => (
-                <div key={group.id} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/60">
+                <div key={group.id} className={`${TEAMS_SOFT_PANEL_CLASS} px-3 py-2`}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{group.name}</span>
-                    <span className="text-[10px] text-gray-400">{group.recipients.length} {isGerman ? "EmpfÃ¤nger" : "recipients"}</span>
+                    <span className="text-[10px] text-muted-foreground">{group.recipients.length} {isGerman ? "Empfaenger" : "recipients"}</span>
                     <button onClick={() => removeGroup(group.id)} disabled={savingGroups} className="text-xs text-red-500 hover:text-red-700">{isGerman ? "Entfernen" : "Remove"}</button>
                   </div>
-                  {group.description && <div className="mt-1 text-xs text-gray-500">{group.description}</div>}
-                  {group.recipients.length > 0 && <div className="mt-1 text-xs text-gray-400">{group.recipients.join(", ")}</div>}
+                  {group.description && <div className="mt-1 text-xs text-muted-foreground">{group.description}</div>}
+                  {group.recipients.length > 0 && <div className="mt-1 text-xs text-muted-foreground">{group.recipients.join(", ")}</div>}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="w-full max-w-md space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40">
+          <div className={`w-full max-w-md space-y-2 p-4 ${TEAMS_SOFT_PANEL_CLASS}`}>
             <div className="text-sm font-semibold">{isGerman ? "Neue Gruppe anlegen" : "Create new group"}</div>
-            <input value={groupDraft.name} onChange={(event) => setGroupDraft((state) => ({ ...state, name: event.target.value }))} placeholder={isGerman ? "Gruppenname" : "Group name"} className="w-full border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800" />
-            <input value={groupDraft.description} onChange={(event) => setGroupDraft((state) => ({ ...state, description: event.target.value }))} placeholder={isGerman ? "Beschreibung" : "Description"} className="w-full border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800" />
-            <textarea value={groupDraft.recipients} onChange={(event) => setGroupDraft((state) => ({ ...state, recipients: event.target.value }))} rows={3} placeholder={isGerman ? "EmpfÃ¤nger kommasepariert, z. B. dispatcher@firma.de, lead@firma.de" : "Recipients separated by commas, e.g. dispatcher@company.com, lead@company.com"} className="w-full border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-800" />
-            <button onClick={addGroup} disabled={savingGroups} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">{savingGroups ? (isGerman ? "Speichert..." : "Saving...") : (isGerman ? "Gruppe speichern" : "Save group")}</button>
+            <input value={groupDraft.name} onChange={(event) => setGroupDraft((state) => ({ ...state, name: event.target.value }))} placeholder={isGerman ? "Gruppenname" : "Group name"} className={`w-full ${TEAMS_INPUT_CLASS}`} />
+            <input value={groupDraft.description} onChange={(event) => setGroupDraft((state) => ({ ...state, description: event.target.value }))} placeholder={isGerman ? "Beschreibung" : "Description"} className={`w-full ${TEAMS_INPUT_CLASS}`} />
+            <textarea value={groupDraft.recipients} onChange={(event) => setGroupDraft((state) => ({ ...state, recipients: event.target.value }))} rows={3} placeholder={isGerman ? "Empfaenger kommasepariert, z. B. dispatcher@firma.de, lead@firma.de" : "Recipients separated by commas, e.g. dispatcher@company.com, lead@company.com"} className={`w-full ${TEAMS_INPUT_CLASS}`} />
+            <button onClick={addGroup} disabled={savingGroups} className={TEAMS_BUTTON_PRIMARY_CLASS}>{savingGroups ? (isGerman ? "Speichert..." : "Saving...") : (isGerman ? "Gruppe speichern" : "Save group")}</button>
           </div>
         </div>
       </EnterpriseCard>
 
       <div className="flex justify-between items-center">
-        <p className="text-sm text-gray-500 flex items-center gap-1.5">
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {isGerman ? "Routing-Regeln: Welche Events gehen an wen?" : "Routing rules: which events go to whom?"}
           <InfoTooltip title={isGerman ? "Routing-Regeln" : "Routing rules"} side="right" width="w-96">
             <p>{isGerman ? "Routing-Regeln bestimmen, welche Personen oder Gruppen bei welchen Events eine Teams-Nachricht erhalten." : "Routing rules define which people or groups receive a Teams message for which events."}</p>
@@ -999,11 +1018,11 @@ function RoutingTab() {
               <li><strong>{isGerman ? "Rolle" : "Role"}:</strong> {isGerman ? "Schichtrolle, zum Beispiel dispatcher oder smarthands" : "Shift role, for example dispatcher or smarthands"}</li>
               <li><strong>{isGerman ? "Schicht" : "Shift"}:</strong> {isGerman ? "Aktive Schichtgruppe, zum Beispiel E1 oder L2" : "Active shift group, for example E1 or L2"}</li>
             </ul>
-            <p><strong>{isGerman ? "Beispiel" : "Example"}:</strong> {isGerman ? "Beim Event Trouble Ticket High wird an den Schichtleiter und zusÃ¤tzlich an die Dispatcher-Gruppe geroutet." : "Event Trouble Ticket High -> route to the shift lead plus the Dispatcher group."}</p>
+            <p><strong>{isGerman ? "Beispiel" : "Example"}:</strong> {isGerman ? "Beim Event Trouble Ticket High wird an den Schichtleiter und zusaetzlich an die Dispatcher-Gruppe geroutet." : "Event Trouble Ticket High -> route to the shift lead plus the Dispatcher group."}</p>
           </InfoTooltip>
         </p>
-        <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-          {isGerman ? "+ Regel hinzufÃ¼gen" : "+ Add rule"}
+        <button onClick={() => setShowAdd(!showAdd)} className={TEAMS_BUTTON_PRIMARY_CLASS}>
+          {isGerman ? "+ Regel hinzufuegen" : "+ Add rule"}
         </button>
       </div>
 
@@ -1011,15 +1030,15 @@ function RoutingTab() {
         <EnterpriseCard>
           <div className="flex flex-wrap gap-3 items-end">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Event</label>
-              <select value={newRule.event_key} onChange={e => setNewRule(p => ({ ...p, event_key: e.target.value }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              <label className="block text-xs text-muted-foreground mb-1">Event</label>
+              <select value={newRule.event_key} onChange={e => setNewRule(p => ({ ...p, event_key: e.target.value }))} className={TEAMS_INPUT_CLASS}>
                 <option value="">{isGerman ? "Wählen..." : "Select..."}</option>
                 {events.map(e => <option key={e.event_key} value={e.event_key}>{e.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">{isGerman ? "Zieltyp" : "Target type"}</label>
-              <select value={newRule.target_type} onChange={e => setNewRule(p => ({ ...p, target_type: e.target.value as any }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
+              <label className="block text-xs text-muted-foreground mb-1">{isGerman ? "Zieltyp" : "Target type"}</label>
+              <select value={newRule.target_type} onChange={e => setNewRule(p => ({ ...p, target_type: e.target.value as any }))} className={TEAMS_INPUT_CLASS}>
                 <option value="person">{isGerman ? "Person" : "Person"}</option>
                 <option value="group">{isGerman ? "Gruppe" : "Group"}</option>
                 <option value="role">{isGerman ? "Rolle" : "Role"}</option>
@@ -1027,8 +1046,8 @@ function RoutingTab() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">{isGerman ? "Zielwert" : "Target value"}</label>
-              <input value={newRule.target_value} onChange={e => setNewRule(p => ({ ...p, target_value: e.target.value }))} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800" placeholder={isGerman ? "Name / Gruppe / Rolle" : "Name / group / role"} />
+              <label className="block text-xs text-muted-foreground mb-1">{isGerman ? "Zielwert" : "Target value"}</label>
+              <input value={newRule.target_value} onChange={e => setNewRule(p => ({ ...p, target_value: e.target.value }))} className={TEAMS_INPUT_CLASS} placeholder={isGerman ? "Name / Gruppe / Rolle" : "Name / group / role"} />
               {newRule.target_type === "group" && groups.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5 max-w-md">
                   {groups.map((group) => (
@@ -1039,7 +1058,7 @@ function RoutingTab() {
                 </div>
               )}
             </div>
-            <button onClick={addRule} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700">{isGerman ? "Speichern" : "Save"}</button>
+            <button onClick={addRule} className={TEAMS_BUTTON_SUCCESS_CLASS}>{isGerman ? "Speichern" : "Save"}</button>
           </div>
         </EnterpriseCard>
       )}
@@ -1049,16 +1068,16 @@ function RoutingTab() {
           <h3 className="text-sm font-semibold mb-2">{eventRules[0]?.event_label || eventKey}</h3>
           <div className="space-y-1">
             {eventRules.map(r => (
-              <div key={r.id} className="flex items-center justify-between py-1 px-2 rounded bg-gray-50 dark:bg-gray-800/50 text-sm">
+              <div key={r.id} className="flex items-center justify-between rounded-xl border border-border/50 bg-background/72 px-2 py-2 text-sm shadow-[0_12px_26px_rgba(148,163,184,0.08)]">
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{r.target_type}</span>
                   <div>
                     <div>{r.target_value}</div>
                     {r.target_type === "group" && groups.find((group) => group.name === r.target_value)?.description && (
-                      <div className="text-xs text-gray-400">{groups.find((group) => group.name === r.target_value)?.description}</div>
+                      <div className="text-xs text-muted-foreground">{groups.find((group) => group.name === r.target_value)?.description}</div>
                     )}
                   </div>
-                  {!r.enabled && <span className="text-xs text-gray-400">({isGerman ? "deaktiviert" : "disabled"})</span>}
+                  {!r.enabled && <span className="text-xs text-muted-foreground">({isGerman ? "deaktiviert" : "disabled"})</span>}
                 </div>
                 <button onClick={() => removeRule(r.id)} className="text-red-500 hover:text-red-700 text-xs">{isGerman ? "Entfernen" : "Remove"}</button>
               </div>
@@ -1067,7 +1086,7 @@ function RoutingTab() {
         </EnterpriseCard>
       ))}
       {Object.keys(grouped).length === 0 && (
-        <div className="text-sm text-gray-400 text-center py-8">{isGerman ? "Noch keine Routing-Regeln definiert." : "No routing rules have been defined yet."}</div>
+        <div className="text-sm text-muted-foreground text-center py-8">{isGerman ? "Noch keine Routing-Regeln definiert." : "No routing rules have been defined yet."}</div>
       )}
       </div>
     </TextRepairBoundary>
@@ -1773,7 +1792,7 @@ function DiagnosticCheckCard({ check }: { check: TeamsDiagnosticCheck }) {
 
           <div className="space-y-2 text-sm">
             <div>
-              <div className="text-xs uppercase tracking-wide text-gray-400">{isGerman ? "Pruefschritt" : "Check step"}</div>
+              <div className="text-xs uppercase tracking-wide text-gray-400">{isGerman ? "Prüfschritt" : "Check step"}</div>
               <div className="text-gray-700 dark:text-gray-300">{check.action}</div>
             </div>
             <div>
@@ -1782,7 +1801,7 @@ function DiagnosticCheckCard({ check }: { check: TeamsDiagnosticCheck }) {
             </div>
             {check.next_step && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-gray-400">{isGerman ? "Naechster Schritt" : "Next step"}</div>
+                <div className="text-xs uppercase tracking-wide text-gray-400">{isGerman ? "Nächster Schritt" : "Next step"}</div>
                 <div className="text-gray-700 dark:text-gray-300">{check.next_step}</div>
               </div>
             )}

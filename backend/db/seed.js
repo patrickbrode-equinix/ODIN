@@ -12,21 +12,22 @@
  *    - Idempotent: safe to call on every restart.
  *
  * 2. SEED_ADMIN_IF_MISSING=true:
- *    - Seeds admin@local whenever that specific email is absent,
+ *    - Seeds Admin@Odin whenever that specific login name is absent,
  *      even if other users already exist.
  *    - Use this to recover from lockouts on reused volumes.
  *
  * Password is bcrypt-hashed (rounds = 12) — never stored plain.
  *
  * Default credentials:
- *   email    : admin@local
+ *   login    : Admin@Odin
  *   password : admin          (change immediately in production!)
  */
 
 import bcrypt from "bcrypt";
 import { query } from "../db.js";
 
-const DEFAULT_EMAIL    = "admin@local";
+const DEFAULT_LOGIN_NAME = "Admin@Odin";
+const DEFAULT_EMAIL    = "admin@odin.local";
 const DEFAULT_PASSWORD = "admin";
 const BCRYPT_ROUNDS    = 12;
 
@@ -36,16 +37,16 @@ export async function seedDefaultAdmin(queryFn = query) {
       (process.env.SEED_ADMIN_IF_MISSING ?? "").toLowerCase() === "true";
 
     if (seedIfMissing) {
-      // Mode 2: ensure admin@local exists regardless of other users
+      // Mode 2: ensure Admin@Odin exists regardless of other users
       const { rows: existing } = await queryFn(
-        "SELECT 1 FROM users WHERE email = $1 LIMIT 1",
-        [DEFAULT_EMAIL]
+        "SELECT 1 FROM users WHERE LOWER(login_name) = LOWER($1) LIMIT 1",
+        [DEFAULT_LOGIN_NAME]
       );
       if (existing.length > 0) {
-        console.log("[SEED] admin@local already present – skipping (SEED_ADMIN_IF_MISSING mode).");
+        console.log("[SEED] Admin@Odin already present – skipping (SEED_ADMIN_IF_MISSING mode).");
         return { skipped: true };
       }
-      console.log("[SEED] SEED_ADMIN_IF_MISSING=true – creating admin@local...");
+      console.log("[SEED] SEED_ADMIN_IF_MISSING=true – creating Admin@Odin...");
     } else {
       // Mode 1 (default): only seed on completely empty users table
       const { rows } = await queryFn("SELECT COUNT(*)::int AS cnt FROM users");
@@ -60,14 +61,15 @@ export async function seedDefaultAdmin(queryFn = query) {
 
     await queryFn(
       `INSERT INTO users
-         (first_name, last_name, username, email, password_hash,
+         (first_name, last_name, username, login_name, email, password_hash,
           user_group, department, ibx, approved, is_root)
        VALUES
-         ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE)`,
+         ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, TRUE)`,
       [
         "Admin",
         "User",
         "admin",
+        DEFAULT_LOGIN_NAME,
         DEFAULT_EMAIL,
         passwordHash,
         "c-ops",   // default group
@@ -76,7 +78,7 @@ export async function seedDefaultAdmin(queryFn = query) {
       ]
     );
 
-    console.log(`[SEED] ✅ Default admin created → ${DEFAULT_EMAIL}`);
+    console.log(`[SEED] ✅ Default admin created → ${DEFAULT_LOGIN_NAME}`);
     console.log("[SEED]    Change this password immediately in production!");
     return { created: true };
   } catch (err) {

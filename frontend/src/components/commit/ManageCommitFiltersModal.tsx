@@ -10,6 +10,7 @@ import { Input } from "../ui/input";
 import { Trash2, Plus } from "lucide-react";
 import { api } from "../../api/api";
 import { useCommitStore } from "../../store/commitStore";
+import { useLanguage } from "../../context/LanguageContext";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -42,6 +43,23 @@ const FILTER_FIELDS = [
   { key: "owner", label: "Owner" },
 ];
 
+function getFieldLabel(key: string, language: "de" | "en") {
+  const labels: Record<string, { de: string; en: string }> = {
+    ibx: { de: "IBX", en: "IBX" },
+    systemName: { de: "Systemname", en: "System name" },
+    group: { de: "Gruppe", en: "Group" },
+    salesOrder: { de: "Sales Order", en: "Sales order" },
+    activityNumber: { de: "Aktivität #", en: "Activity #" },
+    activityType: { de: "Aktivitätstyp", en: "Activity type" },
+    activitySubType: { de: "Aktivitäts-Subtyp", en: "Activity sub-type" },
+    product: { de: "Produkt", en: "Product" },
+    serialNumber: { de: "Seriennr.", en: "Serial #" },
+    activityStatus: { de: "Status", en: "Status" },
+    owner: { de: "Owner", en: "Owner" },
+  };
+  return labels[key]?.[language] ?? key;
+}
+
 /* ------------------------------------------------ */
 /* COMPONENT                                        */
 /* ------------------------------------------------ */
@@ -53,6 +71,7 @@ export function ManageCommitFiltersModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const { language } = useLanguage();
   const registry = useCommitStore((s) => s.registry);
 
   const [filters, setFilters] = useState<SavedFilter[]>([]);
@@ -67,6 +86,26 @@ export function ManageCommitFiltersModal({
     field: "ibx",
     values: [],
   });
+
+  const copy = language === "de"
+    ? {
+        title: "Commit-Filter global verwalten",
+        createNew: "Neuen Filter anlegen",
+        placeholder: "Button-Name (z. B. FR2, Product: Core)",
+        add: "Hinzufügen",
+        saved: "Gespeicherte Filter",
+        loading: "Lade…",
+        deleteConfirm: "Filter wirklich löschen?",
+      }
+    : {
+        title: "Manage commit filters globally",
+        createNew: "Create new filter",
+        placeholder: "Button name (e.g. FR2, Product: Core)",
+        add: "Add",
+        saved: "Saved filters",
+        loading: "Loading…",
+        deleteConfirm: "Delete this filter?",
+      };
 
   /* ------------------------------------------------ */
   /* LOAD FILTERS                                    */
@@ -115,7 +154,7 @@ export function ManageCommitFiltersModal({
   /* ------------------------------------------------ */
 
   async function deleteFilter(id: string) {
-    if (!confirm("Filter wirklich löschen?")) return;
+    if (!confirm(copy.deleteConfirm)) return;
 
     try {
       await api.delete(`/commit/filters/${id}`);
@@ -140,16 +179,16 @@ export function ManageCommitFiltersModal({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Manage Commit Filters (Global)</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
         </DialogHeader>
 
         {/* ================= CREATE ================= */}
         <div className="border rounded-lg p-4 space-y-3">
-          <div className="font-medium">Neuen Filter anlegen</div>
+          <div className="font-medium">{copy.createNew}</div>
 
           <div className="grid grid-cols-3 gap-3">
             <Input
-              placeholder="Button-Name (z. B. FR2, Product: Core)"
+              placeholder={copy.placeholder}
               value={draft.label}
               onChange={(e) =>
                 setDraft({ ...draft, label: e.target.value })
@@ -165,14 +204,14 @@ export function ManageCommitFiltersModal({
             >
               {FILTER_FIELDS.map((f) => (
                 <option key={f.key} value={f.key}>
-                  {f.label}
+                  {getFieldLabel(f.key, language as "de" | "en")}
                 </option>
               ))}
             </select>
 
             <Button onClick={createFilter}>
               <Plus className="w-4 h-4 mr-2" />
-              Add
+              {copy.add}
             </Button>
           </div>
 
@@ -207,10 +246,10 @@ export function ManageCommitFiltersModal({
 
         {/* ================= LIST ================= */}
         <div className="space-y-2">
-          <div className="font-medium">Gespeicherte Filter</div>
+          <div className="font-medium">{copy.saved}</div>
 
           {loading && (
-            <div className="text-sm text-muted-foreground">Lade…</div>
+            <div className="text-sm text-muted-foreground">{copy.loading}</div>
           )}
 
           {filters.map((f) => (

@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/api";
+import { buildLoginNameSuggestion, validateLoginName } from "../../utils/loginName";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -43,6 +44,7 @@ type Option = {
 const EMPTY_FORM = {
   firstName: "",
   lastName: "",
+  loginName: "",
   email: "",
   initialPassword: "",
   ibx: "",
@@ -65,6 +67,8 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
     note: t("addUser.note"),
     firstName: t("addUser.firstName"),
     lastName: t("addUser.lastName"),
+    loginName: t("addUser.loginName"),
+    loginNamePlaceholder: t("addUser.loginNamePlaceholder"),
     email: t("addUser.email"),
     initialPassword: t("addUser.initialPassword"),
     initialPasswordPlaceholder: t("addUser.passwordPlaceholder"),
@@ -87,12 +91,13 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   const [deptOptions, setDeptOptions] = useState<Option[]>([]);
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [loginNameDirty, setLoginNameDirty] = useState(false);
 
   const canSubmit = useMemo(() => {
     return Boolean(
       form.firstName.trim() &&
       form.lastName.trim() &&
-      form.email.trim() &&
+      form.loginName.trim() &&
       form.initialPassword.trim() &&
       form.ibx.trim() &&
       form.department.trim()
@@ -110,7 +115,18 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
     setLoading(false);
     setDeptOptions([]);
     setForm(EMPTY_FORM);
+    setLoginNameDirty(false);
   }, [open]);
+
+  useEffect(() => {
+    if (loginNameDirty) return;
+
+    const suggested = buildLoginNameSuggestion(form.firstName, form.lastName);
+    setForm((prev) => {
+      if (prev.loginName === suggested) return prev;
+      return { ...prev, loginName: suggested };
+    });
+  }, [form.firstName, form.lastName, loginNameDirty]);
 
   /* ------------------------------------------------ */
   /* LOAD DEPARTMENTS                                */
@@ -170,13 +186,21 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const validation = validateLoginName(form.loginName);
+    if (!validation.ok) {
+      setError(t("login.userIdInvalid"));
+      return;
+    }
+
     setLoading(true);
 
     try {
       await api.post("/admin/users", {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        email: form.email.trim(),
+        loginName: validation.value,
+        email: form.email.trim() || null,
         initialPassword: form.initialPassword,
         ibx: form.ibx,
         group: form.department.trim(),
@@ -228,6 +252,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                     setForm({ ...form, firstName: e.target.value })
                   }
                   disabled={loading}
+                  autoComplete="given-name"
                 />
               </div>
 
@@ -239,8 +264,23 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                     setForm({ ...form, lastName: e.target.value })
                   }
                   disabled={loading}
+                  autoComplete="family-name"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{copy.loginName}</Label>
+              <Input
+                value={form.loginName}
+                onChange={(e) => {
+                  setLoginNameDirty(true);
+                  setForm({ ...form, loginName: e.target.value });
+                }}
+                disabled={loading}
+                placeholder={copy.loginNamePlaceholder}
+                autoComplete="username"
+              />
             </div>
 
             {/* EMAIL */}
@@ -252,6 +292,7 @@ export function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
                   setForm({ ...form, email: e.target.value })
                 }
                 disabled={loading}
+                autoComplete="email"
               />
             </div>
 

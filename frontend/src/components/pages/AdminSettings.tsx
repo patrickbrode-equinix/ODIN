@@ -6,13 +6,15 @@
 import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { ActivityLogPanel } from "../activity/ActivityLogPanel";
 import { fetchTvSlideConfig, updateTvSlideConfig, type TvSlideConfig } from "../../api/tvConfig";
 import { fetchSettingsAudit, type SettingsAuditEntry } from "../../api/settingsAudit";
 import { api } from "../../api/api";
 import { AssignmentSettingsPanel } from "../assignment/AssignmentSettingsPanel";
+import { OdinAutomationControlPanel } from "../assignment/OdinAutomationControlPanel";
 import AssignmentRulesEditor from "./AssignmentRulesEditor";
 import { ShiftPlanningSettingsPanel } from "./ShiftAdminSettings";
 import { TeamsCommunicationCenterPanel } from "./TeamsCommunicationCenter";
@@ -89,7 +91,7 @@ const TAB_ACCESS: Record<TabId, Array<{ pageKey: string; min?: "view" | "write" 
   feedback: [{ pageKey: "admin_settings", min: "view" }],
   odin: [{ pageKey: "odin_logic", min: "view" }],
   maintenance: [{ pageKey: "admin_settings", min: "view" }],
-  audit: [{ pageKey: "admin_settings", min: "view" }],
+  audit: [{ pageKey: "admin_settings", min: "view" }, { pageKey: "protokoll", min: "view" }],
 };
 
 const THRESHOLD_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
@@ -100,6 +102,10 @@ const THRESHOLD_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
   "threshold.commit_risk_hours": {
     de: <p>Unterhalb dieser Restzeit werden Tickets im Dashboard und in operativen Ansichten als commit-kritisch behandelt.</p>,
     en: <p>Below this remaining time, tickets are treated as commit-critical in the dashboard and in operational views.</p>,
+  },
+  "threshold.critical_ticket_window_hours": {
+    de: <p>Gemeinsames Zeitfenster fuer kritische Tickets in Dashboard und TV-Modus. Trouble Tickets und Expedites bleiben sichtbar, Commit-Risiken folgen dieser Grenze.</p>,
+    en: <p>Shared time window for critical tickets in the dashboard and TV mode. Trouble tickets and expedites remain visible, while commit-risk tickets follow this threshold.</p>,
   },
   "threshold.escalation_minutes": {
     de: <p>Nach dieser Zeit ohne Reaktion können Folgeprozesse oder Eskalationen greifen.</p>,
@@ -144,6 +150,47 @@ const TV_SETTINGS_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
     de: <p>Eigene Stale-Schwelle für TV-Anzeigen. Kann bewusst strenger oder lockerer als die globale Schwelle sein.</p>,
     en: <p>Dedicated stale threshold for TV views. It can intentionally be stricter or looser than the global threshold.</p>,
   },
+};
+
+const TV_ASSIGNMENT_ARENA_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
+  "tv.assignment_visualization_mode": {
+    de: <p>Steuert nur die TV-Darstellung der ODIN-Zuweisung. Die eigentliche Auswahl bleibt vollständig deterministisch und unverändert.</p>,
+    en: <p>Controls only the TV presentation of ODIN assignment. The actual selection remains fully deterministic and unchanged.</p>,
+  },
+  "tv.assignment_animation_speed": {
+    de: <p>Bestimmt, wie schnell Wheel oder Slot laufen und wie lang die Auflösung dauert.</p>,
+    en: <p>Controls how quickly the wheel or slot runs and how long the reveal lasts.</p>,
+  },
+  "tv.assignment_celebration_intensity": {
+    de: <p>Beeinflusst Glows, Partikel und die visuelle Wucht der Gewinnerphase.</p>,
+    en: <p>Adjusts glow, particles, and the visual force of the winner phase.</p>,
+  },
+  "tv.assignment_auto_fallback": {
+    de: <p>Bevorzugt bei unvollständigen Animationsdaten automatisch die Enterprise-Ansicht. Kritische Render- oder Datenfehler fallen immer auf Enterprise zurück.</p>,
+    en: <p>Prefers the enterprise view automatically for incomplete animation data. Critical render or data failures always fall back to enterprise.</p>,
+  },
+  "tv.assignment_confetti_enabled": {
+    de: <p>Aktiviert den Partikel-Burst nach erfolgreicher TV-Auflösung.</p>,
+    en: <p>Enables the particle burst after a successful TV reveal.</p>,
+  },
+  "tv.assignment_applause_enabled": {
+    de: <p>Blendet zusätzliche Celebration-Bars im Winner-State ein.</p>,
+    en: <p>Shows extra celebration bars in the winner state.</p>,
+  },
+  "tv.assignment_display_reasoning": {
+    de: <p>Zeigt nach der Animation wieder die komprimierte Entscheidungsbegründung an.</p>,
+    en: <p>Shows the condensed decision reasoning again after the animation.</p>,
+  },
+};
+
+const TV_ASSIGNMENT_DEFAULTS: Record<string, string> = {
+  "tv.assignment_visualization_mode": "enterprise",
+  "tv.assignment_animation_speed": "normal",
+  "tv.assignment_celebration_intensity": "medium",
+  "tv.assignment_auto_fallback": "true",
+  "tv.assignment_confetti_enabled": "true",
+  "tv.assignment_applause_enabled": "true",
+  "tv.assignment_display_reasoning": "true",
 };
 
 const FEEDBACK_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
@@ -206,8 +253,8 @@ const TV_SLIDE_HELP: Record<string, { de: ReactNode; en: ReactNode }> = {
     en: <p>Active slides rotate in TV mode. Inactive slides stay completely hidden.</p>,
   },
   slide: {
-    de: <p>Name des Slides. Der Assignment-Slide bildet die ODIN-Zuweisung prominent ab und lässt sich hier genauso steuern wie andere Slides.</p>,
-    en: <p>Name of the slide. The assignment slide prominently displays ODIN assignment decisions and can be controlled like any other slide.</p>,
+    de: <p>Name des Slides. Das Critical-Workload-Modul bildet Ticketpriorität und ODIN-Entscheidungen gemeinsam ab und wird hier wie jeder andere Slide gesteuert.</p>,
+    en: <p>Name of the slide. The critical workload module combines ticket priority and ODIN decisions and is controlled here like any other slide.</p>,
   },
   duration: {
     de: <p>Anzeigezeit dieses Slides in Sekunden. Überschreibt die Standard-Slide-Dauer.</p>,
@@ -268,12 +315,23 @@ export default function AdminSettings() {
 
   const selectTab = (tabId: TabId) => {
     if (!accessibleTabs.some((tab) => tab.id === tabId)) return;
+    if (activeTab === tabId) return;
+
     setActiveTab(tabId);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("section", tabId);
       return next;
     });
+
+    api.post("/activity/log", {
+      action: "TAB_SELECT",
+      module: "ADMIN_SETTINGS",
+      details: {
+        tab: tabId,
+        location: "/admin-settings",
+      },
+    }).catch(() => {});
   };
 
   if (accessibleTabs.length === 0) {
@@ -290,15 +348,17 @@ export default function AdminSettings() {
     <EnterprisePageShell>
       <EnterpriseHeader title={t('admin.title')} subtitle={t('admin.subtitle')} />
 
-      <div className="theme-admin-hero mb-6 rounded-4xl p-6">
-        <div className="max-w-3xl">
-          <div className="text-xs uppercase tracking-[0.28em] text-sky-700 dark:text-sky-200/70">{t('admin.controlCenter')}</div>
-          <h2 className="mt-3 text-2xl font-semibold">{t('admin.allSettings')}</h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            {t('admin.tilesDescription')}
-          </p>
-        </div>
-      </div>
+      <EnterpriseFeatureHero
+        tone="cyan"
+        eyebrow={t('admin.controlCenter')}
+        title={t('admin.allSettings')}
+        description={t('admin.tilesDescription')}
+        metrics={[
+          { label: 'Tabs', value: accessibleTabs.length },
+          { label: 'Focus', value: activeMeta.label },
+          { label: 'Feedback', value: feedbackCount },
+        ]}
+      />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {accessibleTabs.map((tab) => (
@@ -389,14 +449,16 @@ function TVSettingsTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const visibleSlides = [...slides].sort((a, b) => a.sort_order - b.sort_order);
+  const visibleSlides = [...slides]
+    .filter((slide) => slide.slide_id !== 'assignment')
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-2 text-sm text-gray-500">
         <span>{t('admin.tvConfigHint')}</span>
         <InfoTooltip title={t('admin.tvSlides')} side="right" align="start" width="w-96">
-          <p>{isGerman ? "Alle TV-Slides werden hier zentral gepflegt. Der Assignment-Slide ist wieder ein regulärer Bestandteil der Rotation und zeigt ODIN-Entscheidungen prominent an." : "All TV slides are maintained centrally here. The assignment slide is a regular part of the rotation again and highlights ODIN decisions prominently."}</p>
+          <p>{isGerman ? "Alle TV-Slides werden hier zentral gepflegt. Das Critical-Workload-Modul bündelt jetzt Ticketkritikalität und ODIN-Entscheidungen in einem gemeinsamen TV-Slide." : "All TV slides are maintained centrally here. The critical workload module now combines ticket criticality and ODIN decisions in a single TV slide."}</p>
         </InfoTooltip>
       </div>
       <p className="text-xs text-blue-500/80">{t('admin.tvHeaderNote')}</p>
@@ -490,6 +552,7 @@ function OdinRulesTab() {
           </p>
         </div>
       </EnterpriseCard>
+      <OdinAutomationControlPanel />
       <div className="space-y-2">
         <div className="flex items-center gap-1.5 px-1">
           <h3 className="text-sm font-semibold">{isGerman ? 'Engine-Zeitfenster & Schichtmodus' : 'Engine time window & shift mode'}</h3>
@@ -507,10 +570,10 @@ function OdinRulesTab() {
           <div className="flex items-center gap-1.5">
             <h3 className="text-sm font-semibold">{t('admin.ticketExclusions')}</h3>
             <InfoTooltip title={t('admin.ticketExclusions')} side="right" align="start" width="w-96">
-              <p>{isGerman ? "Systemnamen und Subtypes in diesem Bereich werden bewusst aus der automatischen Zuweisung ausgeschlossen und landen im manuellen Review." : "System names and subtypes in this area are intentionally excluded from automatic assignment and land in manual review."}</p>
+              <p>{isGerman ? "Systemnamen und Subtypen in diesem Bereich werden bewusst aus der automatischen Zuweisung ausgeschlossen und landen im manuellen Review." : "System names and subtypes in this area are intentionally excluded from automatic assignment and land in manual review."}</p>
             </InfoTooltip>
           </div>
-          <p className="text-sm text-gray-500">{t('admin.ticketExclusionsDesc')}</p>
+          <p className="text-sm text-muted-foreground">{t('admin.ticketExclusionsDesc')}</p>
         </div>
         <OdinExclusions />
       </EnterpriseCard>
@@ -522,7 +585,7 @@ function OdinRulesTab() {
               <p>{isGerman ? "Hier werden Personen gepflegt, die ODIN dauerhaft oder vorübergehend nicht automatisch berücksichtigen darf." : "Manage people here that ODIN must not consider automatically, either permanently or temporarily."}</p>
             </InfoTooltip>
           </div>
-          <p className="text-sm text-gray-500">{t('admin.employeeExclusionsDesc')}</p>
+          <p className="text-sm text-muted-foreground">{t('admin.employeeExclusionsDesc')}</p>
         </div>
         <EmployeeExclusions />
       </EnterpriseCard>
@@ -707,7 +770,11 @@ function ThresholdsTab() {
     setLoading(true);
     try {
       const { data } = await api.get("/app-settings");
-      setSettings(data);
+      setSettings({
+        "threshold.critical_ticket_window_hours": "72",
+        ...TV_ASSIGNMENT_DEFAULTS,
+        ...(data || {}),
+      });
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -733,6 +800,7 @@ function ThresholdsTab() {
   const thresholds: { key: string; label: string; unit: string; help: ReactNode }[] = [
     { key: "threshold.crawler_stale_minutes", label: t('admin.crawlerStaleAfter'), unit: t('admin.minutes'), help: THRESHOLD_HELP["threshold.crawler_stale_minutes"][localeKey] },
     { key: "threshold.commit_risk_hours", label: t('admin.commitRiskBelow'), unit: t('admin.hours'), help: THRESHOLD_HELP["threshold.commit_risk_hours"][localeKey] },
+    { key: "threshold.critical_ticket_window_hours", label: isGerman ? "Zeitfenster kritische Tickets" : "Critical ticket window", unit: t('admin.hours'), help: THRESHOLD_HELP["threshold.critical_ticket_window_hours"][localeKey] },
     { key: "threshold.escalation_minutes", label: t('admin.escalateAfter'), unit: t('admin.minutes'), help: THRESHOLD_HELP["threshold.escalation_minutes"][localeKey] },
     { key: "threshold.understaffing_missing", label: t('admin.understaffingFrom'), unit: t('admin.missingPeople'), help: THRESHOLD_HELP["threshold.understaffing_missing"][localeKey] },
   ];
@@ -743,9 +811,33 @@ function ThresholdsTab() {
     { key: "tv.compact_cards", label: t('admin.compactCards'), type: "toggle", help: TV_SETTINGS_HELP["tv.compact_cards"][localeKey] },
     { key: "tv.auto_scroll", label: t('admin.autoScroll'), type: "toggle", help: TV_SETTINGS_HELP["tv.auto_scroll"][localeKey] },
     { key: "tv.animations", label: t('admin.animations'), type: "text", help: TV_SETTINGS_HELP["tv.animations"][localeKey] },
-    { key: "tv.commit_window_hours", label: t('admin.commitWindow'), type: "number", unit: t('admin.hours'), help: TV_SETTINGS_HELP["tv.commit_window_hours"][localeKey] },
     { key: "tv.show_stale_tickets", label: t('admin.showStaleTickets'), type: "toggle", help: TV_SETTINGS_HELP["tv.show_stale_tickets"][localeKey] },
     { key: "tv.crawler_stale_threshold_minutes", label: t('admin.tvCrawlerStale'), type: "number", unit: t('admin.minutes'), help: TV_SETTINGS_HELP["tv.crawler_stale_threshold_minutes"][localeKey] },
+  ];
+
+  const assignmentVisualizationModeOptions = [
+    { value: 'enterprise', label: isGerman ? 'Enterprise' : 'Enterprise' },
+    { value: 'gamified_wheel', label: isGerman ? 'Gamified Wheel' : 'Gamified wheel' },
+    { value: 'gamified_slot', label: isGerman ? 'Gamified Slot' : 'Gamified slot' },
+  ];
+
+  const assignmentAnimationSpeedOptions = [
+    { value: 'slow', label: isGerman ? 'Langsam' : 'Slow' },
+    { value: 'normal', label: isGerman ? 'Normal' : 'Normal' },
+    { value: 'fast', label: isGerman ? 'Schnell' : 'Fast' },
+  ];
+
+  const assignmentCelebrationOptions = [
+    { value: 'low', label: isGerman ? 'Zurückhaltend' : 'Low' },
+    { value: 'medium', label: isGerman ? 'Standard' : 'Medium' },
+    { value: 'high', label: isGerman ? 'Maximal' : 'High' },
+  ];
+
+  const assignmentArenaToggles: { key: string; label: string; help: ReactNode }[] = [
+    { key: 'tv.assignment_auto_fallback', label: isGerman ? 'Enterprise-Fallback bevorzugen' : 'Prefer enterprise fallback', help: TV_ASSIGNMENT_ARENA_HELP['tv.assignment_auto_fallback'][localeKey] },
+    { key: 'tv.assignment_confetti_enabled', label: isGerman ? 'Konfetti aktivieren' : 'Enable confetti', help: TV_ASSIGNMENT_ARENA_HELP['tv.assignment_confetti_enabled'][localeKey] },
+    { key: 'tv.assignment_applause_enabled', label: isGerman ? 'Applaus-Animation aktivieren' : 'Enable applause animation', help: TV_ASSIGNMENT_ARENA_HELP['tv.assignment_applause_enabled'][localeKey] },
+    { key: 'tv.assignment_display_reasoning', label: isGerman ? 'Begründung nach Animation zeigen' : 'Show reasoning after animation', help: TV_ASSIGNMENT_ARENA_HELP['tv.assignment_display_reasoning'][localeKey] },
   ];
 
   return (
@@ -802,6 +894,98 @@ function ThresholdsTab() {
                   {t.unit && <span className="text-xs text-gray-400">{t.unit}</span>}
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      </EnterpriseCard>
+
+      <EnterpriseCard>
+        <div className="mb-4 flex items-center gap-1.5">
+          <h3 className="text-sm font-semibold">{isGerman ? 'ODIN Assignment Arena' : 'ODIN Assignment Arena'}</h3>
+          <InfoTooltip title={isGerman ? 'ODIN Assignment Arena' : 'ODIN Assignment Arena'} side="right" align="start">
+            <p>{isGerman ? 'TV-only Experiment für die Zuweisungsdarstellung. Die ODIN-Engine trifft weiterhin die echte Entscheidung, die Animation illustriert sie nur.' : 'TV-only experiment for assignment presentation. The ODIN engine still makes the real decision and the animation only illustrates it.'}</p>
+          </InfoTooltip>
+        </div>
+        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+          {isGerman
+            ? 'Failsafe bleibt aktiv: Bei fehlenden Kandidaten, Trace-Lücken oder Renderfehlern zeigt der TV-Modus automatisch wieder die Enterprise-Ansicht.'
+            : 'Failsafe remains active: if candidates are missing, trace data is incomplete, or rendering fails, TV mode automatically returns to the enterprise view.'}
+        </p>
+
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-gray-500">
+              <span>{isGerman ? 'Visualisierungsmodus' : 'Visualization mode'}</span>
+              <InfoTooltip title={isGerman ? 'Visualisierungsmodus' : 'Visualization mode'} side="right">{TV_ASSIGNMENT_ARENA_HELP['tv.assignment_visualization_mode'][localeKey]}</InfoTooltip>
+            </div>
+            <select
+              value={settings['tv.assignment_visualization_mode'] || TV_ASSIGNMENT_DEFAULTS['tv.assignment_visualization_mode']}
+              onChange={(e) => setSettings((current) => ({ ...current, 'tv.assignment_visualization_mode': e.target.value }))}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+            >
+              {assignmentVisualizationModeOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-gray-500">
+              <span>{isGerman ? 'Animationsgeschwindigkeit' : 'Animation speed'}</span>
+              <InfoTooltip title={isGerman ? 'Animationsgeschwindigkeit' : 'Animation speed'} side="right">{TV_ASSIGNMENT_ARENA_HELP['tv.assignment_animation_speed'][localeKey]}</InfoTooltip>
+            </div>
+            <select
+              value={settings['tv.assignment_animation_speed'] || TV_ASSIGNMENT_DEFAULTS['tv.assignment_animation_speed']}
+              onChange={(e) => setSettings((current) => ({ ...current, 'tv.assignment_animation_speed': e.target.value }))}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+            >
+              {assignmentAnimationSpeedOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-gray-500">
+              <span>{isGerman ? 'Celebration-Intensität' : 'Celebration intensity'}</span>
+              <InfoTooltip title={isGerman ? 'Celebration-Intensität' : 'Celebration intensity'} side="right">{TV_ASSIGNMENT_ARENA_HELP['tv.assignment_celebration_intensity'][localeKey]}</InfoTooltip>
+            </div>
+            <select
+              value={settings['tv.assignment_celebration_intensity'] || TV_ASSIGNMENT_DEFAULTS['tv.assignment_celebration_intensity']}
+              onChange={(e) => setSettings((current) => ({ ...current, 'tv.assignment_celebration_intensity': e.target.value }))}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+            >
+              {assignmentCelebrationOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rounded-3xl border border-cyan-500/15 bg-cyan-500/5 px-4 py-4 text-sm text-slate-600 dark:text-slate-300">
+            <div className="font-semibold text-slate-900 dark:text-slate-100">{isGerman ? 'Architektur-Guardrail' : 'Architecture guardrail'}</div>
+            <p className="mt-2">
+              {isGerman
+                ? 'Wheel und Slot lesen ausschließlich die bereits ausgewählte Person aus der ODIN-Trace. Sie erzeugen keine Zufälligkeit und ändern keine Business Rule.'
+                : 'Wheel and slot only read the already selected person from the ODIN trace. They introduce no randomness and do not alter any business rule.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {assignmentArenaToggles.map((toggle) => (
+            <div key={toggle.key} className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{toggle.label}</div>
+                <InfoTooltip title={toggle.label} side="right">{toggle.help}</InfoTooltip>
+              </div>
+              <button
+                onClick={() => setSettings((current) => ({ ...current, [toggle.key]: current[toggle.key] === 'true' ? 'false' : 'true' }))}
+                className="focus:outline-none"
+              >
+                {settings[toggle.key] === 'true'
+                  ? <ToggleRight className="h-6 w-6 text-green-500" />
+                  : <ToggleLeft className="h-6 w-6 text-gray-400" />}
+              </button>
             </div>
           ))}
         </div>
@@ -1026,7 +1210,7 @@ function FeedbackTab() {
               const isUpdating = updatingId === entry.id;
 
               return (
-                <div key={entry.id} className={`rounded-2xl border bg-white/[0.03] p-4 transition ${entry.status === 'done' ? 'border-emerald-500/20 opacity-70' : 'border-white/10'}`}>
+                <div key={entry.id} className={`rounded-2xl border bg-white/3 p-4 transition ${entry.status === 'done' ? 'border-emerald-500/20 opacity-70' : 'border-white/10'}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1143,6 +1327,17 @@ function AuditTab() {
   const [entries, setEntries] = useState<SettingsAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [domain, setDomain] = useState<string>("");
+  const domainFilters = [
+    { value: "", label: t('admin.allAreas') },
+    { value: "teams", label: "Teams" },
+    { value: "tv", label: t('admin.tabTv') },
+    { value: "assignment", label: t('admin.odinLogic') },
+    { value: "feedback", label: "Feedback" },
+    { value: "maintenance", label: t('admin.tabMaintenance') },
+    { value: "app", label: t('admin.appSettings') },
+    { value: "threshold", label: t('admin.tabThresholds') },
+    { value: "feature_toggle", label: isGerman ? 'Funktionsschalter' : 'Feature toggles' },
+  ];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1152,53 +1347,75 @@ function AuditTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        <select value={domain} onChange={e => setDomain(e.target.value)} className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800">
-          <option value="">{t('admin.allAreas')}</option>
-          <option value="teams">Teams</option>
-          <option value="tv">{t('admin.tabTv')}</option>
-          <option value="assignment">{t('admin.odinLogic')}</option>
-          <option value="feedback">Feedback</option>
-          <option value="maintenance">{t('admin.tabMaintenance')}</option>
-          <option value="app">{t('admin.appSettings')}</option>
-          <option value="threshold">{t('admin.tabThresholds')}</option>
-          <option value="feature_toggle">{isGerman ? 'Funktionsschalter' : 'Feature toggles'}</option>
-        </select>
-      </div>
+    <div className="space-y-6">
+      <ActivityLogPanel embedded />
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-500 border-b dark:border-gray-700">
-              <th className="py-2 px-3">{t('admin.timestamp')}</th>
-              <th className="py-2 px-3">{t('admin.area')}</th>
-              <th className="py-2 px-3">{t('admin.setting')}</th>
-              <th className="py-2 px-3">{t('admin.old')}</th>
-              <th className="py-2 px-3">{t('admin.new')}</th>
-              <th className="py-2 px-3">{t('admin.by')}</th>
-              <th className="py-2 px-3">{t('admin.note')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map(e => (
-              <tr key={e.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                <td className="py-2 px-3 whitespace-nowrap text-gray-500">{new Date(e.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}</td>
-                <td className="py-2 px-3"><span className="px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700">{e.domain}</span></td>
-                <td className="py-2 px-3 font-mono text-xs">{e.setting_key}</td>
-                <td className="py-2 px-3 text-xs text-red-500 truncate" style={{ maxWidth: 150 }}>{e.old_value || "–"}</td>
-                <td className="py-2 px-3 text-xs text-green-600 truncate" style={{ maxWidth: 150 }}>{e.new_value || "–"}</td>
-                <td className="py-2 px-3 text-xs">{e.changed_by}</td>
-                <td className="py-2 px-3 text-xs text-gray-400">{e.change_note || "–"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {entries.length === 0 && <div className="text-sm text-gray-400 text-center py-8">{t('admin.noChangesLogged')}</div>}
+      <EnterpriseCard className="border-white/10 bg-[radial-gradient(circle_at_top,#1f2937_0%,#020617_100%)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sky-300/75">
+              {isGerman ? "Einstellungs-Historie" : "Settings history"}
+            </div>
+            <div className="mt-2 text-lg font-semibold text-slate-100">
+              {isGerman ? "Konfigurationsänderungen" : "Configuration changes"}
+            </div>
+            <div className="mt-1 text-sm text-slate-400">
+              {isGerman ? "Änderungen aus Admin, Teams, ODIN und Wartung." : "Changes from admin, Teams, ODIN, and maintenance."}
+            </div>
+          </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-white/10 bg-slate-950/45 p-2">
+              {domainFilters.map((filter) => {
+                const active = domain === filter.value;
+                return (
+                  <button
+                    key={filter.value || 'all'}
+                    type="button"
+                    onClick={() => setDomain(filter.value)}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] transition ${active ? 'border border-sky-300/35 bg-sky-400/15 text-sky-100 shadow-[0_0_18px_rgba(56,189,248,0.18)]' : 'border border-transparent bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200'}`}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
+        </div>
+
+        {loading ? <LoadingSpinner /> : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                    <th className="px-3 py-2">{t('admin.timestamp')}</th>
+                    <th className="px-3 py-2">{t('admin.area')}</th>
+                    <th className="px-3 py-2">{t('admin.setting')}</th>
+                    <th className="px-3 py-2">{t('admin.old')}</th>
+                    <th className="px-3 py-2">{t('admin.new')}</th>
+                    <th className="px-3 py-2">{t('admin.by')}</th>
+                    <th className="px-3 py-2">{t('admin.note')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-white/5 text-slate-200 hover:bg-white/5">
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-400">{new Date(entry.created_at).toLocaleString(isGerman ? "de-DE" : "en-GB", { timeZone: 'Europe/Berlin' })}</td>
+                      <td className="px-3 py-3"><span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200">{entry.domain}</span></td>
+                      <td className="px-3 py-3 font-mono text-xs text-sky-200">{entry.setting_key}</td>
+                      <td className="max-w-48 truncate px-3 py-3 text-xs text-rose-300">{entry.old_value || "-"}</td>
+                      <td className="max-w-48 truncate px-3 py-3 text-xs text-emerald-300">{entry.new_value || "-"}</td>
+                      <td className="px-3 py-3 text-xs">{entry.changed_by}</td>
+                      <td className="px-3 py-3 text-xs text-slate-400">{entry.change_note || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {entries.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">{t('admin.noChangesLogged')}</div> : null}
+          </>
+        )}
+      </EnterpriseCard>
     </div>
   );
 }

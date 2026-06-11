@@ -3,6 +3,7 @@
 /* ------------------------------------------------ */
 
 import { shiftTypes } from "../../store/shiftStore";
+import type { Absence } from "../../api/absences";
 import type { HolidayMap } from "../../utils/deHolidays";
 
 /**
@@ -12,6 +13,9 @@ export const SOLL_HOURS = 174;
 export const HOLIDAY_CREDIT_HOURS = 8;
 /** 1 hour break deducted per working day */
 export const BREAK_HOURS = 1;
+
+const CREDITED_SHIFT_CODES = new Set(["ABW", "SEMINAR"]);
+const CREDITED_ABSENCE_TYPES = new Set(["VACATION", "SICK", "TRAINING"]);
 
 export type HourLimitsConfig = {
     maxDailyHours: number;   // 0 = no limit
@@ -38,12 +42,26 @@ export type EmployeeMonthlyStats = {
     soll: number;
     ist: number;
     diff: number;
+    earlyCount: number;
+    lateCount: number;
+    nightCount: number;
+    weekendCount: number;
+    holidayCount: number;
     warnings: string[];
     /** Hours per day (1-indexed: dayHours[1] = day 1) */
     dayHours: Record<number, DayHourInfo>;
     /** Hours per ISO week */
     weekHours: Record<number, WeekHourInfo>;
 };
+
+function getShiftCategory(code: string | undefined | null): 'early' | 'late' | 'night' | null {
+    const normalizedCode = String(code || "").trim().toUpperCase();
+    if (!normalizedCode) return null;
+    if (normalizedCode === "N") return 'night';
+    if (normalizedCode.startsWith("E") || normalizedCode.startsWith("HE")) return 'early';
+    if (normalizedCode.startsWith("L") || normalizedCode.startsWith("HL")) return 'late';
+    return null;
+}
 
 /**
  * Calculates hours for a specific employee in a specific month.
@@ -67,9 +85,16 @@ export function calculateEmployeeHours(
     monthIndex1: number,
     daysInMonth: number,
     holidays: HolidayMap,
-    limits?: HourLimitsConfig
+    limits?: HourLimitsConfig,
+    sollHours: number = SOLL_HOURS,
+    absences: Absence[] = [],
 ): EmployeeMonthlyStats {
     let ist = 0;
+    let earlyCount = 0;
+    let lateCount = 0;
+    let nightCount = 0;
+    let weekendCount = 0;
+    let holidayCount = 0;
     const dayHours: Record<number, DayHourInfo> = {};
     const weekBuckets: Record<number, number> = {};
 
@@ -81,20 +106,40 @@ export function calculateEmployeeHours(
 
         const code = schedule[day];
         const type = code ? shiftTypes[code] : null;
+        const absence = absences.find((entry) => dayKey >= entry.start_date && dayKey <= entry.end_date) || null;
+        const holidayName = holidays[dayKey];
         let h = 0;
 
         if (type) {
-            h = parseHoursFromRange(type.time);
-            // Deduct 1h break per working day
-            if (h > 0) h = Math.max(0, h - BREAK_HOURS);
-        } else {
-            const holidayName = holidays[dayKey];
-            if (holidayName && !isWeekend) {
+            if (CREDITED_SHIFT_CODES.has(String(code || "").toUpperCase()) && !isWeekend) {
                 h = HOLIDAY_CREDIT_HOURS;
+            } else {
+                h = parseHoursFromRange(type.time);
+                // Deduct 1h break per working day
+                if (h > 0) h = Math.max(0, h - BREAK_HOURS);
+            }
+        } else {
+            if (absence && CREDITED_ABSENCE_TYPES.has(String(absence.type || "").toUpperCase()) && !isWeekend) {
+                h = HOLIDAY_CREDIT_HOURS;
+            } else {
+                const holidayName = holidays[dayKey];
+                if (holidayName && !isWeekend) {
+                    h = HOLIDAY_CREDIT_HOURS;
+                }
             }
         }
 
         ist += h;
+
+        const shiftCategory = getShiftCategory(code);
+        const countsAsWorkedShift = Boolean(shiftCategory && h > 0);
+        if (countsAsWorkedShift) {
+            if (shiftCategory === 'early') earlyCount += 1;
+            if (shiftCategory === 'late') lateCount += 1;
+            if (shiftCategory === 'night') nightCount += 1;
+            if (isWeekend) weekendCount += 1;
+            if (holidayName) holidayCount += 1;
+        }
 
         // Daily limit check
         const dailyExceeded = limits && limits.dailyMode !== 'off' && limits.maxDailyHours > 0 && h > limits.maxDailyHours;
@@ -122,16 +167,22 @@ export function calculateEmployeeHours(
         };
     }
 
-    const diff = Math.round((ist - SOLL_HOURS) * 100) / 100;
+    const normalizedSollHours = Number.isFinite(sollHours) && sollHours >= 0 ? sollHours : SOLL_HOURS;
+    const diff = Math.round((ist - normalizedSollHours) * 100) / 100;
     const warnings: string[] = [];
-    if (ist < SOLL_HOURS) warnings.push("Under");
-    if (ist > SOLL_HOURS) warnings.push("Over");
+    if (ist < normalizedSollHours) warnings.push("Under");
+    if (ist > normalizedSollHours) warnings.push("Over");
 
     return {
         name: employeeName,
-        soll: SOLL_HOURS,
+        soll: normalizedSollHours,
         ist: Math.round(ist * 100) / 100,
         diff,
+        earlyCount,
+        lateCount,
+        nightCount,
+        weekendCount,
+        holidayCount,
         warnings,
         dayHours,
         weekHours,

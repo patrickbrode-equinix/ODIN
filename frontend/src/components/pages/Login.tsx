@@ -5,27 +5,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { validateLoginName } from "../../utils/loginName";
 import { Eye, EyeOff, Info } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-
-const LOGIN_COPY = {
-  loginFailed: "Sign-in failed. Please check your credentials.",
-  emailHint: "Sign in with your corporate email address. If you do not have an account yet, you can register below.",
-  email: "Email",
-  emailPlaceholder: "firstname.surname@eu.equinix.com",
-  password: "Password",
-  hidePassword: "Hide password",
-  showPassword: "Show password",
-  loggingIn: "Signing in...",
-  login: "Sign in",
-  forgotPassword: "Forgot password?",
-  noAccount: "No account yet?",
-  register: "Register",
-};
 
 /* ------------------------------------------------ */
 /* LOGIN PAGE COMPONENT                             */
@@ -35,7 +22,22 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
-  const copy = LOGIN_COPY;
+  const { t } = useLanguage();
+  const copy = {
+    loginFailed: t("login.loginFailed"),
+    userIdHint: t("login.emailHint"),
+    userId: t("login.email"),
+    userIdPlaceholder: t("login.emailPlaceholder"),
+    userIdInvalid: t("login.userIdInvalid"),
+    password: t("login.password"),
+    hidePassword: t("login.hidePassword"),
+    showPassword: t("login.showPassword"),
+    loggingIn: t("login.loggingIn"),
+    login: t("login.loginButton"),
+    forgotPassword: t("login.forgotPassword"),
+    noAccount: t("login.noAccount"),
+    register: t("login.register"),
+  };
 
   const from = location.state?.from?.pathname || "/dashboard";
 
@@ -50,7 +52,7 @@ export default function Login() {
   /* STATE                                           */
   /* ------------------------------------------------ */
 
-  const [email, setEmail] = useState("");
+  const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -63,10 +65,17 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const validation = validateLoginName(loginName);
+    if (!validation.ok) {
+      setError(copy.userIdInvalid);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(validation.value, password);
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(
@@ -89,53 +98,64 @@ export default function Login() {
         className="absolute inset-0 -z-20 bg-cover bg-center"
         style={{ backgroundImage: "url('/app/login-background.jpg')" }}
       />
-      <div className="absolute inset-0 -z-10 bg-black/60 backdrop-blur-[1px]" />
+      <div className="absolute inset-0 -z-10 bg-black/65 backdrop-blur-[2px]" />
+
+      {/* Animated ambient orbs */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(0,229,255,0.12),transparent_70%)] blur-[100px] animate-[pulse_8s_ease-in-out_infinite]" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(79,70,229,0.10),transparent_70%)] blur-[90px] animate-[pulse_10s_ease-in-out_infinite_2s]" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-[radial-gradient(circle,rgba(0,180,255,0.04),transparent_60%)] blur-[80px]" />
 
       {/* Login Card */}
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
-        <Card className="w-full max-w-md border border-border/50 bg-background/85 backdrop-blur-xl shadow-2xl">
-          <CardHeader className="text-center space-y-3 pb-2">
-            {/* Logo */}
-            <img
-              src="/app/ODIN_Logo.png"
-              alt="ODIN"
-              className="mx-auto h-16 w-auto drop-shadow-[0_0_12px_rgba(0,216,255,0.5)]"
-            />
+        <Card className="w-full max-w-md overflow-hidden rounded-[28px] border border-cyan-400/20 bg-background/88 backdrop-blur-2xl shadow-[0_40px_100px_rgba(0,0,0,0.5),0_0_64px_rgba(0,180,255,0.12),inset_0_1px_0_rgba(255,255,255,0.08)]">
+          {/* Top neon edge */}
+          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent_5%,rgba(0,229,255,0.5)_20%,rgba(0,229,255,0.9)_50%,rgba(0,229,255,0.5)_80%,transparent_95%)] shadow-[0_0_20px_rgba(0,229,255,0.4)]" />
 
-            {/* App name — subtle enterprise glow */}
+          <CardHeader className="relative text-center space-y-4 pb-2 pt-8">
+            {/* Logo with glow ring */}
+            <div className="relative mx-auto">
+              <div className="absolute inset-0 -m-3 rounded-full bg-[conic-gradient(from_0deg,rgba(0,229,255,0.3),rgba(59,130,246,0.3),rgba(79,70,229,0.3),rgba(0,229,255,0.3))] blur-xl animate-[spin_12s_linear_infinite] opacity-60" />
+              <img
+                src="/app/ODIN_Logo.png"
+                alt="ODIN"
+                className="relative mx-auto h-20 w-auto drop-shadow-[0_0_24px_rgba(0,229,255,0.7)]"
+              />
+            </div>
+
+            {/* App name — premium gradient text */}
             <CardTitle
-              className="text-3xl font-bold tracking-[0.35em] uppercase"
+              className="text-4xl font-black tracking-[0.4em] uppercase bg-gradient-to-r from-cyan-200 via-white to-blue-200 bg-clip-text text-transparent"
               style={{
-                textShadow:
-                  "0 0 18px rgba(99,179,237,0.50), 0 0 4px rgba(99,179,237,0.25)",
+                textShadow: "0 0 24px rgba(0,229,255,0.5)",
+                filter: "drop-shadow(0 0 8px rgba(0,229,255,0.3))",
               }}
             >
               O.D.I.N
             </CardTitle>
 
             {/* Tagline */}
-            <p className="text-xs text-muted-foreground tracking-widest uppercase">
-              Operations Dispatching and Intelligence Node
+            <p className="text-[10px] text-cyan-200/50 tracking-[0.28em] uppercase font-bold">
+              Operations Dispatching & Intelligence Node
             </p>
           </CardHeader>
 
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 pb-8">
             {/* Login hint */}
             <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 border border-blue-400/20 p-3">
               <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-blue-200/80">{copy.emailHint}</p>
+              <p className="text-xs text-blue-200/80">{copy.userIdHint}</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email">{copy.email}</Label>
+                <Label htmlFor="loginName">{copy.userId}</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder={copy.emailPlaceholder}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
+                  id="loginName"
+                  type="text"
+                  placeholder={copy.userIdPlaceholder}
+                  value={loginName}
+                  onChange={(e) => setLoginName(e.target.value)}
+                  autoComplete="username"
                   autoFocus
                   required
                 />
@@ -173,7 +193,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="w-full h-11 text-base"
+                className="w-full h-12 text-base font-bold tracking-wide rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white shadow-[0_0_24px_rgba(0,180,255,0.3),0_12px_32px_rgba(59,130,246,0.20)] transition-all duration-300 hover:shadow-[0_0_32px_rgba(0,229,255,0.4),0_16px_40px_rgba(59,130,246,0.30)] hover:scale-[1.01]"
                 disabled={loading}
               >
                 {loading ? copy.loggingIn : copy.login}

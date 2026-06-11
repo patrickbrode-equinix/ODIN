@@ -8,9 +8,25 @@ import express from 'express';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { requirePageAccess } from '../middleware/requirePageAccess.js';
 import pool from '../db.js';
+import { ensureShiftplanSchema } from '../lib/ensureShiftplanSchema.js';
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(async (_req, _res, next) => {
+  try {
+    await ensureShiftplanSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+function normalizeFixedShiftType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'early' || normalized === 'late' || normalized === 'night') return normalized;
+  return null;
+}
 
 /* ------------------------------------------------ */
 /* SHIFT DEFINITIONS                                */
@@ -27,11 +43,12 @@ router.get('/definitions', async (_req, res) => {
 
 router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, applicable_days } = req.body;
+    const { name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, series_days, min_staff, max_staff, color_hex, is_active, sort_order, applicable_days } = req.body;
     const id = parseInt(req.params.id);
     const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
     const normalizedStartDayOffset = Number.isInteger(Number(start_day_offset)) ? Number(start_day_offset) : 0;
     const normalizedEndDayOffset = Number.isInteger(Number(end_day_offset)) ? Number(end_day_offset) : 0;
+    const normalizedSeriesDays = Math.max(Number.parseInt(String(series_days ?? 1), 10) || 1, 1);
     const { rows } = await pool.query(
       `UPDATE shift_definitions
        SET name=$2,
@@ -42,16 +59,17 @@ router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), 
            start_day_offset=$7,
            end_day_offset=$8,
            duration_hours=$9,
-           min_staff=$10,
-           max_staff=$11,
-           color_hex=$12,
-           is_active=$13,
-           sort_order=$14,
-           applicable_days=$15::jsonb,
+           series_days=$10,
+           min_staff=$11,
+           max_staff=$12,
+           color_hex=$13,
+           is_active=$14,
+           sort_order=$15,
+           applicable_days=$16::jsonb,
            updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [id, name, short_name, shift_type, start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours, min_staff, max_staff, color_hex, is_active, sort_order, JSON.stringify(normalizedApplicableDays)]
+      [id, name, short_name, shift_type, start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours, normalizedSeriesDays, min_staff, max_staff, color_hex, is_active, sort_order, JSON.stringify(normalizedApplicableDays)]
     );
     if (!rows.length) return res.status(404).json({ ok: false, error: 'Definition nicht gefunden' });
     res.json({ ok: true, definition: rows[0] });
@@ -62,19 +80,20 @@ router.put('/definitions/:id', requirePageAccess('shiftplan_control', 'write'), 
 
 router.post('/definitions', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { code, name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, min_staff, max_staff, color_hex, sort_order, applicable_days } = req.body;
+    const { code, name, short_name, shift_type, start_time, end_time, start_day_offset, end_day_offset, duration_hours, series_days, min_staff, max_staff, color_hex, sort_order, applicable_days } = req.body;
     if (!code || !name) return res.status(400).json({ ok: false, error: 'Code und Name erforderlich' });
     const normalizedApplicableDays = Array.isArray(applicable_days) ? applicable_days : [0, 1, 2, 3, 4, 5, 6];
     const normalizedStartDayOffset = Number.isInteger(Number(start_day_offset)) ? Number(start_day_offset) : 0;
     const normalizedEndDayOffset = Number.isInteger(Number(end_day_offset)) ? Number(end_day_offset) : 0;
+    const normalizedSeriesDays = Math.max(Number.parseInt(String(series_days ?? 1), 10) || 1, 1);
     const { rows } = await pool.query(
       `INSERT INTO shift_definitions (
          code, name, short_name, shift_type, start_time, end_time,
-         start_day_offset, end_day_offset, duration_hours, min_staff,
+         start_day_offset, end_day_offset, duration_hours, series_days, min_staff,
          max_staff, color_hex, sort_order, applicable_days
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)
        RETURNING *`,
-      [code, name, short_name || code, shift_type || 'early', start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours || 8, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0, JSON.stringify(normalizedApplicableDays)]
+      [code, name, short_name || code, shift_type || 'early', start_time, end_time, normalizedStartDayOffset, normalizedEndDayOffset, duration_hours || 8, normalizedSeriesDays, min_staff || 1, max_staff || 5, color_hex || '#3b82f6', sort_order || 0, JSON.stringify(normalizedApplicableDays)]
     );
     res.json({ ok: true, definition: rows[0] });
   } catch (err) {
@@ -226,10 +245,10 @@ router.get('/planning-config', async (_req, res) => {
 
 router.put('/planning-config', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours } = req.body;
+    const { respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours, annual_target_hours } = req.body;
     const { rows } = await pool.query(
-      `UPDATE shift_planning_config SET respect_employee_wishes=$1, hard_rules_priority=$2, soft_wishes_priority=$3, fairness_priority=$4, admin_override_priority=$5, monthly_target_hours=$6, updated_at=NOW() WHERE id=1 RETURNING *`,
-      [respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours]
+      `UPDATE shift_planning_config SET respect_employee_wishes=$1, hard_rules_priority=$2, soft_wishes_priority=$3, fairness_priority=$4, admin_override_priority=$5, monthly_target_hours=$6, annual_target_hours=$7, updated_at=NOW() WHERE id=1 RETURNING *`,
+      [respect_employee_wishes, hard_rules_priority, soft_wishes_priority, fairness_priority, admin_override_priority, monthly_target_hours, annual_target_hours]
     );
     res.json({ ok: true, config: rows[0] });
   } catch (err) {
@@ -243,7 +262,9 @@ router.put('/planning-config', requirePageAccess('shiftplan_control', 'write'), 
 
 router.get('/exclusions', async (_req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM shiftplan_exclusions ORDER BY created_at DESC');
+    const { rows } = await pool.query(
+      'SELECT * FROM shiftplan_exclusions WHERE is_active = TRUE ORDER BY created_at DESC'
+    );
     res.json({ ok: true, exclusions: rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -252,13 +273,42 @@ router.get('/exclusions', async (_req, res) => {
 
 router.post('/exclusions', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { employee_name, reason, reason_text } = req.body;
+    const { employee_name, reason, reason_text, fixed_shift_type } = req.body;
     if (!employee_name) return res.status(400).json({ ok: false, error: 'Mitarbeitername erforderlich' });
     const actor = req.user?.email || req.user?.username || 'system';
+    const normalizedFixedShiftType = normalizeFixedShiftType(fixed_shift_type);
     const { rows } = await pool.query(
-      `INSERT INTO shiftplan_exclusions (employee_name, reason, reason_text, created_by) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [employee_name.trim(), reason || 'admin_override', reason_text || null, actor]
+      `INSERT INTO shiftplan_exclusions (employee_name, reason, reason_text, fixed_shift_type, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [employee_name.trim(), reason || 'admin_override', reason_text || null, normalizedFixedShiftType, actor]
     );
+    res.json({ ok: true, exclusion: rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.patch('/exclusions/:id', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'Ungültige ID' });
+
+    const normalizedFixedShiftType = normalizeFixedShiftType(req.body?.fixed_shift_type);
+    const nextReason = normalizedFixedShiftType ? 'fixed_shift' : (req.body?.reason || 'admin_override');
+    const nextReasonText = req.body?.reason_text ?? null;
+
+    const { rows } = await pool.query(
+      `UPDATE shiftplan_exclusions
+       SET reason = $1,
+           reason_text = $2,
+           fixed_shift_type = $3
+       WHERE id = $4 AND is_active = TRUE
+       RETURNING *`,
+      [nextReason, nextReasonText, normalizedFixedShiftType, id]
+    );
+
+    if (!rows[0]) return res.status(404).json({ ok: false, error: 'Eintrag nicht gefunden' });
     res.json({ ok: true, exclusion: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -267,13 +317,22 @@ router.post('/exclusions', requirePageAccess('shiftplan_control', 'write'), asyn
 
 router.delete('/exclusions/:id', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'Ungültige ID' });
+
     const actor = req.user?.email || req.user?.username || 'system';
     const { rows } = await pool.query(
-      `UPDATE shiftplan_exclusions SET is_active=FALSE, deactivated_by=$2, deactivated_at=NOW() WHERE id=$1 AND is_active=TRUE RETURNING *`,
-      [parseInt(req.params.id), actor]
+      `UPDATE shiftplan_exclusions
+       SET is_active = FALSE,
+           deactivated_by = $2,
+           deactivated_at = NOW()
+       WHERE id = $1 AND is_active = TRUE
+       RETURNING *`,
+      [id, actor]
     );
-    if (!rows.length) return res.status(404).json({ ok: false, error: 'Ausschluss nicht gefunden oder bereits deaktiviert' });
-    res.json({ ok: true, exclusion: rows[0] });
+
+    if (!rows[0]) return res.status(404).json({ ok: false, error: 'Eintrag nicht gefunden' });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -309,40 +368,9 @@ router.put('/employee-preferences', async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: 'Nicht autorisiert' });
-    const { preferred_shifts, unwanted_shifts, preferred_holidays, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes } = req.body;
+    const { preferred_shifts, unwanted_shifts, preferred_holidays, max_nights_per_month, preferred_days, blocked_days, workload_preference, notes } = req.body;
 
-    // Validate arrays
-    const validateArray = (v) => Array.isArray(v) ? v : [];
-    const normalizeStringArray = (v) => [...new Set(validateArray(v).map((entry) => String(entry || '').trim()).filter(Boolean))];
-    const normalizedAvoidColleagues = normalizeStringArray(avoid_colleagues);
-
-    const { rows: userRows } = await pool.query(
-      `SELECT first_name, last_name FROM users WHERE id = $1`,
-      [userId]
-    );
-    const ownName = userRows[0]
-      ? `${userRows[0].last_name}, ${userRows[0].first_name}`.trim()
-      : null;
-
-    if (ownName && normalizedAvoidColleagues.includes(ownName)) {
-      return res.status(400).json({ ok: false, error: 'Selbstauswahl ist nicht erlaubt' });
-    }
-
-    const { rows: preferredColleagueRows } = await pool.query(
-      `SELECT preferred_employee_name FROM preferred_colleagues WHERE user_id = $1`,
-      [userId]
-    );
-    const preferredColleagues = preferredColleagueRows
-      .map((row) => String(row.preferred_employee_name || '').trim())
-      .filter(Boolean);
-    const preferredSet = new Set(preferredColleagues);
-    const overlap = normalizedAvoidColleagues.filter((name) => preferredSet.has(name));
-    if (overlap.length > 0) {
-      return res.status(400).json({
-        ok: false,
-        error: `Folgende Mitarbeiter sind bereits als Wunschkollegen ausgewählt: ${overlap.join(', ')}`,
-      });
-    }
+    const validateArray = (value) => (Array.isArray(value) ? value : []);
 
     const { rows } = await pool.query(
       `INSERT INTO employee_preferences (user_id, preferred_shifts, unwanted_shifts, preferred_holidays, max_nights_per_month, preferred_days, blocked_days, avoid_colleagues, workload_preference, notes, updated_at)
@@ -367,7 +395,7 @@ router.put('/employee-preferences', async (req, res) => {
         max_nights_per_month || null,
         JSON.stringify(validateArray(preferred_days)),
         JSON.stringify(validateArray(blocked_days)),
-        JSON.stringify(normalizedAvoidColleagues),
+        JSON.stringify([]),
         workload_preference || 'normal',
         notes || null,
       ]

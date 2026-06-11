@@ -60,6 +60,60 @@ export const formatDate = (ts: string | Date) => {
 export const formatTime = (ts: string | Date) => {
   return timeFmt.format(new Date(ts));
 };
+ 
+function formatForLocale(
+  ts: string | Date | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions
+) {
+  if (!ts) return "";
+  const date = ts instanceof Date ? ts : new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: OPS_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
+export function formatDateTimeForLocale(
+  ts: string | Date | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions = {}
+) {
+  return formatForLocale(ts, locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...options,
+  });
+}
+
+export function formatDateForLocale(
+  ts: string | Date | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions = {}
+) {
+  return formatForLocale(ts, locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    ...options,
+  });
+}
+
+export function formatTimeForLocale(
+  ts: string | Date | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions = {}
+) {
+  return formatForLocale(ts, locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...options,
+  });
+}
 
 /* ------------------------------------------------ */
 /* DATE FORMAT – MONTH LABEL (I18N READY)           */

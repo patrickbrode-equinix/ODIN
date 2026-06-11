@@ -119,9 +119,9 @@ function isPollExpired(poll: Poll | PollDetail) {
   return false;
 }
 
-function canManage(poll: Poll | PollDetail, user: { id: number; email: string } | null) {
+function canManage(poll: Poll | PollDetail, user: { id: number; isRoot?: boolean; isAdmin?: boolean } | null) {
   if (!user) return false;
-  return poll.created_by === user.id || user.email === "admin@local";
+  return poll.created_by === user.id || user.isRoot === true || user.isAdmin === true;
 }
 
 function formatDeadline(endsAt: string, lang: LanguageCode) {

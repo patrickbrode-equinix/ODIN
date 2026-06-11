@@ -12,9 +12,10 @@ import { AssignmentDecisionDrawer } from '../assignment/AssignmentDecisionDrawer
 import { AssignmentFilters } from '../assignment/AssignmentFilters';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { Play, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, AlertCircle, Power, PowerOff, Shield, StopCircle, Zap, Clock, Brain, FileText, SkipForward } from 'lucide-react';
-import { EnterprisePageShell, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
+import { EnterprisePageShell, EnterpriseFeatureHero, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
 import { useLanguage, type LanguageCode, getLanguageLocale } from '../../context/LanguageContext';
 import { TextRepairBoundary } from '../../utils/textRepair';
+import { OdinStartupAnimation } from '../OdinStartupAnimation';
 
 const OdinLogicTree = lazy(() => import('../odinlogic/OdinLogicTree'));
 const AssignmentVisualizer = lazy(() => import('../odinlogic/AssignmentVisualizer'));
@@ -31,11 +32,11 @@ const ODIN_ONBOARDING_STEPS: Record<LanguageCode, ReadonlyArray<{ title: string;
     },
     {
       title: 'Header und Run-Steuerung',
-      body: 'Im Seitenkopf liegen die schnellsten Aktionen. Nutze Dry-Run fuer einen sicheren Einzeltest, Shadow-Run fuer eine realistische Simulation und die Automatik-Steuerung darunter erst dann, wenn die Logik stabil ist.',
+      body: 'Im Seitenkopf liegen die schnellsten Aktionen. Nutze Dry-Run für einen sicheren Einzeltest, Shadow-Run für eine realistische Simulation und die Automatik-Steuerung darunter erst dann, wenn die Logik stabil ist.',
     },
     {
       title: 'Tabs und Laufanalyse',
-      body: 'Runs & Logs zeigt die Historie, Ticketentscheidungen erklaert warum Tickets zugewiesen oder abgelehnt wurden, der Run-Report fasst einen Lauf zusammen und Logikbaum oder Visualizer zeigen dir den Routing-Pfad Schritt fuer Schritt.',
+      body: 'Runs & Logs zeigt die Historie, Ticketentscheidungen erklärt warum Tickets zugewiesen oder abgelehnt wurden, der Run-Report fasst einen Lauf zusammen und Logikbaum oder Visualizer zeigen dir den Routing-Pfad Schritt fuer Schritt.',
     },
     {
       title: 'Nutzereinstellungen und Feedback',
@@ -71,9 +72,9 @@ const ODIN_ONBOARDING_DIALOG_COPY: Record<LanguageCode, {
   start: string;
 }> = {
   de: {
-    badge: 'ODIN Einfuehrung',
-    skip: 'Ueberspringen',
-    back: 'Zurueck',
+    badge: 'ODIN Einführung',
+    skip: 'Überspringen',
+    back: 'Zurück',
     step: 'Schritt',
     next: 'Weiter',
     start: 'Loslegen',
@@ -115,30 +116,30 @@ const ODIN_HELP_COPY: Record<LanguageCode, {
   stopAutomationEffect: string;
 }> = {
   de: {
-    crawlerOverrideTitle: 'Crawler-Aktualitaetspruefung fuer Dry- und Shadow-Runs ueberspringen',
+    crawlerOverrideTitle: 'Crawler-Aktualitätsprüfung für Dry- und Shadow-Runs überspringen',
     dryRunTitle: 'Dry-Run',
-    dryRunDescription: 'Ein einmaliger Testlauf verarbeitet alle aktuellen Tickets und protokolliert Entscheidungen, nimmt aber keine produktiven Aenderungen vor.',
-    dryRunHint: 'Nutze diesen Modus nach Regel- oder Konfigurationsaenderungen fuer eine schnelle Sicherheitspruefung.',
-    dryRunOverrideWarning: 'Crawler-Override aktiv: Die Frischepruefung wird uebersprungen. Ergebnisse koennen auf veralteten Crawler-Daten basieren.',
+    dryRunDescription: 'Ein einmaliger Testlauf verarbeitet alle aktuellen Tickets und protokolliert Entscheidungen, nimmt aber keine produktiven Änderungen vor.',
+    dryRunHint: 'Nutze diesen Modus nach Regel- oder Konfigurationsänderungen für eine schnelle Sicherheitsprüfung.',
+    dryRunOverrideWarning: 'Crawler-Override aktiv: Die Frischeprüfung wird übersprungen. Ergebnisse können auf veralteten Crawler-Daten basieren.',
     shadowRunTitle: 'Shadow-Run',
-    shadowRunDescription: 'Ein einmaliger Simulationslauf durchlaeuft den kompletten Zuweisungsprozess, speichert Entscheidungen, aendert aber keine realen Ticketzuweisungen.',
+    shadowRunDescription: 'Ein einmaliger Simulationslauf durchläuft den kompletten Zuweisungsprozess, speichert Entscheidungen, ändert aber keine realen Ticketzuweisungen.',
     automaticAssignmentTitle: 'Automatische Zuweisung',
     automaticAssignmentDescription: 'Hier steuerst du, ob die ODIN-Engine automatisch und dauerhaft Tickets verarbeitet.',
-    automaticAssignmentDisabled: 'Deaktiviert: Keine automatischen Zuweisungen. Manuelle Dry-Runs und Shadow-Runs bleiben verfuegbar.',
-    automaticAssignmentShadow: 'Shadow aktiv: Die Engine laeuft automatisch, simuliert Zuweisungen und protokolliert jede Entscheidung, aendert aber keine echten Tickets.',
-    automaticAssignmentLive: 'Live aktiv: Die Engine weist Tickets produktiv zu. Aenderungen wirken sich direkt auf Mitarbeiter-Zuweisungen aus.',
+    automaticAssignmentDisabled: 'Deaktiviert: Keine automatischen Zuweisungen. Manuelle Dry-Runs und Shadow-Runs bleiben verfügbar.',
+    automaticAssignmentShadow: 'Shadow aktiv: Die Engine läuft automatisch, simuliert Zuweisungen und protokolliert jede Entscheidung, ändert aber keine echten Tickets.',
+    automaticAssignmentLive: 'Live aktiv: Die Engine weist Tickets produktiv zu. Änderungen wirken sich direkt auf Mitarbeiter-Zuweisungen aus.',
     automaticAssignmentDifference: 'Unterschied zu den Buttons oben rechts: Dry-Run und Shadow-Run starten jeweils einen einzelnen manuellen Lauf. Die Steuerung hier aktiviert die dauerhafte Automatik.',
     startShadowTitle: 'Shadow-Automatik',
     startShadowDescription: 'Startet die automatische Engine im Shadow-Modus. Zuweisungen werden simuliert und protokolliert, aber nicht produktiv umgesetzt.',
-    startShadowRecommendation: 'Empfehlung: Verwende diesen Modus, um die Logik ueber einen laengeren Zeitraum zu validieren, bevor du Live aktivierst.',
+    startShadowRecommendation: 'Empfehlung: Verwende diesen Modus, um die Logik über einen längeren Zeitraum zu validieren, bevor du Live aktivierst.',
     startLiveTitle: 'Live-Automatik',
     startLiveDescription: 'Startet die produktive automatische Zuweisung. Tickets werden tatsaechlich zugewiesen.',
-    startLivePrerequisite: 'Voraussetzung: Die Einstellung "enableLiveMode" muss in den Engine-Einstellungen aktiviert sein.',
+    startLivePrerequisite: 'Beim Wechsel auf Live wird "enableLiveMode" automatisch mit aktiviert.',
     startLiveWarning: 'Warnung: Diesen Modus nur verwenden, wenn die Logik im Shadow-Modus ausreichend validiert wurde.',
     stopAutomationTitle: 'Automatik stoppen',
     stopAutomationDescription: 'Stoppt die automatische Zuweisungslogik. Weitere automatische Runs werden nicht mehr gestartet.',
-    stopAutomationManualRuns: 'Manuelle Dry-Runs und Shadow-Runs bleiben jederzeit moeglich.',
-    stopAutomationEffect: 'Bereits laufende Zuweisungsprozesse werden zu Ende gefuehrt. Neue Laeufe starten nicht mehr.',
+    stopAutomationManualRuns: 'Manuelle Dry-Runs und Shadow-Runs bleiben jederzeit möglich.',
+    stopAutomationEffect: 'Bereits laufende Zuweisungsprozesse werden zu Ende geführt. Neue Läufe starten nicht mehr.',
   },
   en: {
     crawlerOverrideTitle: 'Skip the crawler freshness check for dry runs and shadow runs',
@@ -159,7 +160,7 @@ const ODIN_HELP_COPY: Record<LanguageCode, {
     startShadowRecommendation: 'Recommendation: use this mode to validate the logic over a longer period before enabling live automation.',
     startLiveTitle: 'Live automation',
     startLiveDescription: 'Starts productive automatic assignment. Tickets are assigned for real.',
-    startLivePrerequisite: 'Prerequisite: the "enableLiveMode" setting must be enabled in the engine settings.',
+    startLivePrerequisite: 'When switching to live, "enableLiveMode" is enabled automatically.',
     startLiveWarning: 'Warning: only use this after the logic has been validated sufficiently in shadow mode.',
     stopAutomationTitle: 'Stop automation',
     stopAutomationDescription: 'Stops the automatic assignment logic. No further automatic runs will be started.',
@@ -282,6 +283,7 @@ function OdinOnboardingDialog({ open, stepIndex, onNext, onBack, onClose }: {
 export default function OdinLogicPage() {
   const { language, t } = useLanguage();
   const locale = getLanguageLocale(language);
+  const isGerman = language === 'de';
   const copy = {
     cancel: t('common.cancel'),
     close: t('common.close'),
@@ -447,13 +449,13 @@ export default function OdinLogicPage() {
     });
   };
 
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'runs', label: copy.runsTab },
-    { key: 'decisions', label: selectedRun ? `${copy.decisionsTab} (#${selectedRun.id})` : copy.decisionsTab },
-    { key: 'report', label: selectedRun ? `${copy.reportTab} (#${selectedRun.id})` : copy.reportTab },
-    { key: 'logicTree', label: copy.logicTreeTab },
-    { key: 'visualizer', label: copy.flowTab },
-    { key: 'settings', label: copy.settingsTab },
+  const tabs: { key: TabKey; label: string; icon: React.ReactNode; hint: string }[] = [
+    { key: 'runs', label: copy.runsTab, icon: <Clock className="w-3.5 h-3.5" />, hint: isGerman ? 'Alle bisherigen Läufe der Engine mit Zeitstempel und Ergebnis' : 'All past engine runs with timestamp and result' },
+    { key: 'decisions', label: selectedRun ? `${copy.decisionsTab} (#${selectedRun.id})` : copy.decisionsTab, icon: <FileText className="w-3.5 h-3.5" />, hint: isGerman ? 'Warum wurde ein Ticket zugewiesen oder abgelehnt?' : 'Why was a ticket assigned or rejected?' },
+    { key: 'report', label: selectedRun ? `${copy.reportTab} (#${selectedRun.id})` : copy.reportTab, icon: <RotateCcw className="w-3.5 h-3.5" />, hint: isGerman ? 'Zusammenfassung eines einzelnen Laufs' : 'Summary of a single run' },
+    { key: 'logicTree', label: copy.logicTreeTab, icon: <Brain className="w-3.5 h-3.5" />, hint: isGerman ? 'Der vollständige Entscheidungsbaum — Schritt für Schritt erklärt' : 'The full decision tree — explained step by step' },
+    { key: 'visualizer', label: copy.flowTab, icon: <Zap className="w-3.5 h-3.5" />, hint: isGerman ? 'Grafische Darstellung des Zuweisungsflusses' : 'Visual representation of the assignment flow' },
+    { key: 'settings', label: copy.settingsTab, icon: <Shield className="w-3.5 h-3.5" />, hint: isGerman ? 'Regeln, Schwellenwerte und Verhaltenssteuerung der Engine' : 'Rules, thresholds, and engine behavior controls' },
   ];
 
   const closeOnboarding = () => {
@@ -466,6 +468,7 @@ export default function OdinLogicPage() {
   return (
     <TextRepairBoundary>
       <EnterprisePageShell style={{ maxWidth: 'none' }}>
+      <OdinStartupAnimation />
       <OdinOnboardingDialog
         open={onboardingOpen}
         stepIndex={onboardingStep}
@@ -532,6 +535,18 @@ export default function OdinLogicPage() {
             </button>
           </div>
         }
+      />
+
+      <EnterpriseFeatureHero
+        tone="indigo"
+        eyebrow={copy.subtitle}
+        title={copy.title}
+        description={skipCrawler ? copy.staleData : helpCopy.dryRunDescription}
+        metrics={[
+          { label: copy.dryRun, value: copy.dryRun },
+          { label: copy.shadowRun, value: executing ? copy.runInProgress : copy.shadowRun },
+          { label: copy.crawlerOverride, value: skipCrawler ? 'ON' : 'OFF' },
+        ]}
       />
 
       {/* ============================================================= */}
@@ -677,16 +692,25 @@ export default function OdinLogicPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`-mb-px shrink-0 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
+            title={t.hint}
+            className={`-mb-px shrink-0 flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
               tab === t.key
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-blue-500/30'
             }`}
           >
+            {t.icon}
             {t.label}
           </button>
         ))}
       </div>
+
+      {/* Active tab description */}
+      {tabs.find(t => t.key === tab)?.hint && (
+        <p className="text-xs text-muted-foreground px-1 -mt-1">
+          {tabs.find(t => t.key === tab)!.hint}
+        </p>
+      )}
 
       {/* Filters */}
       <AssignmentFilters />

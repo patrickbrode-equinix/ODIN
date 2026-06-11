@@ -4,8 +4,6 @@
 /* ------------------------------------------------ */
 
 import {
-  addWeeks,
-  subWeeks,
   startOfISOWeek,
   endOfISOWeek,
   getISOWeek,
@@ -13,7 +11,8 @@ import {
 } from "date-fns";
 
 import { Button } from "../ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
+import { EnterpriseHeader } from "../layout/EnterpriseLayout";
 
 /* ------------------------------------------------ */
 /* TYPES                                            */
@@ -39,25 +38,21 @@ export function DispatcherHeader({
   const to = endOfISOWeek(weekDate);
 
   return (
-    <div className="flex items-center justify-between p-4 bg-card border rounded-2xl">
-      <div>
-        <h2 className="text-xl font-bold">ODIN</h2>
-        <p className="text-muted-foreground">
-          KW {weekNumber} |{" "}
-          {format(from, "dd.MM.yyyy")} –{" "}
-          {format(to, "dd.MM.yyyy")}
-        </p>
-      </div>
+    <EnterpriseHeader
+      icon={<CalendarClock className="h-5 w-5 text-cyan-400" />}
+      title="Dispatcher Console"
+      subtitle={`KW ${weekNumber} · ${format(from, "dd.MM.yyyy")} – ${format(to, "dd.MM.yyyy")}`}
+      rightContent={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="border-sky-400/16 bg-sky-400/5 hover:bg-sky-400/10" onClick={onPrevWeek}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
 
-      <div className="flex gap-2">
-        <Button variant="outline" size="icon" onClick={onPrevWeek}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-
-        <Button variant="outline" size="icon" onClick={onNextWeek}>
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-    </div>
+          <Button variant="outline" size="icon" className="border-sky-400/16 bg-sky-400/5 hover:bg-sky-400/10" onClick={onNextWeek}>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      }
+    />
   );
 }

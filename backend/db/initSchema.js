@@ -260,12 +260,26 @@ export async function initSchema() {
     employee_name VARCHAR(120) NOT NULL,
     day INT NOT NULL CHECK (day >= 1 AND day <= 31),
     shift_code VARCHAR(16) NOT NULL,
+    source VARCHAR(16) NOT NULL DEFAULT 'import',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(month, employee_name, day)
   );
+  ALTER TABLE shifts ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'import';
   CREATE INDEX IF NOT EXISTS idx_shifts_month ON shifts(month);
   CREATE INDEX IF NOT EXISTS idx_shifts_employee ON shifts(employee_name);
+
+  CREATE TABLE IF NOT EXISTS manual_shiftplan_employees (
+    id SERIAL PRIMARY KEY,
+    month VARCHAR(16) NOT NULL,
+    employee_name VARCHAR(120) NOT NULL,
+    created_by VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(month, employee_name)
+  );
+  CREATE INDEX IF NOT EXISTS idx_manual_shiftplan_employees_month ON manual_shiftplan_employees(month);
+  CREATE INDEX IF NOT EXISTS idx_manual_shiftplan_employees_name ON manual_shiftplan_employees(employee_name);
 
   /* EMPLOYEE CONTACTS – E-Mail-Pflege für Teams-Bot und Benachrichtigungen */
   CREATE TABLE IF NOT EXISTS employee_contacts (
@@ -719,6 +733,9 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
       IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'shift_planning_config') THEN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_planning_config' AND column_name = 'monthly_target_hours') THEN
           ALTER TABLE shift_planning_config ADD COLUMN monthly_target_hours NUMERIC(6,2) NOT NULL DEFAULT 174;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_planning_config' AND column_name = 'annual_target_hours') THEN
+          ALTER TABLE shift_planning_config ADD COLUMN annual_target_hours NUMERIC(7,2) NOT NULL DEFAULT 2088;
         END IF;
       END IF;
     END $$;

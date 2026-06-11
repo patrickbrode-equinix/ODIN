@@ -4,7 +4,7 @@
 /* ------------------------------------------------ */
 
 import { useCallback, useEffect, useState, type ElementType, type ReactNode } from "react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader } from "../layout/EnterpriseLayout";
 import {
   fetchAssignmentRules, fetchAssignmentRule, updateAssignmentRule, toggleAssignmentRule, rollbackAssignmentRule,
   type AssignmentRule, type AssignmentRuleHistory
@@ -702,6 +702,12 @@ export default function AssignmentRulesEditor({ embedded = false }: { embedded?:
     return (
       <EnterprisePageShell>
         <EnterpriseHeader title={t("rules.title")} subtitle={t("rules.subtitle")} />
+        <EnterpriseFeatureHero
+          tone="indigo"
+          eyebrow={t("rules.subtitle")}
+          title={t("rules.title")}
+          description={t("rules.subtitle")}
+        />
         {loadingContent}
       </EnterprisePageShell>
     );
@@ -848,6 +854,17 @@ export default function AssignmentRulesEditor({ embedded = false }: { embedded?:
   return (
     <EnterprisePageShell>
       <EnterpriseHeader title={t("rules.titleAlt")} subtitle={t("rules.subtitleAlt")} />
+      <EnterpriseFeatureHero
+        tone="indigo"
+        eyebrow={t("rules.subtitleAlt")}
+        title={t("rules.titleAlt")}
+        description={t("rules.subtitle")}
+        metrics={[
+          { label: "Rules", value: rules.length },
+          { label: "Groups", value: Object.keys(grouped).length },
+          { label: "Engine", value: "ODIN" },
+        ]}
+      />
       {content}
     </EnterprisePageShell>
   );

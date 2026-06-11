@@ -1,6 +1,7 @@
 import express from "express";
 const router = express.Router();
 import { query } from "../db/index.js";
+import { getCriticalWorkloadSnapshot } from "../assignment/services/criticalWorkload.js";
 import { logActivity } from "./activity.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { broadcast } from "./sse.js";
@@ -10,6 +11,38 @@ router.use(requireAuth); // All /api/dashboard/* routes require a valid JWT
 /* ------------------------------------------------ */
 /* DASHBOARD INFO                                   */
 /* ------------------------------------------------ */
+
+router.get("/critical-workload", async (_req, res) => {
+    try {
+        const snapshot = await getCriticalWorkloadSnapshot({ queryFn: query });
+        res.json(snapshot);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch critical workload" });
+    }
+});
+
+router.get("/config", async (_req, res) => {
+    try {
+        const { rows } = await query(
+            "SELECT key, value FROM app_settings WHERE key = 'threshold.critical_ticket_window_hours'"
+        );
+        const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+        const criticalTicketWindowHours = Math.max(
+            1,
+            Number.parseInt(String(settings["threshold.critical_ticket_window_hours"] || "72"), 10) || 72,
+        );
+
+        res.json({
+            data: {
+                criticalTicketWindowHours,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch dashboard config" });
+    }
+});
 
 router.get("/info", async (req, res) => {
     try {

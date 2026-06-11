@@ -6,6 +6,7 @@
 type DisplayUser = {
   firstName?: string | null;
   lastName?: string | null;
+  loginName?: string | null;
   email?: string | null;
 };
 
@@ -19,5 +20,5 @@ export function getUserDisplayName(user?: DisplayUser | null): string {
   if (first) return first;
   if (last) return last;
 
-  return user.email ?? "Unbekannt";
+  return user.loginName ?? user.email ?? "Unbekannt";
 }

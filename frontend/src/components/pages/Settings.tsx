@@ -14,7 +14,7 @@ import {
 } from "../ui/select";
 import { Button } from "../ui/button";
 import { Lock, Settings as SettingsIcon, Sliders, Save } from "lucide-react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader, ENT_SECTION_TITLE } from "../layout/EnterpriseLayout";
 import { useTheme } from "../ThemeProvider";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
@@ -378,6 +378,18 @@ export default function Settings() {
             {passwordChangeRequired ? t("settings.startPasswordChange") : t("settings.changePassword")}
           </Button>
         }
+      />
+
+      <EnterpriseFeatureHero
+        tone="indigo"
+        eyebrow={t("settings.personalAppSettings")}
+        title={fullName}
+        description={passwordChangeRequired ? t("settings.securityRequirementBody") : pageCopy.competenceBody}
+        metrics={[
+          { label: t("settings.location"), value: meta?.location || "-" },
+          { label: t("settings.team"), value: meta?.team || "-" },
+          { label: t("settings.lastLogin"), value: formatLastLoginValue() },
+        ]}
       />
 
       {passwordChangeRequired && (

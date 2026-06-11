@@ -19,7 +19,8 @@ type UserAccessModalProps = {
   onClose: () => void;
   user: {
     id: number;
-    email: string;
+    loginName?: string | null;
+    email?: string | null;
     group: string;
     role?: string; // optional: falls Users.tsx es mitliefert
   } | null;
@@ -41,7 +42,7 @@ export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
           <div>
             <CardTitle>{language === "de" ? `${t("userAccess.title")} (Overrides)` : `${t("userAccess.title")} (overrides)`}</CardTitle>
             <div className="mt-1 text-sm text-muted-foreground">
-              {user.email} • {user.group}
+              {user.loginName || user.email || "-"} • {user.group}
               {user.role ? <span> • {user.role}</span> : null}
             </div>
           </div>
@@ -58,7 +59,7 @@ export function UserAccessModal({ open, onClose, user }: UserAccessModalProps) {
         </CardHeader>
 
         <CardContent className="max-h-[75vh] overflow-auto space-y-4">
-          <UserAccessEditor userId={user.id} userEmail={user.email} userGroup={user.group} />
+          <UserAccessEditor userId={user.id} userEmail={user.loginName || user.email || "-"} userGroup={user.group} />
         </CardContent>
 
         <div className="flex justify-end gap-3 border-t border-border/50 p-4">

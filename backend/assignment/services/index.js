@@ -42,13 +42,9 @@ export const assignmentSettingsService = {
       }
     }
 
-    // Live mode safety: require enableLiveMode to be true before switching to live
+    // Keep the live-mode gate in sync automatically so switching to live from the UI succeeds in one step.
     if (filtered[SETTINGS_KEYS.MODE] === 'live') {
-      const currentEnableLive = await this.get(SETTINGS_KEYS.ENABLE_LIVE);
-      const newEnableLive = filtered[SETTINGS_KEYS.ENABLE_LIVE];
-      if (currentEnableLive !== 'true' && newEnableLive !== 'true') {
-        throw new Error('Cannot switch to live mode: assignment.enableLiveMode must be set to "true" first.');
-      }
+      filtered[SETTINGS_KEYS.ENABLE_LIVE] = 'true';
     }
 
     const results = await assignmentSettingsRepository.setMany(filtered, updatedBy);

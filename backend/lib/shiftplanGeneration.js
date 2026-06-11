@@ -107,11 +107,36 @@ export function getShiftDurationHours(definition) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
 }
 
+const HALF_DAY_SHIFT_CODE_PATTERN = /^H[EL]\d+$/i;
+const NON_DRAFT_SHIFT_CODES = new Set(['ABW', 'FS', 'S', 'SEMINAR']);
+
+export function isHalfDayShiftCode(code) {
+  return HALF_DAY_SHIFT_CODE_PATTERN.test(String(code || '').trim());
+}
+
+export function isShiftDefinitionDraftPlannable(definition) {
+  const code = String(definition?.code || '').trim().toUpperCase();
+  const typeKey = normalizePlanningShiftTypeKey(definition?.shift_type);
+
+  if (!code) return false;
+  if (isHalfDayShiftCode(code)) return false;
+  if (NON_DRAFT_SHIFT_CODES.has(code)) return false;
+  if (typeKey === 'free' || typeKey === 'absent') return false;
+
+  return true;
+}
+
+export function getShiftSeriesDays(definition) {
+  const parsed = Number.parseInt(String(definition?.series_days ?? 1), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
 export function buildDailyShiftSlots({
   shiftDefinitions = [],
   staffingRules = {},
   activeEmployees = [],
   employeeHours = {},
+  employeeTargetHours = {},
   monthlyTargetHours = 174,
   day = 1,
   numDays = 31,
@@ -129,11 +154,17 @@ export function buildDailyShiftSlots({
     : 8;
 
   const targetHoursPerEmployee = Number.parseFloat(String(monthlyTargetHours ?? 174));
-  const sanitizedTargetHours = Number.isFinite(targetHoursPerEmployee) && targetHoursPerEmployee > 0
+  const sanitizedTargetHours = Number.isFinite(targetHoursPerEmployee) && targetHoursPerEmployee >= 0
     ? targetHoursPerEmployee
     : 174;
   const workedHours = activeEmployees.reduce((sum, employee) => sum + (employeeHours[employee] || 0), 0);
-  const targetHoursTotal = activeEmployees.length * sanitizedTargetHours;
+  const targetHoursTotal = activeEmployees.reduce((sum, employee) => {
+    const rawEmployeeTarget = Number.parseFloat(String(employeeTargetHours?.[employee] ?? ''));
+    const employeeTarget = Number.isFinite(rawEmployeeTarget) && rawEmployeeTarget >= 0
+      ? rawEmployeeTarget
+      : sanitizedTargetHours;
+    return sum + employeeTarget;
+  }, 0);
   const remainingHours = Math.max(targetHoursTotal - workedHours, 0);
   const remainingDays = Math.max(numDays - day + 1, 1);
   const desiredTotalSlots = Math.ceil(remainingHours / remainingDays / avgShiftHours);

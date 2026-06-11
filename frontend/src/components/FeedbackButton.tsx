@@ -13,10 +13,13 @@ import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { api } from "../api/api";
 import { useLocation } from "react-router-dom";
+import { useTheme } from "./ThemeProvider";
 
 type FeedbackType = "Bug" | "Verbesserung";
 
 export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "header" }) {
+  const { theme } = useTheme();
+  const isLight = theme === "light";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>("Bug");
   const [title, setTitle] = useState("");
@@ -84,7 +87,10 @@ export function FeedbackButton({ variant = "fixed" }: { variant?: "fixed" | "hea
       {variant === "header" ? (
         <button
           onClick={() => { setOpen(true); setResult(null); }}
-          className="flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1.5 text-[12px] font-medium text-indigo-700 transition-colors hover:bg-indigo-500/20 dark:text-indigo-300"
+          className={isLight
+            ? "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-2xl border border-slate-200/80 bg-white/74 px-3 text-[11px] font-bold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_12px_28px_rgba(148,163,184,0.10)] transition-all duration-300 hover:border-indigo-300/70 hover:bg-white hover:text-indigo-700 hover:shadow-[0_18px_36px_rgba(99,102,241,0.12)]"
+            : "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-2xl border border-white/10 bg-white/[0.035] px-3 text-[11px] font-bold text-white/65 transition-all duration-300 hover:border-indigo-400/35 hover:bg-white/6 hover:text-indigo-200 hover:shadow-[0_0_24px_rgba(99,102,241,0.10)]"
+          }
           title="Feedback erfassen"
         >
           <MessageSquare className="w-3.5 h-3.5" />

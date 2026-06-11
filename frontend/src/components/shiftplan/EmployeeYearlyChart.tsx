@@ -1,224 +1,172 @@
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { EARLY_SHIFT_CODES, LATE_SHIFT_CODES, shiftTypes } from "../../store/shiftStore";
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
+import { TrendingUp, Target, Gauge } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
-import { fetchSchedule } from "./shiftplan.api";
-import { formatMonthLabel } from "../../utils/dateFormat";
-import { getGermanFederalHolidays, isGermanFederalHoliday } from "../../utils/deHolidays";
+import { fetchShiftHours, type ShiftHoursEmployee } from "../../api/shiftHours";
+import type { EmployeeMonthlyStats } from "./shiftplan.hours";
 
 interface StatsProps {
     employeeName: string;
     year: number;
-    // Optional: Pre-loaded data (for Year View)
-    preloadedPlans?: Record<string, Record<string, Record<number, string>>>;
+    stats?: ShiftHoursEmployee | null;
+    loading?: boolean;
+    monthStats?: EmployeeMonthlyStats | null;
+    monthLabel?: string;
 }
 
-export function EmployeeYearlyStats({ employeeName, year, preloadedPlans }: StatsProps) {
+export function EmployeeYearlyStats({ employeeName, year, stats, loading = false, monthStats = null, monthLabel }: StatsProps) {
     const { language } = useLanguage();
     const isGerman = language === "de";
-    const [counts, setCounts] = useState<Record<string, number> | null>(null);
-    const [holidayCount, setHolidayCount] = useState(0);
-    const [loading, setLoading] = useState(false);
+    const [resolvedStats, setResolvedStats] = useState<ShiftHoursEmployee | null>(stats ?? null);
+    const [fetching, setFetching] = useState(false);
 
     useEffect(() => {
-        const load = async () => {
-            const c: Record<string, number> = {};
-            let hCount = 0;
-            const holidays = getGermanFederalHolidays(year);
-
-            const add = (code: string, day: number, monthIdx: number) => {
-                let s = apiCode(code);
-                if (!s) return;
-
-                // GROUPING
-                if (EARLY_SHIFT_CODES.includes(s as (typeof EARLY_SHIFT_CODES)[number])) s = "EARLY";
-                if (LATE_SHIFT_CODES.includes(s as (typeof LATE_SHIFT_CODES)[number])) s = "LATE";
-                c[s] = (c[s] || 0) + 1;
-
-                // HOLIDAY CHECK
-                // We need date. MonthIdx is 0-11. Day is 1-31.
-                if (s !== "FS" && s !== "ABW") {
-                    const date = new Date(year, monthIdx, day);
-                    if (isGermanFederalHoliday(date, holidays)) {
-                        hCount++;
-                    }
-                }
-            };
-
-            if (preloadedPlans) {
-                // Preloaded is Record<string (MonthLabel), Record<string (Emp), Record<number, string>>>
-                // We need to map MonthLabel back to index... formatMonthLabel is locale dependent.
-                // Simplified: iterate months, parse label or rely on order?
-                // Actually preloadedPlans keys are month labels.
-
-                Object.entries(preloadedPlans).forEach(([mLabel, monthSchedule]) => {
-                    const monthIdx = parseMonthIndex(mLabel); // need helper
-                    if (monthIdx === -1) return;
-
-                    const empRow = monthSchedule[employeeName];
-                    if (!empRow) return;
-                    Object.entries(empRow).forEach(([d, code]) => add(code, Number(d), monthIdx));
-                });
-                setCounts(c);
-                setHolidayCount(hCount);
-                return;
-            }
-
-            // Fetch from backend
-            setLoading(true);
-            try {
-                // We have to fetch 12 months
-                const requests = Array.from({ length: 12 }).map((_, i) =>
-                    fetchSchedule(formatMonthLabel(year, i + 1, "de-DE"))
-                );
-                const results = await Promise.all(requests);
-
-                results.forEach((res, i) => {
-                    const sched = res?.schedule;
-                    if (!sched) return;
-                    const empRow = sched[employeeName];
-                    if (!empRow) return;
-                    Object.entries(empRow).forEach(([d, code]) => add(code as string, Number(d), i));
-                });
-                setCounts(c);
-                setHolidayCount(hCount);
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, [employeeName, year, preloadedPlans]);
-
-    if (loading) return <div className="p-4 text-xs text-muted-foreground">{isGerman ? "Lade Diagramm..." : "Loading chart..."}</div>;
-    if (!counts) return null;
-
-    // Prepare for Recharts
-    const data = Object.entries(counts).map(([code, value]) => {
-        let name = code;
-        // let colorCode = code; // colorCode is not needed as matchColor handles grouped codes directly
-
-        // Manual overrides for groups
-        if (code === "EARLY") {
-            name = isGerman ? "Frühschicht" : "Early shift";
-            // colorCode = "E1"; // borrow color
-        } else if (code === "LATE") {
-            name = isGerman ? "Spätschicht" : "Late shift";
-            // colorCode = "L1"; // borrow color
-        } else {
-            const meta = shiftTypes[code];
-            if (meta) name = translateShiftName(meta.name, isGerman);
+        if (typeof stats !== "undefined") {
+            setResolvedStats(stats);
+            return;
         }
 
-        return {
-            name,
-            code,
-            value,
-            color: getTwColorHex(matchColor(code))
+        let cancelled = false;
+        setFetching(true);
+        fetchShiftHours(year)
+            .then((response) => {
+                if (cancelled) return;
+                const match = (response.employees || []).find((entry) => String(entry.employee_name || "").trim() === employeeName) || null;
+                setResolvedStats(match);
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                console.error(error);
+                setResolvedStats(null);
+            })
+            .finally(() => {
+                if (!cancelled) setFetching(false);
+            });
+
+        return () => {
+            cancelled = true;
         };
-    }).filter(x => x.value > 0);
+    }, [employeeName, stats, year]);
+
+    if (loading || fetching) {
+        return <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-400">{isGerman ? "Jahresziel wird geladen..." : "Loading yearly target..."}</div>;
+    }
+
+    const completion = Math.max(0, Math.min(100, Number(resolvedStats?.completion_rate || 0)));
+    const remaining = Math.max(0, Number(-Math.min(resolvedStats?.annual_diff_hours || 0, 0)).toFixed(2));
+    const ahead = Math.max(0, Number(Math.max(resolvedStats?.annual_diff_hours || 0, 0)).toFixed(2));
+    const monthDiffTone = monthStats && monthStats.diff > 0
+        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
+        : "border-amber-500/20 bg-amber-500/10 text-amber-100";
 
     return (
-        <div className="h-64 w-full flex items-center justify-center p-4 bg-muted/20 rounded-lg">
-            <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                    <Pie
-                        data={data}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                    >
-                        {data.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                        ))}
-                    </Pie>
-                    <Tooltip
-                        contentStyle={{ backgroundColor: "#1e1e1e", border: "none", borderRadius: "8px" }}
-                        itemStyle={{ color: "#fff" }}
-                    />
-                    <Legend verticalAlign="middle" align="right" layout="vertical" />
-                </PieChart>
-            </ResponsiveContainer>
-            <div className="ml-8 text-sm">
-                <div className="font-bold mb-2">{isGerman ? "Gesamt" : "Total"}: {data.reduce((a, b) => a + b.value, 0)}</div>
-                {holidayCount > 0 && (
-                    <div className="mt-2 text-xs flex items-center gap-2 text-red-400">
-                        <span>{isGerman ? "Feiertagsarbeit (Bundesweit):" : "Holiday work (nationwide):"}</span>
-                        <span className="font-bold">{holidayCount}</span>
+        <div className="rounded-[26px] border border-white/10 bg-[radial-gradient(circle_at_top,#172554_0%,#020617_100%)] p-5 text-slate-100 shadow-[0_18px_45px_rgba(2,6,23,0.35)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sky-300/75">{isGerman ? "Jahresziel" : "Year target"}</div>
+                    <div className="mt-2 text-lg font-semibold">{employeeName}</div>
+                    <div className="mt-1 text-sm text-slate-400">{isGerman ? `Fortschritt fuer ${year}` : `Progress for ${year}`}</div>
+                </div>
+                {resolvedStats ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">{isGerman ? "Erfuellung" : "Completion"}</div>
+                        <div className="mt-2 text-2xl font-black text-slate-50">{completion.toFixed(1)}%</div>
                     </div>
-                )}
+                ) : null}
             </div>
+
+            {resolvedStats ? (
+                <>
+                    <div className="mt-5 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                                <Target className="h-3.5 w-3.5 text-sky-300" />
+                                {isGerman ? "Soll pro Jahr" : "Year target"}
+                            </div>
+                            <div className="mt-3 text-2xl font-black text-slate-50">{resolvedStats.annual_target_hours.toFixed(1)}h</div>
+                        </div>
+
+                        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+                            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-200/80">
+                                <Gauge className="h-3.5 w-3.5 text-emerald-300" />
+                                {isGerman ? "Erreicht" : "Reached"}
+                            </div>
+                            <div className="mt-3 text-2xl font-black text-emerald-100">{resolvedStats.actual_hours.toFixed(1)}h</div>
+                        </div>
+
+                        <div className={`rounded-2xl border px-4 py-3 ${ahead > 0 ? "border-emerald-500/20 bg-emerald-500/10" : "border-amber-500/20 bg-amber-500/10"}`}>
+                            <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] ${ahead > 0 ? "text-emerald-200/80" : "text-amber-200/80"}`}>
+                                <TrendingUp className={`h-3.5 w-3.5 ${ahead > 0 ? "text-emerald-300" : "text-amber-300"}`} />
+                                {ahead > 0 ? (isGerman ? "Vorsprung" : "Ahead") : (isGerman ? "Fehlt" : "Remaining")}
+                            </div>
+                            <div className={`mt-3 text-2xl font-black ${ahead > 0 ? "text-emerald-100" : "text-amber-100"}`}>{ahead > 0 ? ahead.toFixed(1) : remaining.toFixed(1)}h</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-5">
+                        <div className="mb-2 flex items-center justify-between text-[11px] text-slate-400">
+                            <span>{isGerman ? "Jahresfortschritt" : "Year progress"}</span>
+                            <span>{resolvedStats.actual_hours.toFixed(1)}h / {resolvedStats.annual_target_hours.toFixed(1)}h</span>
+                        </div>
+                        <div className="h-3 overflow-hidden rounded-full bg-white/10">
+                            <div className={`h-full rounded-full ${ahead > 0 ? "bg-emerald-400" : "bg-sky-400"}`} style={{ width: `${completion}%` }} />
+                        </div>
+                    </div>
+                </>
+            ) : (
+                <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-xs text-slate-400">
+                    {isGerman ? "Fuer dieses Jahr liegen noch keine Zielwerte vor." : "No yearly target data is available yet."}
+                </div>
+            )}
+
+            {monthStats ? (
+                <div className="mt-6 border-t border-white/10 pt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300/75">{isGerman ? "Aktueller Monat" : "Current month"}</div>
+                            <div className="mt-1 text-sm text-slate-400">{monthLabel || `${String(year)}`}</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">{isGerman ? "Soll" : "Target"}</div>
+                            <div className="mt-2 text-2xl font-black text-slate-50">{monthStats.soll.toFixed(1)}h</div>
+                        </div>
+                        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/80">{isGerman ? "Ist" : "Actual"}</div>
+                            <div className="mt-2 text-2xl font-black text-cyan-50">{monthStats.ist.toFixed(1)}h</div>
+                        </div>
+                        <div className={`rounded-2xl border px-4 py-3 ${monthDiffTone}`}>
+                            <div className="text-[10px] uppercase tracking-[0.22em]">{isGerman ? "Differenz" : "Difference"}</div>
+                            <div className="mt-2 text-2xl font-black">{monthStats.diff > 0 ? '+' : ''}{monthStats.diff.toFixed(1)}h</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isGerman ? "Frueh" : "Early"}</div>
+                            <div className="mt-1 font-semibold">{monthStats.earlyCount}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isGerman ? "Spaet" : "Late"}</div>
+                            <div className="mt-1 font-semibold">{monthStats.lateCount}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isGerman ? "Nacht" : "Night"}</div>
+                            <div className="mt-1 font-semibold">{monthStats.nightCount}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isGerman ? "Wochenende" : "Weekend"}</div>
+                            <div className="mt-1 font-semibold">{monthStats.weekendCount}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isGerman ? "Feiertag" : "Holiday"}</div>
+                            <div className="mt-1 font-semibold">{monthStats.holidayCount}</div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
-}
-
-function apiCode(c: string) {
-    return String(c).trim();
-}
-
-function translateShiftName(name: string, isGerman: boolean) {
-    if (isGerman) return name;
-
-    switch (name) {
-        case "Frühschicht":
-            return "Early shift";
-        case "Frühschicht mit Wochenende (Samstag)":
-            return "Early shift with weekend (Saturday)";
-        case "Frühschicht mit Wochenende (Sa/So)":
-            return "Early shift with weekend (Sat/Sun)";
-        case "Spätschicht":
-            return "Late shift";
-        case "Spätschicht mit Wochenende (Sa/So)":
-            return "Late shift with weekend (Sat/Sun)";
-        case "Nachtschicht":
-            return "Night shift";
-        case "Freischicht":
-            return "Off shift";
-        case "Abwesend":
-            return "Absent";
-        case "Seminar":
-            return "Training";
-        default:
-            return name;
-    }
-}
-
-function matchColor(code: string) {
-    if (code === "EARLY") return "#f97316"; // orange-500
-    if (code === "LATE") return "#eab308"; // yellow-500
-
-    // Map shift code to tailwind class, then we need HEX for Recharts :/
-    const map: Record<string, string> = {
-        E1: "#f97316", // orange-500
-        E2: "#ea580c", // orange-600
-        L1: "#eab308", // yellow-500
-        L2: "#ca8a04", // yellow-600
-        N: "#2563eb",  // blue-600
-        SEMINAR: "#9333ea", // purple-600
-        FS: "#06b6d4", // cyan-500
-        ABW: "#6b7280", // gray-500
-        DBS: "#c026d3" // fuchsia-600
-    };
-    return map[code] || "#888888";
-}
-
-function getTwColorHex(c: string) {
-    return c;
-}
-
-function parseMonthIndex(label: string) {
-    const parts = label.trim().split(" ");
-    const map: any = {
-        Januar: 0, February: 1, März: 2, Mai: 4, Juni: 5, Juli: 6,
-        Oktober: 9, Dezember: 11
-        // ... simplistic. better:
-    };
-    // German Locale
-    const months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
-    return months.findIndex(m => label.startsWith(m));
 }

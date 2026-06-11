@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/core";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import { useLanguage } from "../../context/LanguageContext";
+import { dedupeEmployeeNames } from "../../utils/employeeNames";
 
 interface EmployeeExclusion {
   id: number;
@@ -197,7 +198,7 @@ export default function EmployeeExclusions() {
     async function loadEmployees() {
       try {
         const res = await api.get('/shiftplan-control/planning-basis?month=' + new Date().toISOString().slice(0, 7));
-        setAvailableEmployees(res.data?.basis?.employees || []);
+        setAvailableEmployees(dedupeEmployeeNames(res.data?.basis?.employees || []));
       } catch {
         // silent – autocomplete is optional enhancement
       }

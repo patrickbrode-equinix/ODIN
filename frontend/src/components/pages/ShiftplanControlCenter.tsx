@@ -3,10 +3,14 @@
 /* Draft generation, review, activation             */
 /* ================================================ */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../../api/api';
-import { EnterprisePageShell, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
+import { EnterprisePageShell, EnterpriseFeatureHero, EnterpriseHeader, EnterpriseCard } from '../layout/EnterpriseLayout';
+import { Input } from '../ui/input';
 import { useLanguage, getLanguageLocale } from '../../context/LanguageContext';
+import { ShiftplanTable } from '../shiftplan/ShiftplanTable';
+import type { EmployeeMonthlyStats } from '../shiftplan/shiftplan.hours';
+import type { Absence } from '../../api/absences';
 import {
   CalendarClock, Play, Download, Check, X, RefreshCw, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, Clock, FileSpreadsheet, Eye, Trash2,
@@ -34,6 +38,22 @@ interface Draft {
   approved_at: string | null;
   activated_by: string | null;
   activated_at: string | null;
+  wish_status?: Array<{ employee_name: string; submitted: boolean; updated_at: string | null }>;
+  wish_summary?: { submitted: number; missing: number };
+  absences?: Absence[];
+  manual_employees?: ManualShiftplanEmployee[];
+}
+
+interface ManualShiftplanEmployee {
+  employee_name: string;
+  created_at?: string | null;
+  created_by?: string | null;
+}
+
+interface ManualEmployeeMonthSummary {
+  month: string;
+  count: number;
+  employee_names: string[];
 }
 
 interface DraftSummary {
@@ -127,6 +147,11 @@ export default function ShiftplanControlCenter() {
   const [confirmActivate, setConfirmActivate] = useState(false);
   const [planningBasis, setPlanningBasis] = useState<any>(null);
   const [basisLoading, setBasisLoading] = useState(false);
+  const [manualEmployees, setManualEmployees] = useState<ManualShiftplanEmployee[]>([]);
+  const [manualEmployeeSummaryByMonth, setManualEmployeeSummaryByMonth] = useState<Record<string, ManualEmployeeMonthSummary>>({});
+  const [manualEmployeeDraft, setManualEmployeeDraft] = useState('');
+  const [manualEmployeesSaving, setManualEmployeesSaving] = useState(false);
+  const [showManualEmployeesOnly, setShowManualEmployeesOnly] = useState(false);
 
   // Year derived from selected month
   const selectedYear = parseInt(selectedMonth.split('-')[0]);
@@ -185,7 +210,48 @@ export default function ShiftplanControlCenter() {
     }
   }, [selectedMonth]);
 
+  const loadManualEmployees = useCallback(async () => {
+    try {
+      const res = await api.get(`/shiftplan-control/manual-employees?month=${selectedMonth}`);
+      setManualEmployees(Array.isArray(res.data?.employees) ? res.data.employees : []);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    }
+  }, [selectedMonth]);
+
+  const loadManualEmployeeSummary = useCallback(async () => {
+    try {
+      const res = await api.get(`/shiftplan-control/manual-employees/summary?year=${selectedYear}`);
+      const months = Array.isArray(res.data?.months) ? res.data.months : [];
+      setManualEmployeeSummaryByMonth(
+        Object.fromEntries(
+          months
+            .filter((entry: any) => typeof entry?.month === 'string')
+            .map((entry: any) => [entry.month, entry as ManualEmployeeMonthSummary])
+        )
+      );
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    }
+  }, [selectedYear]);
+
   useEffect(() => { loadDrafts(); }, [loadDrafts]);
+  useEffect(() => {
+    setManualEmployeeDraft('');
+    setPlanningBasis(null);
+    loadManualEmployees();
+  }, [loadManualEmployees, selectedMonth]);
+  useEffect(() => {
+    loadManualEmployeeSummary();
+  }, [loadManualEmployeeSummary]);
+
+  const selectedMonthManualSummary = manualEmployeeSummaryByMonth[selectedMonth] || null;
+  const manualSummaryMonths = useMemo(() => {
+    return Array.from({ length: 12 }, (_, index) => {
+      const month = `${selectedYear}-${String(index + 1).padStart(2, '0')}`;
+      return manualEmployeeSummaryByMonth[month] || { month, count: 0, employee_names: [] };
+    });
+  }, [manualEmployeeSummaryByMonth, selectedYear]);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -237,6 +303,47 @@ export default function ShiftplanControlCenter() {
       await loadDraft(activeDraft.id);
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const handleCreateManualEmployee = async () => {
+    const employeeName = manualEmployeeDraft.trim().replace(/\s+/g, ' ');
+    if (!employeeName || manualEmployeesSaving) return;
+
+    try {
+      setManualEmployeesSaving(true);
+      const res = await api.post('/shiftplan-control/manual-employees', { month: selectedMonth, employeeName });
+      const createdEmployee = res.data?.employee || { employee_name: employeeName };
+      setManualEmployees((prev) => {
+        const next = [...prev.filter((entry) => entry.employee_name !== createdEmployee.employee_name), createdEmployee];
+        return next.sort((left, right) => String(left.employee_name || '').localeCompare(String(right.employee_name || ''), 'de'));
+      });
+      setManualEmployeeDraft('');
+      loadManualEmployeeSummary();
+      if (planningBasis) loadBasis();
+      if (activeDraft?.month === selectedMonth) loadDraft(activeDraft.id);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setManualEmployeesSaving(false);
+    }
+  };
+
+  const handleDeleteManualEmployee = async (employeeName: string) => {
+    if (manualEmployeesSaving) return;
+    if (!confirm(isGerman ? `Manuellen Mitarbeiter "${employeeName}" löschen?` : `Delete manual employee "${employeeName}"?`)) return;
+
+    try {
+      setManualEmployeesSaving(true);
+      await api.delete(`/shiftplan-control/manual-employees?month=${encodeURIComponent(selectedMonth)}&employeeName=${encodeURIComponent(employeeName)}`);
+      setManualEmployees((prev) => prev.filter((entry) => entry.employee_name !== employeeName));
+      loadManualEmployeeSummary();
+      if (planningBasis) loadBasis();
+      if (activeDraft?.month === selectedMonth) loadDraft(activeDraft.id);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setManualEmployeesSaving(false);
     }
   };
 
@@ -337,6 +444,18 @@ export default function ShiftplanControlCenter() {
         }
       />
 
+      <EnterpriseFeatureHero
+        tone="indigo"
+        eyebrow={t('sc.subtitle')}
+        title={monthLabel(selectedMonth, locale)}
+        description={isGerman ? `Der Monatsgenerator ist auf ${selectedYear} fokussiert und stellt Drafts sowie Volljahreslaeufe zentral bereit.` : `The generator is focused on ${selectedYear} and centralizes draft creation as well as full-year runs.`}
+        metrics={[
+          { label: isGerman ? 'Monat' : 'Month', value: monthLabel(selectedMonth, locale) },
+          { label: isGerman ? 'Jahr' : 'Year', value: selectedYear },
+          { label: isGerman ? 'Modus' : 'Mode', value: generatingYear ? 'Year run' : generating ? 'Draft run' : 'Ready' },
+        ]}
+      />
+
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
@@ -363,6 +482,9 @@ export default function ShiftplanControlCenter() {
                 <span className="text-muted-foreground ml-1">v{g.version}</span>
                 <span className="text-emerald-400 ml-1">{g.shifts} {t('sc.shifts')}</span>
                 {g.conflicts > 0 && <span className="text-amber-400 ml-1">{g.conflicts} {t('sc.conflicts')}</span>}
+                {(manualEmployeeSummaryByMonth[g.month]?.count || 0) > 0 && (
+                  <span className="ml-1 text-amber-300">{manualEmployeeSummaryByMonth[g.month].count} {isGerman ? 'manuell' : 'manual'}</span>
+                )}
               </div>
             ))}
           </div>
@@ -373,6 +495,88 @@ export default function ShiftplanControlCenter() {
           )}
         </div>
       )}
+
+      <EnterpriseCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.24em] text-amber-300/80">
+              <Users className="w-4 h-4" />
+              {isGerman ? 'Manuelle Mitarbeiter im Planer' : 'Manual employees in planner'}
+            </div>
+            <div className="text-sm font-semibold text-foreground">
+              {isGerman ? `Separat für ${monthLabel(selectedMonth, locale)} gepflegt` : `Maintained separately for ${monthLabel(selectedMonth, locale)}`}
+            </div>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              {isGerman
+                ? 'Diese Mitarbeiter fließen in die Planungsbasis und in neue Drafts ein, bleiben aber von Excel-Importen getrennt.'
+                : 'These employees are included in the planning basis and new drafts while staying separate from Excel imports.'}
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={() => setShowManualEmployeesOnly((current) => !current)}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.22em] transition ${showManualEmployeesOnly ? 'bg-amber-500/90 text-slate-950 hover:bg-amber-400' : 'border border-amber-400/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'}`}
+              >
+                {showManualEmployeesOnly
+                  ? (isGerman ? 'Nur manuelle Mitarbeiter aktiv' : 'Manual-only filter active')
+                  : (isGerman ? 'Nur manuelle Mitarbeiter' : 'Manual employees only')}
+              </button>
+              {selectedMonthManualSummary?.count ? (
+                <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-amber-200">
+                  {selectedMonthManualSummary.count} {isGerman ? 'manuelle Quelle(n)' : 'manual source(s)'}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row">
+            <Input
+              value={manualEmployeeDraft}
+              onChange={(event) => setManualEmployeeDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleCreateManualEmployee();
+                }
+              }}
+              placeholder={isGerman ? 'Name für manuellen Mitarbeiter eingeben' : 'Enter a manual employee name'}
+              className="h-9 bg-background/75 text-sm"
+              disabled={manualEmployeesSaving}
+            />
+            <button
+              onClick={handleCreateManualEmployee}
+              disabled={manualEmployeesSaving || !manualEmployeeDraft.trim()}
+              className="flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/90 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50"
+            >
+              <Users className="w-3.5 h-3.5" />
+              {isGerman ? 'Manuell anlegen' : 'Add manual employee'}
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2.5">
+          {manualEmployees.length > 0 ? manualEmployees.map((entry) => {
+            const employeeName = String(entry.employee_name || '').trim();
+            return (
+              <div key={employeeName} className="flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-sm shadow-[0_18px_38px_rgba(245,158,11,0.08)]">
+                <span className="font-semibold text-foreground">{employeeName}</span>
+                <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">
+                  {isGerman ? 'MANUELL' : 'MANUAL'}
+                </span>
+                <button
+                  onClick={() => handleDeleteManualEmployee(employeeName)}
+                  disabled={manualEmployeesSaving}
+                  className="rounded-full p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                  title={isGerman ? 'Manuellen Mitarbeiter löschen' : 'Delete manual employee'}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          }) : (
+            <div className="rounded-2xl border border-dashed border-white/12 bg-white/3 px-4 py-3 text-sm text-muted-foreground">
+              {isGerman ? 'Noch keine manuellen Mitarbeiter für diesen Planungsmonat angelegt.' : 'No manual employees have been created for this planning month yet.'}
+            </div>
+          )}
+        </div>
+      </EnterpriseCard>
 
       {/* Active Draft Status Bar */}
       {activeDraft && (
@@ -476,6 +680,43 @@ export default function ShiftplanControlCenter() {
                 <h3 className="text-sm font-bold text-foreground">{t('sc.shiftPlanning')} — {monthLabel(selectedMonth, locale)}</h3>
               </div>
 
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-amber-300/80">
+                      {isGerman ? 'Manuelle Quellen im Jahr' : 'Manual sources across the year'}
+                    </div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {isGerman ? `Übersicht für ${selectedYear}` : `Overview for ${selectedYear}`}
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {isGerman ? 'Zeigt je Monat, ob Drafts auf manuellen Mitarbeitern aufbauen.' : 'Shows per month whether drafts build on manual employees.'}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {manualSummaryMonths.map((entry) => {
+                    const hasManualSources = entry.count > 0;
+                    const isCurrentMonth = entry.month === selectedMonth;
+                    return (
+                      <button
+                        key={entry.month}
+                        type="button"
+                        onClick={() => setSelectedMonth(entry.month)}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${isCurrentMonth ? 'border-blue-500/40 bg-blue-500/10' : hasManualSources ? 'border-amber-400/20 bg-amber-500/10 hover:bg-amber-500/15' : 'border-border/20 bg-background/40 hover:bg-background/60'}`}
+                      >
+                        <div className="text-xs font-semibold text-foreground">{monthLabel(entry.month, locale)}</div>
+                        <div className={`mt-1 text-[11px] font-bold uppercase tracking-[0.2em] ${hasManualSources ? 'text-amber-200' : 'text-muted-foreground'}`}>
+                          {hasManualSources
+                            ? `${entry.count} ${isGerman ? 'manuell' : 'manual'}`
+                            : (isGerman ? 'Keine manuellen Quellen' : 'No manual sources')}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Draft List */}
               {drafts.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
@@ -508,6 +749,11 @@ export default function ShiftplanControlCenter() {
                             {st.label}
                           </span>
                           <span className="text-sm font-medium text-foreground">Version {d.version}</span>
+                          {(selectedMonthManualSummary?.count || 0) > 0 && (
+                            <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">
+                              {selectedMonthManualSummary?.count} {isGerman ? 'manuell' : 'manual'}
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground">{formatDT(d.created_at, locale)}</span>
                           <span className="text-xs text-muted-foreground">{t('sc.by')} {d.created_by}</span>
                           {d.note && <span className="text-xs text-muted-foreground italic">"{d.note}"</span>}
@@ -544,7 +790,7 @@ export default function ShiftplanControlCenter() {
                   <div className="w-5 h-5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
                 </div>
               ) : (
-                <DraftShiftTable draft={activeDraft} />
+                <DraftShiftTable draft={activeDraft} manualOnly={showManualEmployeesOnly} />
               )}
             </div>
           )}
@@ -566,7 +812,7 @@ export default function ShiftplanControlCenter() {
 
           {/* Planning Basis Tab */}
           {tab === 'basis' && (
-            <PlanningBasisView basis={planningBasis} loading={basisLoading} onReload={loadBasis} />
+            <PlanningBasisView basis={planningBasis} loading={basisLoading} onReload={loadBasis} manualOnly={showManualEmployeesOnly} />
           )}
 
           {/* History Tab */}
@@ -603,7 +849,16 @@ export default function ShiftplanControlCenter() {
                             <td className="py-2.5 pr-4 text-muted-foreground">{formatDT(d.created_at, locale)}</td>
                             <td className="py-2.5 pr-4 text-muted-foreground">{d.approved_by || '–'}</td>
                             <td className="py-2.5 pr-4 text-muted-foreground">{d.activated_by || '–'}</td>
-                            <td className="py-2.5 text-muted-foreground">{d.note || '–'}</td>
+                            <td className="py-2.5 text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                {(selectedMonthManualSummary?.count || 0) > 0 && (
+                                  <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
+                                    {selectedMonthManualSummary?.count} {isGerman ? 'manuell' : 'manual'}
+                                  </span>
+                                )}
+                                <span>{d.note || '–'}</span>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -628,48 +883,86 @@ export default function ShiftplanControlCenter() {
 /* SUB-COMPONENTS                                   */
 /* ================================================ */
 
-function DraftShiftTable({ draft }: { draft: Draft }) {
+function DraftShiftTable({ draft, manualOnly = false }: { draft: Draft; manualOnly?: boolean }) {
   const { language, t } = useLanguage();
   const locale = getLanguageLocale(language);
   const isGerman = language === 'de';
   const [year, mon] = draft.month.split('-').map(Number);
   const numDays = daysInMonth(year, mon);
-  const shifts = draft.shifts_json || [];
-  const shiftDefinitions = Array.isArray(draft.config_snapshot?.shiftDefinitions) ? draft.config_snapshot.shiftDefinitions : [];
-  const durationByCode = Object.fromEntries(
-    shiftDefinitions.map((definition: any) => [definition.code, Number(definition.durationHours || 8)])
+  const manualEmployeeNameSet = useMemo(
+    () => new Set((Array.isArray(draft.manual_employees) ? draft.manual_employees : []).map((entry) => String(entry.employee_name || '').trim()).filter(Boolean)),
+    [draft.manual_employees]
+  );
+  const schedule = useMemo(() => {
+    const nextSchedule: Record<string, Record<number, string>> = {};
+    for (const shift of draft.shifts_json || []) {
+      if (!nextSchedule[shift.employee_name]) nextSchedule[shift.employee_name] = {};
+      nextSchedule[shift.employee_name][shift.day] = shift.shift_code;
+    }
+
+    const employees = new Set<string>([
+      ...Object.keys(draft.fairness || {}),
+      ...Object.keys(nextSchedule),
+      ...(Array.isArray(draft.absences) ? draft.absences.map((absence) => absence.employee_name) : []),
+    ]);
+
+    for (const employee of employees) {
+      if (!nextSchedule[employee]) nextSchedule[employee] = {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(nextSchedule).sort(([left], [right]) => left.localeCompare(right, 'de'))
+    );
+  }, [draft.absences, draft.fairness, draft.shifts_json]);
+
+  const filteredSchedule = useMemo(() => {
+    if (!manualOnly) return schedule;
+
+    return Object.fromEntries(
+      Object.entries(schedule).filter(([employee]) => manualEmployeeNameSet.has(employee))
+    );
+  }, [manualEmployeeNameSet, manualOnly, schedule]);
+
+  const employees = useMemo(() => Object.keys(filteredSchedule), [filteredSchedule]);
+
+  const wishStatusByEmployee = useMemo(
+    () => new Map((Array.isArray(draft.wish_status) ? draft.wish_status : []).map((entry) => [entry.employee_name, entry])),
+    [draft.wish_status]
   );
 
-  // Group by employee
-  const byEmployee: Record<string, Record<number, string>> = {};
-  for (const s of shifts) {
-    if (!byEmployee[s.employee_name]) byEmployee[s.employee_name] = {};
-    byEmployee[s.employee_name][s.day] = s.shift_code;
-  }
-  const fairnessEmployees = Object.keys(draft.fairness || {});
-  const employees = Array.from(new Set([...Object.keys(byEmployee), ...fairnessEmployees])).sort();
+  const employeeBadges = useMemo<Record<string, Array<{ label: string; tone?: 'success' | 'warning' | 'neutral' }>>>(() => {
+    return Object.fromEntries(
+      employees.map((employee) => {
+        const submitted = wishStatusByEmployee.get(employee)?.submitted;
+        const badges: Array<{ label: string; tone?: 'success' | 'warning' | 'neutral' }> = [];
+        if (manualEmployeeNameSet.has(employee)) {
+          badges.push({ label: isGerman ? 'MANUELL' : 'MANUAL', tone: 'warning' });
+        }
+        badges.push({ label: submitted ? (isGerman ? 'Wunsch da' : 'Submitted') : (isGerman ? 'Offen' : 'Missing'), tone: submitted ? 'success' : 'warning' });
+        return [employee, badges];
+      })
+    );
+  }, [employees, isGerman, manualEmployeeNameSet, wishStatusByEmployee]);
 
-  const hoursByEmployee = employees.reduce<Record<string, { actual: number; target: number; delta: number }>>((acc, employee) => {
-    const fairness = draft.fairness?.[employee] || {};
-    const actualFromFairness = Number(fairness.actualHours ?? 0);
-    const targetFromFairness = Number(fairness.targetHours ?? draft.config_snapshot?.planningConfig?.monthly_target_hours ?? 174);
-    const actualFromShifts = Object.values(byEmployee[employee] || {}).reduce((sum, code) => sum + Number(durationByCode[code] || 8), 0);
-    const actual = Number((actualFromFairness || actualFromShifts).toFixed(2));
-    const target = Number(targetFromFairness.toFixed ? targetFromFairness.toFixed(2) : targetFromFairness);
-    acc[employee] = {
-      actual,
-      target,
-      delta: Number((actual - target).toFixed(2)),
-    };
-    return acc;
-  }, {});
-
-  const shiftColor = (code: string) => {
-    if (code?.startsWith('E')) return 'bg-blue-500/20 text-blue-300';
-    if (code?.startsWith('L')) return 'bg-amber-500/20 text-amber-300';
-    if (code === 'N') return 'bg-purple-500/20 text-purple-300';
-    return '';
-  };
+  const employeeHours = useMemo(() => {
+    const map = new Map<string, EmployeeMonthlyStats>();
+    for (const employee of employees) {
+      const fairness = draft.fairness?.[employee] || {};
+      const soll = Number(fairness.targetHours ?? draft.config_snapshot?.planningConfig?.monthly_target_hours ?? 174);
+      const ist = Number(fairness.actualHours ?? 0);
+      const diff = Number(fairness.deltaHours ?? (ist - soll));
+      map.set(employee, {
+        name: employee,
+        soll,
+        ist,
+        diff,
+        warnings: [],
+        dayHours: {},
+        weekHours: {},
+      });
+    }
+    return map;
+  }, [draft.config_snapshot?.planningConfig?.monthly_target_hours, draft.fairness, employees]);
 
   return (
     <div className="space-y-3">
@@ -678,58 +971,29 @@ function DraftShiftTable({ draft }: { draft: Draft }) {
         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold">
           {t('sc.draftLabel')} v{draft.version}
         </span>
+        {manualOnly && (
+          <span className="text-xs px-2 py-0.5 rounded-full border border-amber-400/30 bg-amber-500/15 text-amber-200 font-black uppercase tracking-[0.2em]">
+            {isGerman ? 'Nur manuelle Mitarbeiter' : 'Manual employees only'}
+          </span>
+        )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="text-[11px] border-collapse">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-zinc-900 px-3 py-2 text-left text-muted-foreground font-medium border-b border-border/20">
-                {t('common.employee')}
-              </th>
-              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">{t('sc.target')}</th>
-              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">{t('sc.actual')}</th>
-              <th className="px-3 py-2 text-center text-muted-foreground font-medium border-b border-border/20 min-w-18">Delta</th>
-              {Array.from({ length: numDays }, (_, i) => i + 1).map(d => (
-                <th
-                  key={d}
-                  className={`px-2 py-2 text-center font-medium border-b border-border/20 min-w-8 ${
-                    isWeekend(year, mon, d) ? 'bg-zinc-800/60 text-muted-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  {d}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map(emp => (
-              <tr key={emp} className="hover:bg-blue-500/5 transition">
-                <td className="sticky left-0 z-10 bg-zinc-900 px-3 py-1.5 font-medium text-foreground border-b border-border/10 whitespace-nowrap">
-                  {emp}
-                </td>
-                <td className="px-2 py-1.5 text-center border-b border-border/10 text-muted-foreground">{hoursByEmployee[emp].target.toFixed(1)}h</td>
-                <td className="px-2 py-1.5 text-center border-b border-border/10 text-foreground">{hoursByEmployee[emp].actual.toFixed(1)}h</td>
-                <td className={`px-2 py-1.5 text-center border-b border-border/10 ${hoursByEmployee[emp].delta > 0 ? 'text-amber-300' : hoursByEmployee[emp].delta < 0 ? 'text-blue-300' : 'text-green-300'}`}>
-                  {hoursByEmployee[emp].delta > 0 ? '+' : ''}{hoursByEmployee[emp].delta.toFixed(1)}h
-                </td>
-                {Array.from({ length: numDays }, (_, i) => i + 1).map(d => {
-                  const code = byEmployee[emp]?.[d] || '';
-                  return (
-                    <td
-                      key={d}
-                      className={`px-1 py-1.5 text-center border-b border-border/10 ${shiftColor(code)} ${
-                        isWeekend(year, mon, d) && !code ? 'bg-zinc-800/40' : ''
-                      }`}
-                    >
-                      <span className="font-semibold">{code}</span>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {manualOnly && employees.length === 0 && (
+        <div className="rounded-lg border border-dashed border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          {isGerman ? 'Für diesen Draft gibt es keine manuellen Mitarbeiterzeilen.' : 'There are no manual employee rows for this draft.'}
+        </div>
+      )}
+      <ShiftplanTable
+        schedule={filteredSchedule}
+        daysInMonth={numDays}
+        year={year}
+        monthIndex1={mon}
+        holidays={{}}
+        warnings={[]}
+        selectedCells={new Set<string>()}
+        employeeHours={employeeHours}
+        absences={draft.absences || []}
+        employeeBadges={employeeBadges}
+      />
     </div>
   );
 }
@@ -782,50 +1046,106 @@ function ExplanationsView({ explanations }: { explanations: Record<string, any> 
   }
   const empNames = Object.keys(byEmployee).sort();
 
+  // Categorize a reason string
+  const categorizeReason = (reason: string): 'positive' | 'negative' | 'neutral' | 'info' => {
+    if (/Regelverstoß|verboten|Limit erreicht|nicht im.*Pool|Feste Schichtvorgabe: nur|fachlich besser|unerwünscht|gesperrt|vermeid|Über Sollzeit|Mehr Stunden/i.test(reason)) return 'negative';
+    if (/bevorzugt|Wunschkollege|Fairness: Weniger|Sollzeit offen|Skill-Match|Pool \(|Schichtvorgabe erfüllt|Ramadan: Frühschicht/i.test(reason)) return 'positive';
+    if (/Planungsbewertung|Rang \d/i.test(reason)) return 'info';
+    return 'neutral';
+  };
+
+  const reasonStyle: Record<string, string> = {
+    positive: 'bg-green-500/10 border-green-500/20 text-green-300',
+    negative: 'bg-red-500/10 border-red-500/20 text-red-300',
+    neutral: 'bg-blue-500/10 border-blue-500/15 text-blue-300',
+    info: 'bg-purple-500/10 border-purple-500/20 text-purple-300',
+  };
+
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-400" />
         {t('sc.explanationsPerAssignment')}
       </h3>
+
+      {/* Legend explaining the scoring system */}
+      <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs text-muted-foreground space-y-1.5">
+        <p className="font-semibold text-cyan-300 text-[11px]">
+          {isGerman ? '📊 So liest du die Begründungen:' : '📊 How to read the explanations:'}
+        </p>
+        <p>
+          {isGerman
+            ? 'Jeder Mitarbeiter startet mit einem Basiswert von 1000 Punkten. Positive Faktoren (z. B. Skills, Wünsche, Fairness) erhöhen den Wert, negative Faktoren (z. B. Überlast, Regelverstöße) senken ihn. Der Mitarbeiter mit dem höchsten Endwert erhält die Schicht.'
+            : 'Each employee starts with a base score of 1000 points. Positive factors (e.g. skills, wishes, fairness) increase it, negative factors (e.g. overload, rule violations) decrease it. The employee with the highest final score gets the shift.'}
+        </p>
+        <div className="flex flex-wrap gap-2 mt-1.5">
+          <span className={`px-2 py-0.5 rounded border text-[10px] ${reasonStyle.positive}`}>{isGerman ? '✓ Positiver Faktor' : '✓ Positive factor'}</span>
+          <span className={`px-2 py-0.5 rounded border text-[10px] ${reasonStyle.negative}`}>{isGerman ? '✗ Negativer Faktor' : '✗ Negative factor'}</span>
+          <span className={`px-2 py-0.5 rounded border text-[10px] ${reasonStyle.neutral}`}>{isGerman ? '○ Neutraler Kontext' : '○ Neutral context'}</span>
+          <span className={`px-2 py-0.5 rounded border text-[10px] ${reasonStyle.info}`}>{isGerman ? '★ Gesamtergebnis' : '★ Final result'}</span>
+        </div>
+      </div>
+
       {empNames.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-6">{t('sc.noExplanations')}</p>
       ) : (
         <div className="space-y-2">
-          {empNames.map(emp => (
-            <div key={emp} className="rounded-lg border border-border/20 overflow-hidden">
-              <button
-                onClick={() => setExpanded(expanded === emp ? null : emp)}
-                className="flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium text-foreground/80 hover:text-foreground hover:bg-blue-500/5 transition"
-              >
-                <span className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  {emp}
-                  <span className="text-xs text-muted-foreground">({byEmployee[emp].filter(e => e.code).length} {t('sc.shifts')})</span>
-                </span>
-                {expanded === emp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-              {expanded === emp && (
-                <div className="px-4 pb-3 space-y-1">
-                  {byEmployee[emp].sort((a: any, b: any) => a.day - b.day).map((e: any) => (
-                    <div key={e.day} className="flex items-start gap-3 text-xs py-1.5 border-t border-border/10">
-                      <span className="font-medium text-muted-foreground min-w-12.5">{t('sc.day')} {e.day}</span>
-                      <span className={`font-bold min-w-7.5 ${e.code ? 'text-blue-400' : 'text-zinc-500'}`}>
-                        {e.code || '–'}
+          {empNames.map(emp => {
+            const empEntries = byEmployee[emp];
+            const assignedCount = empEntries.filter(e => e.code).length;
+            const totalScore = empEntries.reduce((sum, e) => sum + (e.score || 0), 0);
+            return (
+              <div key={emp} className="rounded-lg border border-border/20 overflow-hidden">
+                <button
+                  onClick={() => setExpanded(expanded === emp ? null : emp)}
+                  className="flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium text-foreground/80 hover:text-foreground hover:bg-blue-500/5 transition"
+                >
+                  <span className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-400" />
+                    {emp}
+                    <span className="text-xs text-muted-foreground">({assignedCount} {t('sc.shifts')})</span>
+                  </span>
+                  <div className="flex items-center gap-3">
+                    {totalScore > 0 && (
+                      <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                        Σ {totalScore.toLocaleString()} {isGerman ? 'Punkte' : 'pts'}
                       </span>
-                      <div className="flex flex-wrap gap-1">
-                        {(e.reasons || []).map((r: string, ri: number) => (
-                          <span key={ri} className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/15 text-blue-300">
-                            {r}
+                    )}
+                    {expanded === emp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
+                </button>
+                {expanded === emp && (
+                  <div className="px-4 pb-3 space-y-1.5">
+                    {empEntries.sort((a: any, b: any) => a.day - b.day).map((e: any) => (
+                      <div key={e.day} className="py-2 border-t border-border/10">
+                        <div className="flex items-center gap-3 text-xs mb-1.5">
+                          <span className="font-medium text-muted-foreground min-w-12.5">{t('sc.day')} {e.day}</span>
+                          <span className={`font-bold min-w-7.5 ${e.code ? 'text-blue-400' : 'text-zinc-500'}`}>
+                            {e.code || '–'}
                           </span>
-                        ))}
+                          {e.score != null && e.code && (
+                            <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded">
+                              {e.score.toLocaleString()} {isGerman ? 'Pkt' : 'pts'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1 ml-12.5 pl-3">
+                          {(e.reasons || []).map((r: string, ri: number) => {
+                            const cat = categorizeReason(r);
+                            return (
+                              <span key={ri} className={`px-2 py-0.5 rounded border text-[11px] ${reasonStyle[cat]}`}>
+                                {r}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -918,10 +1238,18 @@ function FairnessView({ fairness }: { fairness: Record<string, any> }) {
   );
 }
 
-function PlanningBasisView({ basis, loading, onReload }: { basis: any; loading: boolean; onReload: () => void }) {
+function PlanningBasisView({ basis, loading, onReload, manualOnly = false }: { basis: any; loading: boolean; onReload: () => void; manualOnly?: boolean }) {
   const { language, t } = useLanguage();
   const locale = getLanguageLocale(language);
   const isGerman = language === 'de';
+  const manualEmployeeNameSet = useMemo(
+    () => new Set((basis?.manualEmployees || []).map((entry: any) => String(entry.employee_name || '').trim()).filter(Boolean)),
+    [basis]
+  );
+  const visibleEmployees = useMemo(
+    () => (basis?.employees || []).filter((employee: string) => !manualOnly || manualEmployeeNameSet.has(employee)),
+    [basis, manualEmployeeNameSet, manualOnly]
+  );
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -945,16 +1273,36 @@ function PlanningBasisView({ basis, loading, onReload }: { basis: any; loading: 
           <List className="w-4 h-4 text-blue-400" />
           {t('sc.planningBasisFor')} {monthLabel(basis.month, locale)}
         </h3>
-        <button onClick={onReload} className="text-xs text-blue-400 underline">{t('common.refresh')}</button>
+        <div className="flex items-center gap-3">
+          {manualOnly && (
+            <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">
+              {isGerman ? 'Nur manuelle Mitarbeiter' : 'Manual employees only'}
+            </span>
+          )}
+          <button onClick={onReload} className="text-xs text-blue-400 underline">{t('common.refresh')}</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="rounded-lg border border-border/20 p-4">
           <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-blue-400" /> {t('sc.employees')} ({basis.employees?.length || 0})
+            <Users className="w-3.5 h-3.5 text-blue-400" /> {manualOnly ? (isGerman ? 'Gefilterte Mitarbeiter' : 'Filtered employees') : t('sc.employees')} ({visibleEmployees.length || 0})
           </h4>
           <div className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-0.5">
-            {(basis.employees || []).map((e: string) => <div key={e}>{e}</div>)}
+            {visibleEmployees.map((e: string) => <div key={e}>{e}</div>)}
+            {visibleEmployees.length === 0 && <div>{manualOnly ? (isGerman ? 'Keine manuellen Mitarbeiter in der Planungsbasis' : 'No manual employees in the planning basis') : '–'}</div>}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-500/20 p-4">
+          <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-amber-300" /> {isGerman ? 'Manuelle Mitarbeiter' : 'Manual employees'} ({basis.manualEmployees?.length || 0})
+          </h4>
+          <div className="text-xs text-muted-foreground max-h-32 overflow-y-auto space-y-0.5">
+            {(basis.manualEmployees || []).map((entry: any, index: number) => (
+              <div key={`${entry.employee_name}-${index}`}>{entry.employee_name}</div>
+            ))}
+            {(basis.manualEmployees || []).length === 0 && <div>{isGerman ? 'Keine manuellen Mitarbeiter' : 'No manual employees'}</div>}
           </div>
         </div>
 

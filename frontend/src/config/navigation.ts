@@ -15,11 +15,10 @@ import {
   Tv,
   Users as UsersIcon,
   Ticket,
-  ScrollText,
-  FileCheck,
   Brain,
   MessageSquare,
   Shield,
+  BarChart3,
 } from "lucide-react";
 
 /* ———————————————————————————————— */
@@ -64,15 +63,14 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/shiftplan", icon: Calendar, label: "Schichtplan", section: "top", pageKey: "shiftplan" },
   { to: "/handover", icon: FileText, label: "Handover", section: "top", pageKey: "handover" },
   { to: "/tickets", icon: Ticket, label: "Tickets", section: "top", pageKey: "tickets" },
+  { to: "/odin-logic", icon: Brain, label: "ODIN-Logik", section: "top", pageKey: "odin_logic" },
 
   { to: "/tv-dashboard", icon: Tv, label: "TV Dashboard", section: "top", pageKey: "tv_dashboard" },
 
-  { to: "/protokoll", icon: ScrollText, label: "Protokoll", section: "top", pageKey: "protokoll" },
-  { to: "/commit-compliance", icon: FileCheck, label: "Commit Compliance", section: "top", pageKey: "commit_compliance" },
-  { to: "/odin-logic", icon: Brain, label: "ODIN-Logik", section: "top", pageKey: "odin_logic" },
   { to: "/shiftplan-control", icon: CalendarClock, label: "Schichtplaner", section: "top", pageKey: "shiftplan_control" },
   { to: "/teams-center", icon: MessageSquare, label: "Teams Center", section: "top", pageKey: "teams_center" },
   { to: "/admin-settings", icon: Shield, label: "Admin Settings", section: "top", pageKey: "admin_settings" },
+  { to: "/dashboard/statistiken", icon: BarChart3, label: "Statistik", section: "top", pageKey: "dashboard" },
   { to: "/users", icon: UsersIcon, label: "User Management", section: "top", pageKey: "user_management" },
   // Settings hidden from sidebar (still accessible via /settings directly)
 ];

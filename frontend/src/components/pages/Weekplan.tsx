@@ -3,6 +3,19 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { motion } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  Clock,
+  Eye,
+  EyeOff,
+  PencilLine,
+  RefreshCw,
+  Save,
+  Users,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -20,10 +33,12 @@ import {
 import { fetchSchedule, importSchedule } from "../shiftplan/shiftplan.api";
 import { formatMonthLabel } from "../../utils/dateFormat";
 import { getGermanHolidaysNationwide } from "../../utils/deHolidays";
-import { shiftTypes } from "../../store/shiftStore";
+
 import { useHiddenEmployees } from "../../hooks/useHiddenEmployees"; // [NEW] import
 import { useWeekplanRoleStore, WEEKPLAN_ROLES, getRoleDef } from "../../store/weekplanRoleStore";
 import { useLanguage, getLanguageLocale } from "../../context/LanguageContext";
+import { fetchAttendance, upsertAttendance, type AttendanceRecord } from "../../api/attendance";
+import { useTheme } from "../ThemeProvider";
 
 type Schedule = Record<string, Record<number, string>>;
 
@@ -54,6 +69,8 @@ export default function Weekplan() {
   const { canWrite } = useAuth();
   const canEdit = canWrite("shiftplan");
   const { language, t } = useLanguage();
+  const { theme } = useTheme();
+  const isLight = theme === "light";
   const de = language === 'de';
   const locale = getLanguageLocale(language) as "de-DE" | "en-US";
 
@@ -109,11 +126,12 @@ export default function Weekplan() {
   }, [weekDays]);
 
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [dirtyMonths, setDirtyMonths] = useState<Set<string>>(new Set());
   const [schedulesByMonth, setSchedulesByMonth] = useState<Record<string, Schedule>>({});
 
-  const [showActiveOnly, setShowActiveOnly] = useState(true);
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
 
   // Employee highlight (click name to highlight row, click again or ESC to clear)
   const [highlightedEmployee, setHighlightedEmployee] = useState<string | null>(null);
@@ -147,6 +165,56 @@ export default function Weekplan() {
     setCommentOpen(false);
   }, [commentTarget, commentValue, updateComment]);
 
+  // ─── Attendance (Kommen/Gehen) ───
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceRecord>>({});
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [attendanceTarget, setAttendanceTarget] = useState<{ employeeName: string; date: string } | null>(null);
+  const [attendanceArrival, setAttendanceArrival] = useState("");
+  const [attendanceDeparture, setAttendanceDeparture] = useState("");
+  const [attendanceNote, setAttendanceNote] = useState("");
+
+  const attendanceKey = (emp: string, date: string) => `${emp}|${date}`;
+
+  const loadAttendance = useCallback(async (from: string, to: string) => {
+    try {
+      const records = await fetchAttendance(from, to);
+      const map: Record<string, AttendanceRecord> = {};
+      for (const r of records) {
+        map[attendanceKey(r.employee_name, r.date.split("T")[0])] = r;
+      }
+      setAttendanceMap(map);
+    } catch { /* ignore */ }
+  }, []);
+
+  const openAttendanceDialog = useCallback((employeeName: string, dateStr: string) => {
+    const existing = attendanceMap[attendanceKey(employeeName, dateStr)];
+    setAttendanceTarget({ employeeName, date: dateStr });
+    setAttendanceArrival(existing?.arrival_time?.substring(0, 5) || "");
+    setAttendanceDeparture(existing?.departure_time?.substring(0, 5) || "");
+    setAttendanceNote(existing?.note || "");
+    setAttendanceOpen(true);
+  }, [attendanceMap]);
+
+  const applyAttendance = useCallback(async () => {
+    if (!attendanceTarget) return;
+    try {
+      const result = await upsertAttendance({
+        employee_name: attendanceTarget.employeeName,
+        date: attendanceTarget.date,
+        arrival_time: attendanceArrival || null,
+        departure_time: attendanceDeparture || null,
+        note: attendanceNote || null,
+      });
+      setAttendanceMap((prev) => ({
+        ...prev,
+        [attendanceKey(attendanceTarget.employeeName, attendanceTarget.date)]: result,
+      }));
+      setAttendanceOpen(false);
+    } catch {
+      alert(de ? "Speichern fehlgeschlagen" : "Save failed");
+    }
+  }, [attendanceTarget, attendanceArrival, attendanceDeparture, attendanceNote, de]);
+
   const holidays = useMemo(() => {
     // union of years (week can cross year)
     const years = new Set(weekDays.map((d) => d.getFullYear()));
@@ -157,25 +225,32 @@ export default function Weekplan() {
     return combined;
   }, [weekDays]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
+  const loadSchedules = useCallback(async (labels: string[], mode: "load" | "refresh" = "load") => {
+    try {
+      if (mode === "refresh") {
+        setRefreshing(true);
+      } else {
         setLoading(true);
-        const out: Record<string, Schedule> = {};
-        for (const label of monthLabels) {
-          const data = await fetchSchedule(label);
-          out[label] = data?.schedule || {};
-        }
-        setSchedulesByMonth(out);
-        setDirtyMonths(new Set());
-      } catch (e) {
-        console.error("WEEKPLAN load error", e);
-      } finally {
-        setLoading(false);
       }
-    };
-    load();
-  }, [monthLabels.join("|")]);
+
+      const out: Record<string, Schedule> = {};
+      for (const label of labels) {
+        const data = await fetchSchedule(label);
+        out[label] = data?.schedule || {};
+      }
+      setSchedulesByMonth(out);
+      setDirtyMonths(new Set());
+    } catch (e) {
+      console.error("WEEKPLAN load error", e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSchedules(monthLabels);
+  }, [loadSchedules, monthLabels]);
 
   const { isHidden } = useHiddenEmployees(); // [NEW] hook usage
 
@@ -185,7 +260,8 @@ export default function Weekplan() {
     const from = dateKey(weekDays[0]);
     const to = dateKey(weekDays[6]);
     fetchRoles(from, to);
-  }, [weekDays, fetchRoles]);
+    loadAttendance(from, to);
+  }, [weekDays, fetchRoles, loadAttendance]);
 
   // Helper to check if code is "working"
   const isWorkingShift = (code: string) => {
@@ -195,31 +271,36 @@ export default function Weekplan() {
     return true; // E1, E2, L1, N etc.
   };
 
-  const employees = useMemo(() => {
+  const allEmployees = useMemo(() => {
     const s = new Set<string>();
     // Collect all employees from loaded months
     for (const sched of Object.values(schedulesByMonth || {})) {
       Object.keys(sched || {}).forEach((n) => s.add(n));
     }
 
-    let list = Array.from(s).filter((n) => !isHidden(n));
+    return Array.from(s)
+      .filter((n) => !isHidden(n))
+      .sort();
+  }, [schedulesByMonth, isHidden]);
 
-    // ACTIVE FILTER (Server preferred, but we have partial data loaded. 
-    // "Filter employees... only if they have at least one shift in the displayed week... that is NOT FS, ABW, OFF".
-    if (showActiveOnly) {
-      list = list.filter(emp => {
-        // Check if emp has ANY working shift in `weekDays`
-        return weekDays.some(d => {
-          const label = formatMonthLabel(d.getFullYear(), d.getMonth() + 1, locale);
-          const day = d.getDate();
-          const code = schedulesByMonth?.[label]?.[emp]?.[day] || "";
-          return isWorkingShift(code);
-        });
+  const activeEmployees = useMemo(() => {
+    return allEmployees.filter((emp) => {
+      return weekDays.some((d) => {
+        const label = formatMonthLabel(d.getFullYear(), d.getMonth() + 1, locale);
+        const day = d.getDate();
+        const code = schedulesByMonth?.[label]?.[emp]?.[day] || "";
+        return isWorkingShift(code);
       });
-    }
+    });
+  }, [allEmployees, weekDays, schedulesByMonth, locale]);
 
-    return list.sort();
-  }, [schedulesByMonth, isHidden, showActiveOnly, weekDays]);
+  const employees = useMemo(() => {
+    if (!showActiveOnly) return allEmployees;
+    if (activeEmployees.length > 0) return activeEmployees;
+    return allEmployees;
+  }, [activeEmployees, allEmployees, showActiveOnly]);
+
+  const effectiveShowActiveOnly = showActiveOnly && activeEmployees.length > 0;
 
   const getMonthLabelForDate = (d: Date) => formatMonthLabel(d.getFullYear(), d.getMonth() + 1, locale);
 
@@ -296,6 +377,14 @@ export default function Weekplan() {
 
   const dateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+  const handleRefresh = useCallback(async () => {
+    if (dirtyMonths.size > 0) return;
+    await loadSchedules(monthLabels, "refresh");
+    if (weekDays.length >= 7) {
+      await fetchRoles(dateKey(weekDays[0]), dateKey(weekDays[6]));
+    }
+  }, [dirtyMonths.size, fetchRoles, loadSchedules, monthLabels, weekDays]);
+
   // Toggle cell selection (Shift+Click)
   const toggleCellSelect = useCallback((employeeName: string, dayIdx: number) => {
     setSelectedCells((prev) => {
@@ -367,73 +456,259 @@ export default function Weekplan() {
     el?.focus();
   };
 
+  const weekRangeLabel = `${weekdayAbbrev(weekDays[0])} ${weekDays[0].getDate()}.${pad2(weekDays[0].getMonth() + 1)}.${weekDays[0].getFullYear()} – ${weekdayAbbrev(weekDays[6])} ${weekDays[6].getDate()}.${pad2(weekDays[6].getMonth() + 1)}.${weekDays[6].getFullYear()}`;
+  const monthSummary = monthLabels.join(" · ");
+  const hasPendingChanges = dirtyMonths.size > 0;
+  const visibleEmployees = employees.length;
+  const totalEmployees = allEmployees.length;
+
+  const daySummaries = useMemo(() => {
+    return weekDays.map((d) => {
+      const key = dateKey(d);
+      const activeCount = allEmployees.reduce((sum, employeeName) => {
+        const label = formatMonthLabel(d.getFullYear(), d.getMonth() + 1, locale);
+        const code = schedulesByMonth?.[label]?.[employeeName]?.[d.getDate()] || "";
+        return sum + (isWorkingShift(code) ? 1 : 0);
+      }, 0);
+
+      return {
+        key,
+        shortLabel: weekdayAbbrev(d),
+        dateLabel: `${d.getDate()}.${pad2(d.getMonth() + 1)}`,
+        activeCount,
+        holiday: holidays?.[key] || null,
+        isWeekend: d.getDay() === 0 || d.getDay() === 6,
+      };
+    });
+  }, [allEmployees, holidays, locale, schedulesByMonth, weekDays]);
+
+  // Dynamic sizing: compute row height so all employees fit without scrolling
+  // Reserve ~120px for header, ~48px for table header row
+  const fitMetrics = useMemo(() => {
+    // Base sizes that scale with employee count to fit viewport
+    const n = Math.max(visibleEmployees, 1);
+    if (n >= 40) {
+      return { nameFontSize: 10, headerDayFontSize: 9, headerDateFontSize: 10, codeFontSize: 9, roleFontSize: 8, rowPy: "1px", cellPx: "2px" };
+    }
+    if (n >= 30) {
+      return { nameFontSize: 10.5, headerDayFontSize: 9.5, headerDateFontSize: 10.5, codeFontSize: 9.5, roleFontSize: 8.5, rowPy: "2px", cellPx: "3px" };
+    }
+    if (n >= 20) {
+      return { nameFontSize: 11, headerDayFontSize: 10, headerDateFontSize: 11, codeFontSize: 10, roleFontSize: 9, rowPy: "3px", cellPx: "4px" };
+    }
+    return { nameFontSize: 12, headerDayFontSize: 10.5, headerDateFontSize: 11.5, codeFontSize: 10.5, roleFontSize: 9.5, rowPy: "4px", cellPx: "5px" };
+  }, [visibleEmployees]);
+
   return (
-    <div className="space-y-6 flex flex-col">
-      <div className="theme-glass-panel rounded-2xl border p-5 shadow-lg space-y-4 flex-none">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold text-foreground tracking-wide">{t("weekplan.title")} {weekNo}</h2>
-            <div className="text-[13px] font-medium text-muted-foreground mt-1">
-              {weekdayAbbrev(weekDays[0])} {weekDays[0].getDate()}.{pad2(weekDays[0].getMonth() + 1)}.{weekDays[0].getFullYear()} – {weekdayAbbrev(weekDays[6])} {weekDays[6].getDate()}.{pad2(weekDays[6].getMonth() + 1)}.{weekDays[6].getFullYear()}
-            </div>
-          </div>
-
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* NAVIGATION */}
-          <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => traverseWeek(-1)}>
-              &larr;
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={jumpToToday}>
-              {t("weekplan.today")}
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => traverseWeek(1)}>
-              &rarr;
-            </Button>
-          </div>
-
-          {/* FILTER */}
-          <div
-            className={`text-xs flex items-center gap-2 cursor-pointer select-none px-2 py-1 rounded-md transition-colors ${showActiveOnly ? "bg-primary/20 text-primary font-medium" : "text-muted-foreground hover:bg-muted"}`}
-            onClick={() => {
-              setShowActiveOnly(!showActiveOnly);
-              // Log filter change
-              import("../../api/api").then(({ api }) => {
-                api.post("/activity/log", {
-                  action: "weekplan_filter_nonworking",
-                  module: "WEEKPLAN",
-                  details: { active: !showActiveOnly }
-                }).catch(() => { });
-              });
-            }}
-          >
-            <div className={`w-3 h-3 rounded-full border ${showActiveOnly ? "bg-primary border-primary" : "border-muted-foreground"}`} />
-            {t("weekplan.showActiveOnly")}
-          </div>
-
-          {canEdit ? (
-            <div className="flex items-center gap-2 border-l border-border/60 pl-4">
-              <Button
-                variant={isEditMode ? "default" : "secondary"}
-                className={isEditMode ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "border border-border bg-background/85 text-foreground hover:bg-accent"}
-                onClick={() => setIsEditMode((v) => !v)}
-                disabled={loading}
-              >
-                {isEditMode ? t("weekplan.editOn") : t("weekplan.edit")}
-              </Button>
-              <Button className="bg-green-600/90 hover:bg-green-600 text-white" onClick={saveChanges} disabled={loading || dirtyMonths.size === 0}>
-                {t("common.save")}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="theme-glass-inset rounded-xl px-3 py-2 text-xs text-muted-foreground">
-          {t("weekplan.roleHint")}
-        </div>
+    <div className="relative flex h-[calc(100vh-64px)] flex-col overflow-hidden" style={{ background: "#020b1e" }}>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <motion.div
+          className="absolute rounded-full blur-[120px]"
+          style={{ width: 520, height: 320, background: "radial-gradient(ellipse, rgba(56,189,248,0.08), transparent 70%)", top: "8%", left: "12%" }}
+          animate={{ x: [0, 26, 0], y: [0, -18, 0] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute rounded-full blur-[110px]"
+          style={{ width: 420, height: 260, background: "radial-gradient(ellipse, rgba(59,130,246,0.06), transparent 70%)", top: "32%", right: "8%" }}
+          animate={{ x: [0, -18, 0], y: [0, 16, 0] }}
+          transition={{ duration: 24, repeat: Infinity, ease: "easeInOut", delay: 3 }}
+        />
+        <motion.div
+          className="absolute rounded-full blur-[130px]"
+          style={{ width: 320, height: 210, background: "radial-gradient(ellipse, rgba(14,165,233,0.05), transparent 70%)", bottom: "10%", left: "38%" }}
+          animate={{ x: [0, 18, 0], y: [0, -12, 0] }}
+          transition={{ duration: 28, repeat: Infinity, ease: "easeInOut", delay: 7 }}
+        />
       </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="relative shrink-0 overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, #010d28 0%, #020b1e 100%)",
+          borderBottom: "1px solid rgba(56,189,248,0.18)",
+          boxShadow: "0 1px 0 rgba(56,189,248,0.08), 0 4px 32px rgba(0,0,0,0.5)",
+        }}
+      >
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+          <defs>
+            <radialGradient id="wpGridFade" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="white" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="white" stopOpacity="0" />
+            </radialGradient>
+            <mask id="wpGridMask">
+              <rect width="100%" height="100%" fill="url(#wpGridFade)" />
+            </mask>
+          </defs>
+          <g mask="url(#wpGridMask)" opacity="0.07">
+            {Array.from({ length: 28 }, (_, i) => (
+              <line
+                key={i}
+                x1={`${(i / 27) * 100}%`}
+                y1="0"
+                x2={`${(i / 27) * 100}%`}
+                y2="100%"
+                stroke="#38bdf8"
+                strokeWidth="0.5"
+              />
+            ))}
+            {Array.from({ length: 5 }, (_, i) => (
+              <line
+                key={`h${i}`}
+                x1="0"
+                y1={`${((i + 1) / 6) * 100}%`}
+                x2="100%"
+                y2={`${((i + 1) / 6) * 100}%`}
+                stroke="#38bdf8"
+                strokeWidth="0.4"
+              />
+            ))}
+          </g>
+        </svg>
+
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute left-1/2 top-0 -translate-x-1/2 blur-[80px]"
+            style={{ width: 520, height: 130, background: "radial-gradient(ellipse, rgba(56,189,248,0.22), transparent 70%)" }}
+          />
+        </div>
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+          style={{
+            background: "linear-gradient(90deg, transparent 5%, rgba(56,189,248,0.5) 30%, rgba(56,189,248,0.9) 50%, rgba(56,189,248,0.5) 70%, transparent 95%)",
+            boxShadow: "0 0 12px 2px rgba(56,189,248,0.3)",
+          }}
+        />
+
+        <div className="relative px-3 py-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                style={{
+                  background: "linear-gradient(135deg, rgba(56,189,248,0.2), rgba(56,189,248,0.06))",
+                  border: "1px solid rgba(56,189,248,0.45)",
+                  boxShadow: "0 0 32px rgba(56,189,248,0.35), inset 0 1px 0 rgba(56,189,248,0.4)",
+                }}
+              >
+                <Calendar className="h-4 w-4" style={{ color: "#38bdf8", filter: "drop-shadow(0 0 6px #38bdf8)" }} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[7px] font-black uppercase tracking-[0.55em]" style={{ color: "rgba(56,189,248,0.38)" }}>
+                  Schichtplanung · ODIN
+                </div>
+                <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                  <h1
+                    className="truncate text-[14px] font-black uppercase tracking-[0.2em] text-white"
+                    style={{ textShadow: "0 0 40px rgba(56,189,248,0.7), 0 0 14px rgba(56,189,248,0.5), 0 0 4px rgba(56,189,248,0.4)" }}
+                  >
+                    {t("weekplan.title")}
+                  </h1>
+                  <span className="rounded-full border border-cyan-400/18 bg-cyan-400/10 px-2 py-0.5 text-[8px] font-black tracking-[0.18em] text-cyan-100">
+                    KW {weekNo}
+                  </span>
+                  <span className="rounded-full border border-emerald-400/15 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-black tracking-[0.18em] text-emerald-100">
+                    {visibleEmployees}/{totalEmployees} {de ? "Mitarbeiter" : "Employees"}
+                  </span>
+                  {hasPendingChanges ? (
+                    <span className="rounded-full border border-amber-400/20 bg-amber-500/12 px-2 py-0.5 text-[8px] font-black tracking-[0.18em] text-amber-100">
+                      {dirtyMonths.size} {de ? "offen" : "pending"}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
+              <button
+                type="button"
+                onClick={() => traverseWeek(-1)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-100 transition hover:bg-white/10"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                {de ? "Zurück" : "Back"}
+              </button>
+                <button
+                  type="button"
+                  onClick={jumpToToday}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-300/30 bg-cyan-400/15 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-400/25"
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  {t("weekplan.today")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => traverseWeek(1)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-100 transition hover:bg-white/10"
+                >
+                  {de ? "Weiter" : "Next"}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+                <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-medium text-slate-200">
+                  {weekRangeLabel}
+                </div>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition ${effectiveShowActiveOnly ? "border-cyan-300/35 bg-cyan-400/15 text-cyan-100" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+                  onClick={() => {
+                    setShowActiveOnly(!showActiveOnly);
+                    import("../../api/api").then(({ api }) => {
+                      api.post("/activity/log", {
+                        action: "weekplan_filter_nonworking",
+                        module: "WEEKPLAN",
+                        details: { active: !showActiveOnly }
+                      }).catch(() => { });
+                    });
+                  }}
+                >
+                  {effectiveShowActiveOnly ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  {effectiveShowActiveOnly ? t("weekplan.showActiveOnly") : (de ? "Alle Mitarbeitenden" : "All employees")}
+                </button>
+
+                {canEdit ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditMode((v) => !v)}
+                      disabled={loading}
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${isEditMode ? "border-indigo-300/35 bg-indigo-500/18 text-indigo-100" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}
+                    >
+                      <PencilLine className="h-3.5 w-3.5" />
+                      {isEditMode ? t("weekplan.editOn") : t("weekplan.edit")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveChanges()}
+                      disabled={loading || !hasPendingChanges}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/30 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {t("common.save")}
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleRefresh()}
+                  disabled={refreshing || loading || hasPendingChanges}
+                  className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all hover:bg-cyan-400/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ color: "#38bdf8", border: "1px solid rgba(56,189,248,0.22)" }}
+                  title={hasPendingChanges ? (de ? "Bitte zuerst speichern" : "Please save first") : undefined}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  {refreshing ? (de ? "Lädt..." : "Refreshing") : "Refresh"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      <div className="relative flex min-h-0 flex-1 flex-col px-3 pb-2">
 
       {/* EDIT DIALOG */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -505,70 +780,230 @@ export default function Weekplan() {
         </DialogContent>
       </Dialog>
 
-      {/* TABLE */}
-      <div className="theme-glass-panel rounded-2xl border overflow-x-auto shadow-xl flex-1 min-h-0">
-        <table className="w-full border-collapse text-left">
-          <thead className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur-md shadow-sm">
-            <tr>
-              <th className="sticky left-0 z-50 min-w-[220px] border-r border-border/60 bg-background p-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("common.employee")}</th>
+      {/* Attendance (Kommen / Gehen) Dialog */}
+      <Dialog open={attendanceOpen} onOpenChange={setAttendanceOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{de ? 'Kommen / Gehen' : 'Arrival / Departure'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {attendanceTarget && (
+              <div className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">{attendanceTarget.employeeName}</span> — {attendanceTarget.date}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">{de ? 'Kommen' : 'Arrival'}</label>
+                <Input
+                  type="time"
+                  value={attendanceArrival}
+                  onChange={(e) => setAttendanceArrival(e.target.value)}
+                  placeholder="08:00"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">{de ? 'Gehen' : 'Departure'}</label>
+                <Input
+                  type="time"
+                  value={attendanceDeparture}
+                  onChange={(e) => setAttendanceDeparture(e.target.value)}
+                  placeholder="16:30"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">{de ? 'Notiz' : 'Note'}</label>
+              <Input
+                value={attendanceNote}
+                onChange={(e) => setAttendanceNote(e.target.value)}
+                maxLength={500}
+                placeholder={de ? 'z.B. Arzttermin, früher gegangen...' : 'e.g. doctor appointment, left early...'}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setAttendanceOpen(false)}>{t("common.cancel")}</Button>
+            <Button onClick={applyAttendance}>{de ? 'Speichern' : 'Save'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ PREMIUM TABLE ═══ */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
+        style={isLight ? {
+          background: "#FFFFFF",
+          border: "1px solid rgba(0,0,0,0.08)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)",
+        } : {
+          background: "linear-gradient(180deg, rgba(7,14,34,0.97), rgba(3,8,22,0.99))",
+          border: "1px solid rgba(56,189,248,0.14)",
+          boxShadow: "0 0 0 1px rgba(56,189,248,0.06), 0 18px 60px rgba(2,6,23,0.5), inset 0 1px 0 rgba(56,189,248,0.08)",
+        }}
+      >
+        {/* top glow line */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px"
+          style={{ background: "linear-gradient(90deg, transparent 10%, rgba(56,189,248,0.35) 40%, rgba(56,189,248,0.5) 50%, rgba(56,189,248,0.35) 60%, transparent 90%)" }}
+        />
+
+        {/* The table fills the entire container — no overflow/scroll */}
+        <div className="flex h-full flex-col">
+        <table className="w-full table-fixed border-collapse text-left" style={{ flex: "1 1 0%" }}>
+          <thead>
+            <tr className="border-b border-sky-400/15" style={{ background: isLight ? "rgba(248,249,252,1)" : "rgba(7,19,37,0.98)" }}>
+              <th
+                className="border-r border-sky-400/12 text-left font-black uppercase tracking-[0.22em] text-sky-100/80"
+                style={{ width: "18%", padding: `6px 12px`, fontSize: fitMetrics.headerDayFontSize }}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="h-3.5 w-3.5 text-cyan-400/60" />
+                  <span>{t("common.employee")}</span>
+                  <span className="ml-1 text-[8px] font-medium text-cyan-400/40 tracking-wider">{de ? "Rolle" : "Role"}</span>
+                </div>
+              </th>
               {weekDays.map((d, idx) => {
                 const key = dateKey(d);
                 const holiday = holidays?.[key];
                 const dow = d.getDay();
                 const isWeekend = dow === 0 || dow === 6;
+                const isToday = dateKey(new Date()) === key;
+                const summary = daySummaries[idx];
 
                 return (
                   <th
                     key={idx}
-                    className={`min-w-[90px] border-r border-border/50 p-2 text-center leading-tight select-none transition-colors ${holiday ? "bg-red-500/10" : ""} ${isWeekend && !holiday ? "bg-muted/40" : ""}`}
+                    className={`border-r border-sky-400/8 text-center select-none transition-colors ${holiday ? "bg-rose-500/8" : ""} ${isWeekend && !holiday ? "bg-white/2" : ""} ${isToday ? "bg-cyan-400/8" : ""}`}
+                    style={{ width: `${82 / 7}%`, padding: `6px 2px` }}
                     title={holiday ? `${t("weekplan.holiday")}: ${holiday}` : undefined}
                   >
-                    <div className={`text-[10px] font-bold tracking-widest uppercase ${isWeekend ? 'text-indigo-300/80' : 'text-muted-foreground'}`}>{weekdayAbbrev(d)}</div>
-                    <div className="text-[11px] font-medium text-foreground flex items-center justify-center gap-0.5 mt-0.5">
-                      {d.getDate()}.{pad2(d.getMonth() + 1)}.
-                      {holiday && <span className="text-[10px] text-red-500 ml-0.5 drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">✦</span>}
+                    <div className={`font-black tracking-[0.18em] uppercase ${isToday ? "text-cyan-300" : isWeekend ? "text-sky-200/80" : "text-slate-400"}`} style={{ fontSize: fitMetrics.headerDayFontSize }}>
+                      {weekdayAbbrev(d)}
                     </div>
+                    <div className="mt-0.5 flex items-center justify-center gap-0.5 font-semibold text-slate-100" style={{ fontSize: fitMetrics.headerDateFontSize }}>
+                      {d.getDate()}.{pad2(d.getMonth() + 1)}.
+                      {holiday && <span className="ml-0.5 text-red-400 drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">✦</span>}
+                    </div>
+                    <div className="mt-0.5 flex justify-center">
+                      <span
+                        className={`rounded-full px-1.5 py-px font-black ${summary?.activeCount > 0 ? "text-emerald-300" : "text-slate-600"}`}
+                        style={{ fontSize: fitMetrics.roleFontSize, background: summary?.activeCount > 0 ? "rgba(16,185,129,0.12)" : "transparent" }}
+                      >
+                        {summary?.activeCount || 0}
+                      </span>
+                    </div>
+                    {isToday && (
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.6), transparent)" }} />
+                    )}
                   </th>
                 );
               })}
             </tr>
           </thead>
 
-          <tbody>
-            {employees.map((name, empIdx) => (
+          <tbody className="relative">
+            {!loading && employees.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-14 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <Calendar className="h-10 w-10 text-slate-600" />
+                    <div className="text-sm font-semibold text-slate-300">{de ? "Keine Mitarbeitenden für diese Woche sichtbar" : "No employees visible for this week"}</div>
+                    <div className="max-w-md text-xs text-slate-500">
+                      {de ? "Prüfe den aktiven Filter oder lade den passenden Monatsplan für diese Kalenderwoche." : "Check the active filter or load the relevant monthly schedule for this calendar week."}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ) : null}
+            {employees.map((name, empIdx) => {
+              // Collect all unique roles for this employee in this week
+              const weekRoles = weekDays.map((d) => getRole(name, dateKey(d))).filter(Boolean);
+              const uniqueRoles = [...new Set(weekRoles)];
+
+              return (
               <tr
                 key={name}
-                className={`group relative cursor-pointer border-b border-border/40 transition-colors hover:bg-muted/40 ${name === highlightedEmployee ? "z-10 bg-indigo-500/10 ring-1 ring-indigo-500/30" : ""}`}
+                className={`group cursor-pointer transition-colors hover:bg-white/4 ${name === highlightedEmployee ? "bg-cyan-500/8" : ""}`}
+                style={{ borderBottom: "1px solid rgba(56,189,248,0.06)" }}
               >
-                <td className={`sticky left-0 z-30 min-w-[220px] border-r border-border/50 bg-background p-3 transition-colors group-hover:bg-accent ${name === highlightedEmployee ? "border-indigo-500/30 bg-accent" : ""}`}>
+                <td
+                  className={`border-r border-sky-400/8 transition-colors group-hover:bg-white/2 ${name === highlightedEmployee ? "bg-cyan-500/5" : ""}`}
+                  style={{ padding: `${fitMetrics.rowPy} 10px` }}
+                >
                   <button
-                    className={`w-full text-left text-[13px] tracking-wide transition-colors ${name === highlightedEmployee ? "font-bold text-indigo-600 dark:text-indigo-300" : "font-semibold text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-300"}`}
+                    className={`flex w-full items-center gap-2 text-left transition-colors ${name === highlightedEmployee ? "text-cyan-200" : "text-slate-100 group-hover:text-cyan-200"}`}
                     onClick={() => setHighlightedEmployee(prev => prev === name ? null : name)}
                     title={t("weekplan.highlightHint")}
                   >
-                    {name}
+                    {/* Compact avatar circle */}
+                    <div
+                      className="flex shrink-0 items-center justify-center rounded-full font-black"
+                      style={{
+                        width: 22, height: 22,
+                        fontSize: fitMetrics.nameFontSize - 2,
+                        background: name === highlightedEmployee
+                          ? "linear-gradient(135deg, rgba(56,189,248,0.3), rgba(56,189,248,0.1))"
+                          : "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+                        border: name === highlightedEmployee
+                          ? "1px solid rgba(56,189,248,0.5)"
+                          : "1px solid rgba(255,255,255,0.1)",
+                        color: name === highlightedEmployee ? "#38bdf8" : "rgba(148,163,184,0.8)",
+                      }}
+                    >
+                      {name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold leading-tight" style={{ fontSize: fitMetrics.nameFontSize }}>
+                        {name}
+                      </div>
+                      {/* Show assigned roles as inline badges */}
+                      {uniqueRoles.length > 0 && (
+                        <div className="mt-0.5 flex flex-wrap gap-0.5">
+                          {uniqueRoles.map((rk) => {
+                            const rd = getRoleDef(rk!);
+                            if (!rd) return null;
+                            return (
+                              <span
+                                key={rk}
+                                className={`inline-flex items-center rounded border px-1 py-px font-black ${rd.color}`}
+                                style={{ fontSize: fitMetrics.roleFontSize, lineHeight: 1.1 }}
+                                title={rd.label + (rd.shortText ? ` – ${rd.shortText}` : "")}
+                              >
+                                {rd.symbol}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 </td>
 
                 {weekDays.map((d, dayIdx) => {
                   const code = getShift(name, d);
-                  const info = code ? shiftTypes[code] : null;
                   const cellDateStr = dateKey(d);
                   const cellRole = getRole(name, cellDateStr);
                   const cellRoleDef = cellRole ? getRoleDef(cellRole) : null;
                   const cellComment = getRoleComment(name, cellDateStr);
                   const isSelected = isCellSelected(name, dayIdx);
+                  const isToday = dateKey(new Date()) === cellDateStr;
 
-                  // Shift Badge Colors matching ShiftBadge in ShiftplanTable
-                  let colorClass = "bg-background/85 text-muted-foreground border-border/70";
+                  // Shift Badge Colors
+                  let shiftBg = "transparent";
+                  let shiftColor = "rgba(100,116,139,0.5)";
+                  let shiftBorder = "rgba(255,255,255,0.06)";
                   if (code) {
                     const c = code.toUpperCase();
-                    if (c.startsWith("E")) colorClass = "bg-orange-500/15 text-orange-400 border-orange-500/20";
-                    else if (c.startsWith("L")) colorClass = "bg-yellow-500/15 text-yellow-500 border-yellow-500/20";
-                    else if (c === "N") colorClass = "bg-blue-500/15 text-blue-400 border-blue-500/20";
-                    else if (c === "FS") colorClass = "bg-teal-500/15 text-teal-400 border-teal-500/20";
-                    else if (c === "DBS") colorClass = "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/20";
-                    else if (c === "S" || c === "ABW" || c === "SEMINAR") colorClass = "bg-purple-500/15 text-purple-400 border-purple-500/20";
+                    if (c.startsWith("E")) { shiftBg = "rgba(251,146,60,0.12)"; shiftColor = "#fb923c"; shiftBorder = "rgba(251,146,60,0.25)"; }
+                    else if (c.startsWith("L")) { shiftBg = "rgba(250,204,21,0.10)"; shiftColor = "#facc15"; shiftBorder = "rgba(250,204,21,0.22)"; }
+                    else if (c === "N") { shiftBg = "rgba(56,189,248,0.12)"; shiftColor = "#38bdf8"; shiftBorder = "rgba(56,189,248,0.25)"; }
+                    else if (c === "FS") { shiftBg = "rgba(20,184,166,0.10)"; shiftColor = "#2dd4bf"; shiftBorder = "rgba(20,184,166,0.22)"; }
+                    else if (c === "DBS") { shiftBg = "rgba(232,121,249,0.10)"; shiftColor = "#e879f9"; shiftBorder = "rgba(232,121,249,0.22)"; }
+                    else if (c === "ABW" || c === "S" || c === "SEMINAR") { shiftBg = "rgba(168,85,247,0.10)"; shiftColor = "#a855f7"; shiftBorder = "rgba(168,85,247,0.22)"; }
                   }
 
                   const cellContent = (
@@ -577,7 +1012,8 @@ export default function Weekplan() {
                       tabIndex={canEdit ? 0 : -1}
                       data-week-emp-index={empIdx}
                       data-week-day-index={dayIdx}
-                      className={`border-r border-border/40 p-2 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-accent/70" : ""} ${isSelected ? "bg-indigo-500/15 ring-2 ring-indigo-500" : ""}`}
+                      className={`border-r border-sky-400/6 text-center transition-colors ${isEditMode ? "cursor-pointer hover:bg-cyan-500/8" : ""} ${isSelected ? "bg-cyan-400/12 ring-1 ring-inset ring-cyan-400/60" : ""} ${isToday && !isSelected ? "bg-cyan-400/4" : ""}`}
+                      style={{ padding: `${fitMetrics.rowPy} ${fitMetrics.cellPx}` }}
                       onKeyDown={(e) => {
                         if (!canEdit) return;
                         if (!e.shiftKey) return;
@@ -615,31 +1051,54 @@ export default function Weekplan() {
                         openEditCell(name, d);
                       }}
                     >
-                      <div className="flex flex-col items-center gap-0.5">
+                      <div className="flex flex-col items-center justify-center gap-px">
                         {code ? (
-                          <div className={`inline-flex items-center justify-center min-w-[32px] h-[22px] px-2 text-[11px] font-bold rounded-md border ${colorClass}`}>
+                          <span
+                            className="inline-flex items-center justify-center rounded font-bold"
+                            style={{
+                              fontSize: fitMetrics.codeFontSize,
+                              color: shiftColor,
+                              background: shiftBg,
+                              border: `1px solid ${shiftBorder}`,
+                              padding: "1px 5px",
+                              textShadow: `0 0 8px ${shiftColor}40`,
+                              lineHeight: 1.4,
+                            }}
+                          >
                             {code}
-                          </div>
+                          </span>
                         ) : (
-                          isEditMode ? <div className="text-[10px] text-muted-foreground/30">—</div> : null
+                          isEditMode ? <span className="text-slate-600" style={{ fontSize: fitMetrics.codeFontSize }}>—</span> : null
                         )}
                         {cellRoleDef && (
-                          <div className="mt-0.5 flex max-w-[84px] flex-col items-center gap-0.5" title={cellComment || undefined}>
-                            <span className={`inline-flex min-w-[28px] items-center justify-center rounded-md border px-1.5 py-px text-[9px] font-black tracking-wide ${cellRoleDef.color}`}>
-                              {cellRoleDef.symbol}
-                            </span>
-                            <span className="text-center text-[8px] leading-tight text-muted-foreground">
-                              {cellComment || cellRoleDef.shortText}
-                            </span>
-                          </div>
+                          <span
+                            className={`inline-flex items-center justify-center rounded border font-black ${cellRoleDef.color}`}
+                            style={{ fontSize: fitMetrics.roleFontSize, padding: "0px 4px", lineHeight: 1.3 }}
+                            title={cellComment || cellRoleDef.shortText || undefined}
+                          >
+                            {cellRoleDef.symbol}
+                          </span>
                         )}
+                        {(() => {
+                          const att = attendanceMap[attendanceKey(name, cellDateStr)];
+                          if (!att || (!att.arrival_time && !att.departure_time)) return null;
+                          return (
+                            <span
+                              className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 border border-emerald-400/20 text-emerald-400 dark:text-emerald-300 px-1"
+                              style={{ fontSize: "9px", lineHeight: 1.3 }}
+                              title={`${att.arrival_time?.substring(0,5) || "?"} – ${att.departure_time?.substring(0,5) || "?"}`}
+                            >
+                              <Clock className="h-2.5 w-2.5" />
+                              {att.arrival_time?.substring(0, 5) || "?"}-{att.departure_time?.substring(0, 5) || "?"}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
                   );
 
                   // Wrap cell in ContextMenu for role assignment if user can edit
                   if (canEdit) {
-                    // Determine target days for the context menu action
                     const targetDayIndices = (isSelected && selectedCells?.employee === name)
                       ? Array.from(selectedCells.dayIndices)
                       : [dayIdx];
@@ -662,7 +1121,7 @@ export default function Weekplan() {
                               onClick={() => applyRoleToSelection(name, targetDayIndices, r.key)}
                               className="flex items-center gap-2"
                             >
-                              <span className={`inline-flex min-w-[28px] items-center justify-center rounded border px-1 py-px text-[9px] font-black ${r.color}`}>
+                              <span className={`inline-flex min-w-7 items-center justify-center rounded border px-1 py-px text-[9px] font-black ${r.color}`}>
                                 {r.symbol}
                               </span>
                               <div className="flex flex-col">
@@ -683,10 +1142,27 @@ export default function Weekplan() {
                                 {de ? 'Kommentar bearbeiten' : 'Edit Comment'}
                               </ContextMenuItem>
                               <ContextMenuItem
+                                onClick={() => openAttendanceDialog(name, cellDateStr)}
+                              >
+                                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                                {de ? 'Kommen / Gehen' : 'Arrival / Departure'}
+                              </ContextMenuItem>
+                              <ContextMenuItem
                                 onClick={() => removeRoleFromCell(name, dayIdx)}
                                 className="text-red-400"
                               >
                                 {t("weekplan.removeRole")}
+                              </ContextMenuItem>
+                            </>
+                          )}
+                          {!cellRole && targetDayIndices.length === 1 && (
+                            <>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => openAttendanceDialog(name, cellDateStr)}
+                              >
+                                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                                {de ? 'Kommen / Gehen' : 'Arrival / Departure'}
                               </ContextMenuItem>
                             </>
                           )}
@@ -709,14 +1185,22 @@ export default function Weekplan() {
                   return cellContent;
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
+        </div>
 
         {loading ? (
-          <div className="p-4 text-center text-muted-foreground">{t("weekplan.loading")}</div>
+          <div className="absolute inset-0 flex items-center justify-center bg-[#020b1e]/80 backdrop-blur-sm">
+            <div className="flex items-center gap-3 rounded-xl border border-cyan-400/20 bg-[#071325] px-5 py-3">
+              <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
+              <span className="text-sm font-semibold text-slate-200">{t("weekplan.loading")}</span>
+            </div>
+          </div>
         ) : null}
-      </div>
-    </div >
+      </motion.div>
+    </div>
+    </div>
   );
 }

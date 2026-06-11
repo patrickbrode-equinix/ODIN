@@ -208,8 +208,16 @@ app.use("/api/teams", teamsRoutes);
 // Events (photos for TV slide, auth-protected upload)
 app.use("/api/events", eventsRoutes);
 
+// Attendance tracking (Kommen/Gehen)
+import attendanceRoutes from "./routes/attendance.js";
+app.use("/api/attendance", attendanceRoutes);
+
 // Assignment Engine (ODIN-Logik, Phase 1 Shadow Mode)
 app.use("/api/assignment", assignmentRoutes);
+
+// Assignment Actions / Writeback (safe, auditable Jarvis writeback layer)
+import assignmentActionsRoutes from "./routes/assignmentActions.js";
+app.use("/api/assignment-actions", assignmentActionsRoutes);
 
 // Legacy engine endpoints kept for backwards compatibility
 app.use("/api/engine", engineRoutes);

@@ -17,13 +17,11 @@ import {
   getEligibleColleagues,
   type EligibleColleague,
 } from "../../api/userPreferences";
-import { dispatchColleagueSelections, listenColleagueSelections } from "../../utils/colleaguePreferenceSync";
 
 const MAX_SELECTION = 3;
 
 const COPY = {
   de: {
-    conflictResolved: "Konflikt bereinigt: Ausschlusskollegen wurden aus den Wunschkollegen entfernt.",
     saved: "Gespeichert",
     saveFailed: "Fehler beim Speichern",
     loading: "Lade Kollegenliste…",
@@ -34,10 +32,8 @@ const COPY = {
     noSearchResults: "Keine Treffer",
     noColleagues: "Keine Kollegen verfügbar",
     neverLoggedIn: "Noch nie eingeloggt",
-    blockedByAvoid: "Bereits in „Nicht mit diesen Kollegen arbeiten“ ausgewählt",
   },
   en: {
-    conflictResolved: "Conflict resolved: excluded colleagues were removed from preferred colleagues.",
     saved: "Saved",
     saveFailed: "Failed to save",
     loading: "Loading colleague list...",
@@ -48,10 +44,8 @@ const COPY = {
     noSearchResults: "No matches",
     noColleagues: "No colleagues available",
     neverLoggedIn: "Never logged in",
-    blockedByAvoid: "Already selected in 'Do not work with these colleagues'",
   },
   ro: {
-    conflictResolved: "Conflict rezolvat: colegii excluși au fost eliminați din colegii preferați.",
     saved: "Salvat",
     saveFailed: "Salvarea a eșuat",
     loading: "Se încarcă lista colegilor...",
@@ -62,10 +56,8 @@ const COPY = {
     noSearchResults: "Niciun rezultat",
     noColleagues: "Nu există colegi disponibili",
     neverLoggedIn: "Nu s-a autentificat niciodată",
-    blockedByAvoid: "Deja selectat la 'Nu lucra cu acești colegi'",
   },
   ar: {
-    conflictResolved: "تمت معالجة التعارض: تمت إزالة الزملاء المستبعدين من الزملاء المفضلين.",
     saved: "تم الحفظ",
     saveFailed: "تعذر الحفظ",
     loading: "جار تحميل قائمة الزملاء...",
@@ -76,18 +68,8 @@ const COPY = {
     noSearchResults: "لا توجد نتائج",
     noColleagues: "لا يوجد زملاء متاحون",
     neverLoggedIn: "لم يسجل الدخول من قبل",
-    blockedByAvoid: "محدد بالفعل ضمن 'لا تعمل مع هؤلاء الزملاء'",
   },
 } as const;
-
-function normalizeNameList(values: unknown): string[] {
-  if (!Array.isArray(values)) return [];
-  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
-}
-
-function isSameList(left: string[], right: string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
 
 export default function PreferredColleagues() {
   const { language } = useLanguage();
@@ -96,7 +78,6 @@ export default function PreferredColleagues() {
   const [eligible, setEligible] = useState<EligibleColleague[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [initial, setInitial] = useState<string[]>([]);
-  const [avoidColleagues, setAvoidColleagues] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -106,16 +87,13 @@ export default function PreferredColleagues() {
   useEffect(() => {
     async function load() {
       try {
-        const [elig, prefs, employeePrefs] = await Promise.all([
+        const [elig, prefs] = await Promise.all([
           getEligibleColleagues(),
           getPreferredColleagues(),
-          api.get("/shift-config/employee-preferences").catch(() => ({ data: { preferences: null } })),
         ]);
         setEligible(elig);
-        const normalizedSelected = normalizeNameList(prefs);
-        setSelected(normalizedSelected);
-        setInitial(normalizedSelected);
-        setAvoidColleagues(normalizeNameList(employeePrefs.data?.preferences?.avoid_colleagues || []));
+        setSelected(prefs);
+        setInitial(prefs);
       } catch {
         // silent
       } finally {
@@ -132,27 +110,9 @@ export default function PreferredColleagues() {
     return eligible.filter((entry) => entry.name.toLowerCase().includes(q));
   }, [eligible, search]);
 
-  useEffect(() => {
-    return listenColleagueSelections(({ avoid }) => {
-      const normalizedAvoid = normalizeNameList(avoid);
-      setAvoidColleagues((current) => isSameList(current, normalizedAvoid) ? current : normalizedAvoid);
-      setSelected((current) => {
-        const nextSelected = current.filter((name) => !normalizedAvoid.includes(name));
-        if (nextSelected.length === current.length) return current;
-        setMsg({ ok: false, text: copy.conflictResolved });
-        return nextSelected;
-      });
-    });
-  }, [copy.conflictResolved]);
-
-  useEffect(() => {
-    dispatchColleagueSelections({ preferred: selected, avoid: avoidColleagues });
-  }, [selected, avoidColleagues]);
-
   /* TOGGLE */
   function toggle(name: string) {
     setSelected((prev) => {
-      if (avoidColleagues.includes(name)) return prev;
       if (prev.includes(name)) return prev.filter((n) => n !== name);
       if (prev.length >= MAX_SELECTION) return prev; // limit
       return [...prev, name];
@@ -161,12 +121,6 @@ export default function PreferredColleagues() {
 
   /* SAVE */
   async function save() {
-    const overlap = selected.filter((name) => avoidColleagues.includes(name));
-    if (overlap.length > 0) {
-      setMsg({ ok: false, text: `Konflikt mit Ausschlussliste: ${overlap.join(", ")}` });
-      return;
-    }
-
     setSaving(true);
     setMsg(null);
     try {
@@ -239,8 +193,7 @@ export default function PreferredColleagues() {
         )}
         {filtered.map((name) => {
           const checked = selected.includes(name.name);
-          const blockedByAvoid = avoidColleagues.includes(name.name);
-          const disabled = blockedByAvoid || (!checked && selected.length >= MAX_SELECTION);
+          const disabled = !checked && selected.length >= MAX_SELECTION;
           const absoluteLastLogin = formatAbsoluteDateTime(name.lastLogin, locale);
           const relativeLastLogin = formatRelativeTime(name.lastLogin, locale);
           return (
@@ -267,11 +220,6 @@ export default function PreferredColleagues() {
                     ? `${absoluteLastLogin || name.lastLogin} • ${relativeLastLogin || "-"}`
                     : copy.neverLoggedIn}
                 </div>
-                {blockedByAvoid && (
-                  <div className="text-[11px] text-muted-foreground">
-                    {copy.blockedByAvoid}
-                  </div>
-                )}
               </div>
             </label>
           );
@@ -293,7 +241,7 @@ export default function PreferredColleagues() {
           className="h-7 px-3 text-[11px] font-bold tracking-wider uppercase bg-indigo-600/80 hover:bg-indigo-600 text-white border border-indigo-400/30 shadow-sm disabled:opacity-40"
         >
           <Save className="w-3.5 h-3.5 mr-1.5" />
-          {saving ? "Speichern…" : "Speichern"}
+          {saving ? (language === "de" ? "Speichern…" : "Saving…") : (language === "de" ? "Speichern" : "Save")}
         </Button>
       </div>
     </div>

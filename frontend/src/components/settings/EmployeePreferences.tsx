@@ -6,12 +6,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../../api/api';
 import { EnterpriseCard } from '../layout/EnterpriseLayout';
-import { dispatchColleagueSelections, listenColleagueSelections } from '../../utils/colleaguePreferenceSync';
 import { getEligibleColleagues, type EligibleColleague } from '../../api/userPreferences';
 import { useLanguage, getLanguageLocale } from '../../context/LanguageContext';
 import { formatAbsoluteDateTime, formatRelativeTime } from '../../utils/loginStatus';
+import { dedupeEmployeeNames } from '../../utils/employeeNames';
 import {
-  Heart, Moon, Sun, CalendarDays, UserX, Users, Briefcase,
+  Heart, Moon, Sun, CalendarDays, Users, Briefcase,
   HelpCircle, Save, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 
@@ -27,9 +27,11 @@ const COPY = {
     preferredShiftsHelp: 'Wähle die Schichten, die du bevorzugst. Die Planung versucht, dich diesen Schichten zuzuordnen.',
     unwantedShifts: 'Unerwünschte Schichten',
     unwantedShiftsHelp: 'Wähle die Schichten, die du vermeiden möchtest. Die Planung versucht, dich nicht diesen Schichten zuzuordnen.',
-    holidays: 'Feiertagswünsche',
-    holidaysHelp: 'Wähle bundesweite und hessische Feiertage, an denen du nach Möglichkeit nicht eingeplant werden möchtest. Diese Auswahl wirkt als weicher Mitarbeiterwunsch in der Schichtplanung.',
-    ramadanHint: 'Wenn du Ramadan auswählst, behandelt die Planung das als Entlastungswunsch im Ramadan-Zeitraum. Spät- und besonders Nachtschichten werden dann nach Möglichkeit schwächer priorisiert.',
+    holidays: 'Feiertage, an denen du arbeiten möchtest',
+    holidaysHelp: 'Wähle bundesweite und hessische Feiertage, an denen du nach Möglichkeit eingeplant werden möchtest. Mehrfachauswahl ist möglich und wirkt als weicher Mitarbeiterwunsch in der Schichtplanung.',
+    ramadanHint: 'Wenn du Ramadan aktivierst, behandelt die Planung das als positiven Wunsch, im Ramadan-Zeitraum eingeplant zu werden.',
+    ramadanWork: 'Im Ramadan arbeiten',
+    ramadanWorkHelp: 'Aktiviere diese Option, wenn du im Ramadan grundsätzlich arbeiten möchtest.',
     nightsLoad: 'Nachtschichten & Belastung',
     nightsLoadHelp: 'Lege fest, wie viele Nachtschichten du maximal pro Monat machen möchtest, und deine generelle Belastungspräferenz.',
     maxNights: 'Max. Nachtschichten/Monat (leer = keine Begrenzung)',
@@ -43,17 +45,6 @@ const COPY = {
     weekDays: 'Bevorzugte & Gesperrte Wochentage',
     weekDaysHelp: 'Wähle Tage, an denen du bevorzugt (grün) oder ungern (rot) arbeiten möchtest.',
     weekDayLegend: '✓ = bevorzugt, ✗ = gesperrt',
-    avoidColleagues: 'Nicht mit diesen Kollegen arbeiten',
-    avoidHelp: 'Wähle Kollegen, mit denen du nach Möglichkeit nicht gleichzeitig eingeplant werden möchtest. Dies ist ein weicher Wunsch.',
-    avoidHint: 'Sobald ein Mitarbeiter in den Wunschkollegen ausgewählt ist, wird er hier automatisch gesperrt. Umgekehrt werden Konflikte direkt bereinigt, damit beide Listen logisch konsistent bleiben.',
-    searchEmployees: 'Mitarbeiter suchen',
-    filterByName: 'Nach Namen filtern...',
-    excludedEmployees: 'Mitarbeiter ausgeschlossen',
-    lockedByPreferred: 'Bereits in Wunschkollegen ausgewählt',
-    softExclude: 'Als weicher Ausschlusswunsch speichern',
-    neverLoggedIn: 'Noch nie eingeloggt',
-    noMatchingEmployees: 'Keine passenden Mitarbeiter gefunden.',
-    noColleagues: 'Keine Kollegen verfügbar.',
     notes: 'Anmerkungen',
     notesHelp: 'Zusätzliche Hinweise für die Planer, z.B. besondere Umstände, Teilzeit, oder andere Wünsche.',
     notesPlaceholder: 'Optionale Anmerkungen...',
@@ -71,9 +62,11 @@ const COPY = {
     preferredShiftsHelp: 'Choose the shifts you prefer. Planning will try to assign you to these shifts.',
     unwantedShifts: 'Unwanted shifts',
     unwantedShiftsHelp: 'Choose the shifts you want to avoid. Planning will try not to assign you to these shifts.',
-    holidays: 'Holiday preferences',
-    holidaysHelp: 'Choose nationwide and Hessen public holidays on which you should preferably not be scheduled. This acts as a soft planning preference.',
-    ramadanHint: 'If you select Ramadan, planning treats this as a reduced-load preference during Ramadan. Late and especially night shifts are then deprioritized when possible.',
+    holidays: 'Holidays you want to work',
+    holidaysHelp: 'Choose nationwide and Hessen public holidays on which you would prefer to be scheduled. Multiple selections are supported and act as a soft planning preference.',
+    ramadanHint: 'If you enable Ramadan, planning treats this as a positive preference to be scheduled during the Ramadan period.',
+    ramadanWork: 'Work during Ramadan',
+    ramadanWorkHelp: 'Enable this if you generally want to work during Ramadan.',
     nightsLoad: 'Night shifts & workload',
     nightsLoadHelp: 'Set how many night shifts you want to work at most per month and your general workload preference.',
     maxNights: 'Max. night shifts/month (empty = no limit)',
@@ -87,17 +80,6 @@ const COPY = {
     weekDays: 'Preferred & blocked weekdays',
     weekDaysHelp: 'Choose the days on which you prefer to work (green) or prefer not to work (red).',
     weekDayLegend: '✓ = preferred, ✗ = blocked',
-    avoidColleagues: 'Do not work with these colleagues',
-    avoidHelp: 'Choose colleagues you should preferably not be scheduled with at the same time. This is a soft preference.',
-    avoidHint: 'As soon as an employee is selected as a preferred colleague, they are automatically blocked here. Conflicts are also cleaned up directly so both lists remain logically consistent.',
-    searchEmployees: 'Search employees',
-    filterByName: 'Filter by name...',
-    excludedEmployees: 'employees excluded',
-    lockedByPreferred: 'Already selected in preferred colleagues',
-    softExclude: 'Store as a soft exclusion preference',
-    neverLoggedIn: 'Never logged in',
-    noMatchingEmployees: 'No matching employees found.',
-    noColleagues: 'No colleagues available.',
     notes: 'Notes',
     notesHelp: 'Additional notes for planners, for example special circumstances, part-time status, or other wishes.',
     notesPlaceholder: 'Optional notes...',
@@ -153,7 +135,6 @@ const HOLIDAY_OPTIONS_DE = [
   { value: '1. Weihnachtstag', label: '1. Weihnachtstag', scope: 'Bundesweit' },
   { value: '2. Weihnachtstag', label: '2. Weihnachtstag', scope: 'Bundesweit' },
   { value: 'Fronleichnam', label: 'Fronleichnam', scope: 'Hessen' },
-  { value: 'Ramadan', label: 'Ramadan', scope: 'Entlastungswunsch' },
 ] as const;
 const HOLIDAY_OPTIONS_EN = [
   { value: 'Neujahr', label: "New Year's Day", scope: 'Nationwide' },
@@ -166,7 +147,6 @@ const HOLIDAY_OPTIONS_EN = [
   { value: '1. Weihnachtstag', label: 'Christmas Day', scope: 'Nationwide' },
   { value: '2. Weihnachtstag', label: 'Boxing Day', scope: 'Nationwide' },
   { value: 'Fronleichnam', label: 'Corpus Christi', scope: 'Hessen' },
-  { value: 'Ramadan', label: 'Ramadan', scope: 'Reduced-load preference' },
 ] as const;
 
 const DEFAULTS: Preferences = {
@@ -177,7 +157,7 @@ const DEFAULTS: Preferences = {
 
 function normalizeNameList(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
-  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+  return dedupeEmployeeNames(values);
 }
 
 function isSameList(left: string[], right: string[]) {
@@ -241,27 +221,6 @@ export default function EmployeePreferences() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    return listenColleagueSelections(({ preferred }) => {
-      const normalizedPreferred = normalizeNameList(preferred);
-      setPreferredColleagues((current) => isSameList(current, normalizedPreferred) ? current : normalizedPreferred);
-      setPrefs((current) => {
-        const nextAvoid = current.avoid_colleagues.filter((name) => !normalizedPreferred.includes(name));
-        if (nextAvoid.length === current.avoid_colleagues.length) return current;
-        setDirty(true);
-        showToast(copy.conflictResolved, 'err');
-        return { ...current, avoid_colleagues: nextAvoid };
-      });
-    });
-  }, [copy.conflictResolved]);
-
-  useEffect(() => {
-    dispatchColleagueSelections({
-      preferred: preferredColleagues,
-      avoid: prefs.avoid_colleagues,
-    });
-  }, [preferredColleagues, prefs.avoid_colleagues]);
-
   const filteredColleagues = useMemo(() => {
     const query = colleagueSearch.trim().toLowerCase();
     if (!query) return colleagues;
@@ -269,14 +228,9 @@ export default function EmployeePreferences() {
   }, [colleagues, colleagueSearch]);
 
   const handleSave = async () => {
-    const overlap = prefs.avoid_colleagues.filter((name) => preferredColleagues.includes(name));
-    if (overlap.length > 0) {
-      showToast(`${copy.colleagueConflict}: ${overlap.join(', ')}`, 'err');
-      return;
-    }
     setSaving(true);
     try {
-      await api.put('/shift-config/employee-preferences', prefs);
+      await api.put('/shift-config/employee-preferences', { ...prefs, avoid_colleagues: [] });
       showToast(copy.saved);
       setDirty(false);
     } catch (e: any) {
@@ -298,14 +252,6 @@ export default function EmployeePreferences() {
       return { ...prev, [field]: next };
     });
     setDirty(true);
-  };
-
-  const toggleAvoidColleague = (name: string) => {
-    if (preferredColleagues.includes(name)) {
-      showToast(`${name} ${copy.alreadyPreferredSuffix}`, 'err');
-      return;
-    }
-    toggleInArray('avoid_colleagues', name);
   };
 
   if (loading) return <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" /></div>;
@@ -364,7 +310,7 @@ export default function EmployeePreferences() {
       {/* Holiday Preferences */}
       <EnterpriseCard>
         <h3 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
-          <CalendarDays className="w-4 h-4 text-rose-400" />
+          <CalendarDays className="w-4 h-4 text-emerald-400" />
           {copy.holidays}
           <HelpTip text={copy.holidaysHelp} />
         </h3>
@@ -372,22 +318,36 @@ export default function EmployeePreferences() {
           {holidayOptions.map((holiday) => {
             const checked = prefs.preferred_holidays.includes(holiday.value);
             return (
-              <label key={holiday.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${checked ? 'border-rose-500/40 bg-rose-500/10' : 'border-border/30 bg-background/40 hover:border-rose-500/25'}`}>
+              <label key={holiday.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${checked ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-border/30 bg-background/40 hover:border-emerald-500/25'}`}>
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggleInArray('preferred_holidays', holiday.value)}
-                  className="mt-0.5 h-4 w-4 rounded border-border/40 bg-background/80 text-rose-500"
+                  className="mt-0.5 h-4 w-4 rounded border-border/40 bg-background/80 text-emerald-500"
                 />
                 <div className="min-w-0">
-                  <div className={`text-sm font-medium ${checked ? 'text-rose-300' : 'text-foreground'}`}>{holiday.label}</div>
+                  <div className={`text-sm font-medium ${checked ? 'text-emerald-300' : 'text-foreground'}`}>{holiday.label}</div>
                   <div className="text-[11px] text-muted-foreground">{holiday.scope}</div>
                 </div>
               </label>
             );
           })}
         </div>
-        <div className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={prefs.preferred_holidays.includes('Ramadan')}
+              onChange={() => toggleInArray('preferred_holidays', 'Ramadan')}
+              className="mt-0.5 h-4 w-4 rounded border-border/40 bg-background/80 text-amber-500"
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">{copy.ramadanWork}</div>
+              <div className="text-[11px] text-muted-foreground">{copy.ramadanWorkHelp}</div>
+            </div>
+          </label>
+        </div>
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
           {copy.ramadanHint}
         </div>
       </EnterpriseCard>
@@ -452,76 +412,6 @@ export default function EmployeePreferences() {
           })}
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">{copy.weekDayLegend}</p>
-      </EnterpriseCard>
-
-      {/* Avoid Colleagues */}
-      <EnterpriseCard>
-        <h3 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
-          <UserX className="w-4 h-4 text-red-400" />
-          {copy.avoidColleagues}
-          <HelpTip text={copy.avoidHelp} />
-        </h3>
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-          {copy.avoidHint}
-        </div>
-        {colleagues.length > 8 && (
-          <div>
-            <label className="text-xs text-muted-foreground">{copy.searchEmployees}</label>
-            <input
-              type="text"
-              value={colleagueSearch}
-              onChange={(event) => setColleagueSearch(event.target.value)}
-              placeholder={copy.filterByName}
-              className="mt-1 w-full rounded-lg border border-border/30 bg-background/40 px-3 py-2 text-sm text-foreground"
-            />
-          </div>
-        )}
-        <p className="text-[11px] text-muted-foreground">{prefs.avoid_colleagues.length} {copy.excludedEmployees}</p>
-        <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
-          {filteredColleagues.map((entry) => {
-            const checked = prefs.avoid_colleagues.includes(entry.name);
-            const lockedByPreferred = preferredColleagues.includes(entry.name);
-            const absoluteLastLogin = formatAbsoluteDateTime(entry.lastLogin, locale);
-            const relativeLastLogin = formatRelativeTime(entry.lastLogin, locale);
-            return (
-              <label
-                key={entry.name}
-                className={`flex items-center gap-3 rounded-lg border p-2.5 transition ${
-                  checked
-                    ? 'border-red-500/40 bg-red-500/15'
-                    : 'border-border/20 bg-background/30 hover:border-red-500/25'
-                } ${lockedByPreferred ? 'opacity-60' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={lockedByPreferred}
-                  onChange={() => toggleAvoidColleague(entry.name)}
-                  className="h-4 w-4 rounded border-border/40 bg-background/80 text-red-500"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${entry.hasLoggedIn ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]' : 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.45)]'}`} />
-                    <div className={`text-sm font-medium ${checked ? 'text-red-300' : 'text-foreground'}`}>{entry.name}</div>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {lockedByPreferred ? copy.lockedByPreferred : copy.softExclude}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {entry.hasLoggedIn
-                      ? `${absoluteLastLogin || entry.lastLogin} • ${relativeLastLogin || '-'}`
-                      : copy.neverLoggedIn}
-                  </div>
-                </div>
-              </label>
-            );
-          })}
-          {filteredColleagues.length === 0 && (
-            <p className="py-2 text-xs italic text-muted-foreground">
-              {colleagueSearch ? copy.noMatchingEmployees : copy.noColleagues}
-            </p>
-          )}
-        </div>
       </EnterpriseCard>
 
       {/* Notes */}

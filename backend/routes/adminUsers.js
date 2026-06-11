@@ -18,6 +18,7 @@ import { provisionUsersFromShiftplan } from "../services/shiftUserProvisioning.s
 import { logActivity } from "./activity.js";
 import { buildBaseAccessPolicy } from "../auth/accessControl.js";
 import { resolveUserRole } from "../auth/accessControl.js";
+import { isLoginNameConflictError, validateLoginName } from "../lib/loginName.js";
 
 const router = express.Router();
 
@@ -46,6 +47,26 @@ function sanitizeAccessOverride(input) {
   return next;
 }
 
+function buildLoginNameErrorResponse(code) {
+  if (code === "LOGIN_NAME_EXISTS") {
+    return {
+      status: 409,
+      body: {
+        code,
+        message: "Diese Benutzerkennung existiert bereits. Bitte Benutzerkennung manuell anpassen.",
+      },
+    };
+  }
+
+  return {
+    status: 400,
+    body: {
+      code,
+      message: "Benutzerkennung muss dem Format Vorname@Nachname entsprechen.",
+    },
+  };
+}
+
 /* ———————————————— */
 /* GET – LIST USERS                                 */
 /* view access                                      */
@@ -63,6 +84,7 @@ router.get(
           u.id,
           u.first_name AS "firstName",
           u.last_name  AS "lastName",
+          u.login_name AS "loginName",
           u.email,
           u.ibx,
           u.department,
@@ -101,26 +123,43 @@ router.post(
   requireAuth,
   requirePageAccess("user_management", "write"),
   async (req, res) => {
-    const { firstName, lastName, email, ibx, department, group, isAdmin, initialPassword } = req.body;
+    const { firstName, lastName, loginName, email, ibx, department, group, isAdmin, initialPassword } = req.body;
 
-    if (!firstName || !lastName || !email || !ibx || !(department || group)) {
+    if (!firstName || !lastName || !loginName || !ibx || !(department || group) || !initialPassword) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
     try {
-      const emailLower = normalizeEmail(email);
+      const normalizedEmail = email ? normalizeEmail(email) : null;
       const groupKey = normalizeGroup(department || group);
+      const loginValidation = validateLoginName(loginName);
 
       if (!(await groupExists(groupKey))) {
         return res.status(400).json({ message: "Invalid group" });
       }
 
-      const existing = await db.query(
-        `SELECT 1 FROM users WHERE email = $1`,
-        [emailLower]
+      if (!loginValidation.ok) {
+        const response = buildLoginNameErrorResponse(loginValidation.code);
+        return res.status(response.status).json(response.body);
+      }
+
+      if (normalizedEmail) {
+        const existingEmail = await db.query(
+          `SELECT 1 FROM users WHERE email = $1`,
+          [normalizedEmail]
+        );
+        if (existingEmail.rowCount > 0) {
+          return res.status(409).json({ message: "User already exists", code: "EMAIL_EXISTS" });
+        }
+      }
+
+      const existingLogin = await db.query(
+        `SELECT 1 FROM users WHERE LOWER(login_name) = LOWER($1)`,
+        [loginValidation.value]
       );
-      if (existing.rowCount > 0) {
-        return res.status(409).json({ message: "User already exists" });
+      if (existingLogin.rowCount > 0) {
+        const response = buildLoginNameErrorResponse("LOGIN_NAME_EXISTS");
+        return res.status(response.status).json(response.body);
       }
 
       const username =
@@ -136,6 +175,7 @@ router.post(
           first_name,
           last_name,
           username,
+          login_name,
           email,
           password_hash,
           user_group,
@@ -146,14 +186,15 @@ router.post(
           is_root,
           must_change_password
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,false,true)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,false,true)
         RETURNING id
         `,
         [
           firstName,
           lastName,
           username,
-          emailLower,
+          loginValidation.value,
+          normalizedEmail,
           passwordHash,
           groupKey,
           groupKey,
@@ -164,6 +205,10 @@ router.post(
 
       res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
+      if (isLoginNameConflictError(err)) {
+        const response = buildLoginNameErrorResponse("LOGIN_NAME_EXISTS");
+        return res.status(response.status).json(response.body);
+      }
       console.error("USER CREATE ERROR:", err);
       res.status(500).json({ message: "Server error" });
     }
@@ -182,6 +227,7 @@ router.get(
         `
         SELECT
           id,
+          login_name AS "loginName",
           email,
           user_group AS "group",
           is_root,
@@ -202,6 +248,7 @@ router.get(
 
       return res.json({
         id: user.id,
+        loginName: user.loginName,
         email: user.email,
         group: user.group,
         role,
@@ -225,7 +272,7 @@ router.put(
 
     try {
       const current = await db.query(
-        `SELECT id, email, is_root, access_override AS "accessOverride" FROM users WHERE id = $1`,
+        `SELECT id, login_name AS "loginName", email, is_root, access_override AS "accessOverride" FROM users WHERE id = $1`,
         [targetUserId]
       );
 
@@ -253,6 +300,7 @@ router.put(
         {
           previous: sanitizeAccessOverride(current.rows[0].accessOverride || {}),
           next: sanitizedOverride,
+          targetLoginName: current.rows[0].loginName,
           targetEmail: current.rows[0].email,
         }
       );
@@ -312,11 +360,11 @@ router.patch(
   requirePageAccess("user_management", "write"),
   async (req, res) => {
     const targetUserId = Number(req.params.id);
-    const { group, department, ibx, firstName, lastName, approved, isAdmin, mustChangePassword } = req.body;
+    const { group, department, ibx, firstName, lastName, loginName, email, approved, isAdmin, mustChangePassword } = req.body;
 
     try {
       const current = await db.query(
-        `SELECT is_root FROM users WHERE id = $1`,
+        `SELECT is_root, login_name, email FROM users WHERE id = $1`,
         [targetUserId]
       );
 
@@ -360,6 +408,42 @@ router.patch(
         values.push(lastName);
       }
 
+      if (loginName !== undefined) {
+        const loginValidation = validateLoginName(loginName);
+        if (!loginValidation.ok) {
+          const response = buildLoginNameErrorResponse(loginValidation.code);
+          return res.status(response.status).json(response.body);
+        }
+
+        const duplicate = await db.query(
+          `SELECT 1 FROM users WHERE id <> $1 AND LOWER(login_name) = LOWER($2)`,
+          [targetUserId, loginValidation.value]
+        );
+        if (duplicate.rowCount > 0) {
+          const response = buildLoginNameErrorResponse("LOGIN_NAME_EXISTS");
+          return res.status(response.status).json(response.body);
+        }
+
+        fields.push(`login_name = $${idx++}`);
+        values.push(loginValidation.value);
+      }
+
+      if (email !== undefined) {
+        const normalizedEmail = email ? normalizeEmail(email) : null;
+        if (normalizedEmail) {
+          const duplicateEmail = await db.query(
+            `SELECT 1 FROM users WHERE id <> $1 AND email = $2`,
+            [targetUserId, normalizedEmail]
+          );
+          if (duplicateEmail.rowCount > 0) {
+            return res.status(409).json({ message: "Email already exists", code: "EMAIL_EXISTS" });
+          }
+        }
+
+        fields.push(`email = $${idx++}`);
+        values.push(normalizedEmail);
+      }
+
       if (approved !== undefined) {
         fields.push(`approved = $${idx++}`);
         values.push(Boolean(approved));
@@ -388,6 +472,10 @@ router.patch(
 
       res.json({ success: true });
     } catch (err) {
+      if (isLoginNameConflictError(err)) {
+        const response = buildLoginNameErrorResponse("LOGIN_NAME_EXISTS");
+        return res.status(response.status).json(response.body);
+      }
       console.error("USER UPDATE ERROR:", err);
       res.status(500).json({ message: "Server error" });
     }

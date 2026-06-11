@@ -13,20 +13,38 @@ import ExcelJS from 'exceljs';
 import { recomputeConstraintsInternal } from './constraints.js';
 import { syncEmployeeContacts } from './employeeContacts.js';
 import { provisionUsersFromShiftplan } from '../services/shiftUserProvisioning.service.js';
+import { ensureShiftplanSchema } from '../lib/ensureShiftplanSchema.js';
 import {
   formatShiftMonthLabel,
   monthLabelMatchesYear,
   parseDraftMonthId,
 } from '../lib/shiftplanMonth.js';
+import { parseMonthLabel } from '../lib/monthParser.js';
 import {
   buildDailyShiftSlots,
   buildShiftSlots,
   buildStaffingRulesByShiftType,
+  getShiftSeriesDays,
   getShiftDurationHours,
+  isShiftDefinitionDraftPlannable,
+  normalizePlanningShiftTypeKey,
 } from '../lib/shiftplanGeneration.js';
+import {
+  applyHolidayWorkPreferenceScore,
+  getHolidayShiftStaffingLimit,
+  normalizeHolidayStaffingConfig,
+} from '../lib/holidayPreferences.js';
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(async (_req, _res, next) => {
+  try {
+    await ensureShiftplanSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 /* ------------------------------------------------ */
 /* SHIFT CODES & HELPERS                            */
@@ -102,6 +120,54 @@ function parseBooleanAppSetting(value, fallback = false) {
   }
   return fallback;
 }
+
+function parseNumberAppSetting(value, fallback = 0) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeWeekdaySetting(value, fallback = [1, 2, 3, 4, 5]) {
+  if (Array.isArray(value)) {
+    return [...new Set(value
+      .map((entry) => Number.parseInt(String(entry), 10))
+      .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6))];
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return normalizeWeekdaySetting(JSON.parse(value), fallback);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
+function parseTargetHoursValue(value, fallback = 174) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) && parsed >= 0 ? Number(parsed.toFixed(2)) : fallback;
+}
+
+function getDaysUntilNextMonday(dayOfWeekIndex) {
+  if (dayOfWeekIndex === 1) return 7;
+  if (dayOfWeekIndex === 0) return 1;
+  return 8 - dayOfWeekIndex;
+}
+
+function getAnchoredSeriesDays(shiftDef, dayOfWeekIndex) {
+  const configuredSeriesDays = getShiftSeriesDays(shiftDef);
+  const typeKey = normalizePlanningShiftTypeKey(shiftDef?.shift_type);
+
+  if (configuredSeriesDays <= 1) return configuredSeriesDays;
+  if (!['early', 'late', 'night'].includes(typeKey || '')) return configuredSeriesDays;
+  if (dayOfWeekIndex === 1) return configuredSeriesDays;
+
+  return Math.max(1, Math.min(configuredSeriesDays, getDaysUntilNextMonday(dayOfWeekIndex)));
+}
+
+const CREDITED_ABSENCE_TYPES = new Set(['VACATION', 'SICK', 'TRAINING']);
+const CREDITED_ABSENCE_HOURS = 8;
 
 function normalizeSkillText(value) {
   return String(value || '')
@@ -202,6 +268,47 @@ async function loadShiftplanFeatureFlags() {
   };
 }
 
+async function loadDbsPlanningConfig() {
+  const { rows } = await pool.query(
+    `SELECT key, value
+     FROM app_settings
+     WHERE key = ANY($1::text[])`,
+    [[
+      'shiftplan.dbs_enabled',
+      'shiftplan.dbs_weekdays',
+      'shiftplan.dbs_shift_code',
+      'shiftplan.dbs_required_staff',
+    ]]
+  );
+
+  const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+
+  return {
+    enabled: parseBooleanAppSetting(settings['shiftplan.dbs_enabled'], true),
+    shiftCode: String(settings['shiftplan.dbs_shift_code'] || 'DBS').trim().toUpperCase() || 'DBS',
+    weekdays: normalizeWeekdaySetting(settings['shiftplan.dbs_weekdays'], [1, 2, 3, 4, 5]),
+    requiredStaff: Math.max(Number.parseInt(String(parseNumberAppSetting(settings['shiftplan.dbs_required_staff'], 1)), 10) || 0, 0),
+  };
+}
+
+async function loadHolidayStaffingConfig() {
+  const { rows } = await pool.query(
+    `SELECT value
+     FROM app_settings
+     WHERE key = $1
+     LIMIT 1`,
+    ['shiftplan.holiday_staffing_limits']
+  );
+
+  if (!rows.length || !rows[0]?.value) return {};
+
+  try {
+    return normalizeHolidayStaffingConfig(JSON.parse(rows[0].value));
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Normalize employee name: trim, collapse whitespace.
  * Filters out entries that look like email addresses.
@@ -228,7 +335,210 @@ function deduplicateEmployees(names) {
   return [...seen.values()].sort((a, b) => a.localeCompare(b, 'de'));
 }
 
-async function loadEmployeesForPlanningYear(year) {
+function resolveLiveMonthLabelFromDraftMonth(monthId) {
+  const parsedMonth = parseDraftMonthId(monthId);
+  if (!parsedMonth) return null;
+  return formatShiftMonthLabel(parsedMonth.year, parsedMonth.month);
+}
+
+async function loadManualEmployeesForDraftMonth(monthId, client = pool) {
+  const liveMonthLabel = resolveLiveMonthLabelFromDraftMonth(monthId);
+  if (!liveMonthLabel) return [];
+
+  const { rows } = await client.query(
+    `SELECT employee_name, created_at, created_by
+       FROM manual_shiftplan_employees
+      WHERE month = $1
+      ORDER BY LOWER(employee_name) ASC, employee_name ASC`,
+    [liveMonthLabel]
+  );
+
+  return rows.map((row) => ({
+    employee_name: row.employee_name,
+    created_at: row.created_at,
+    created_by: row.created_by || null,
+  }));
+}
+
+async function loadManualEmployeeNameSetForDraftMonth(monthId, client = pool) {
+  const manualEmployees = await loadManualEmployeesForDraftMonth(monthId, client);
+  return new Set(manualEmployees.map((entry) => entry.employee_name));
+}
+
+async function loadManualEmployeeSummaryForYear(year, client = pool) {
+  const targetYear = Number.parseInt(String(year || ''), 10);
+  if (!Number.isInteger(targetYear)) return [];
+
+  const { rows } = await client.query(
+    `SELECT month, employee_name
+       FROM manual_shiftplan_employees
+      WHERE month IS NOT NULL
+        AND employee_name IS NOT NULL`
+  );
+
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const parsedMonth = parseMonthLabel(row.month);
+    if (!parsedMonth || parsedMonth.year !== targetYear) continue;
+
+    const employeeName = normalizeEmployeeName(row.employee_name);
+    if (!employeeName) continue;
+
+    const monthId = `${parsedMonth.year}-${String(parsedMonth.month).padStart(2, '0')}`;
+    if (!grouped.has(monthId)) {
+      grouped.set(monthId, { month: monthId, employeeNames: new Map() });
+    }
+
+    const summary = grouped.get(monthId);
+    const dedupeKey = employeeName.toLowerCase();
+    if (!summary.employeeNames.has(dedupeKey)) {
+      summary.employeeNames.set(dedupeKey, employeeName);
+    }
+  }
+
+  return [...grouped.values()]
+    .sort((left, right) => left.month.localeCompare(right.month))
+    .map((entry) => {
+      const employeeNames = [...entry.employeeNames.values()].sort((left, right) => left.localeCompare(right, 'de'));
+      return {
+        month: entry.month,
+        count: employeeNames.length,
+        employee_names: employeeNames,
+      };
+    });
+}
+
+function buildEmployeeAliasKeys(raw) {
+  const normalized = normalizeEmployeeName(raw);
+  if (!normalized) return [];
+
+  const aliases = new Set([normalized.toLowerCase()]);
+  let firstName = '';
+  let lastName = '';
+
+  if (normalized.includes(',')) {
+    const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      lastName = parts[0];
+      firstName = parts.slice(1).join(' ');
+    }
+  } else {
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      firstName = parts.slice(0, -1).join(' ');
+      lastName = parts[parts.length - 1];
+    }
+  }
+
+  if (firstName && lastName) {
+    const firstToken = firstName.split(/\s+/).filter(Boolean)[0] || firstName;
+    const variants = [
+      `${firstName} ${lastName}`,
+      `${lastName}, ${firstName}`,
+      `${lastName} ${firstName}`,
+      `${firstToken} ${lastName}`,
+      `${lastName}, ${firstToken}`,
+      `${lastName} ${firstToken}`,
+    ];
+
+    for (const variant of variants) aliases.add(variant.toLowerCase());
+  }
+
+  return [...aliases];
+}
+
+function buildEmployeeNameLookup(employeeNames) {
+  const lookup = new Map();
+
+  for (const employeeName of employeeNames) {
+    for (const key of buildEmployeeAliasKeys(employeeName)) {
+      if (!lookup.has(key)) lookup.set(key, employeeName);
+    }
+  }
+
+  return lookup;
+}
+
+function resolveEmployeeName(raw, lookup) {
+  if (!lookup || lookup.size === 0) return normalizeEmployeeName(raw);
+
+  for (const key of buildEmployeeAliasKeys(raw)) {
+    const resolved = lookup.get(key);
+    if (resolved) return resolved;
+  }
+
+  return normalizeEmployeeName(raw);
+}
+
+function hasSubmittedEmployeePreferences(preferenceRow) {
+  if (!preferenceRow || typeof preferenceRow !== 'object') return false;
+
+  const hasEntries = (value) => Array.isArray(value) && value.some((entry) => String(entry || '').trim());
+
+  return (
+    hasEntries(preferenceRow.preferred_shifts)
+    || hasEntries(preferenceRow.unwanted_shifts)
+    || hasEntries(preferenceRow.preferred_holidays)
+    || hasEntries(preferenceRow.preferred_days)
+    || hasEntries(preferenceRow.blocked_days)
+    || (Number.isInteger(Number(preferenceRow.max_nights_per_month)) && preferenceRow.max_nights_per_month !== null)
+    || String(preferenceRow.notes || '').trim().length > 0
+    || String(preferenceRow.workload_preference || 'normal').trim().toLowerCase() !== 'normal'
+  );
+}
+
+async function loadDraftWishStatus(employeeNames) {
+  const deduplicatedEmployees = deduplicateEmployees(employeeNames);
+  const employeeLookup = buildEmployeeNameLookup(deduplicatedEmployees);
+  const { rows } = await pool.query(
+    `SELECT ep.*, u.first_name, u.last_name, u.email
+     FROM employee_preferences ep
+     JOIN users u ON u.id = ep.user_id
+     ORDER BY ep.updated_at DESC NULLS LAST, u.last_name, u.first_name`
+  );
+
+  const matchedPreferences = new Map();
+
+  for (const row of rows) {
+    const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+    const fallbackName = [row.last_name, row.first_name].filter(Boolean).join(', ').trim();
+    const employeeName = resolveEmployeeName(fullName || fallbackName, employeeLookup);
+    if (!employeeName || matchedPreferences.has(employeeName)) continue;
+
+    matchedPreferences.set(employeeName, {
+      employee_name: employeeName,
+      submitted: hasSubmittedEmployeePreferences(row),
+      updated_at: row.updated_at || null,
+    });
+  }
+
+  return deduplicatedEmployees.map((employeeName) => matchedPreferences.get(employeeName) || {
+    employee_name: employeeName,
+    submitted: false,
+    updated_at: null,
+  });
+}
+
+async function loadDraftAbsences(month) {
+  const [yearStr, monthStr] = String(month || '').split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const monthNumber = Number.parseInt(monthStr, 10);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNumber)) return [];
+
+  const numDays = daysInMonth(year, monthNumber);
+  const { rows } = await pool.query(
+    `SELECT id, employee_name, start_date, end_date, type, note
+     FROM absences
+     WHERE start_date <= $1 AND end_date >= $2
+     ORDER BY employee_name, start_date`,
+    [`${month}-${numDays}`, `${month}-01`]
+  );
+
+  return rows;
+}
+
+async function loadEmployeesForPlanningYear(year, monthId = null) {
   let yearPlanEmployees = [];
 
   if (Number(year) === 2027) {
@@ -257,10 +567,12 @@ async function loadEmployeesForPlanningYear(year) {
   );
 
   if (yearScopedEmployees.length > 0) {
-    return yearScopedEmployees;
+    const manualEmployees = monthId ? await loadManualEmployeesForDraftMonth(monthId) : [];
+    return deduplicateEmployees([...yearScopedEmployees, ...manualEmployees.map((entry) => entry.employee_name)]);
   }
 
-  return deduplicateEmployees([...yearPlanEmployees, ...rows.map((row) => row.employee_name)]);
+  const manualEmployees = monthId ? await loadManualEmployeesForDraftMonth(monthId) : [];
+  return deduplicateEmployees([...yearPlanEmployees, ...rows.map((row) => row.employee_name), ...manualEmployees.map((entry) => entry.employee_name)]);
 }
 
 const WELLBEING_HISTORY_COLUMNS = ['employee_name', 'night_count', 'weekend_count', 'early_count', 'late_count'];
@@ -336,15 +648,30 @@ async function loadWellbeingHistory(year, month) {
  * 5. Generate conflict list and fairness metrics
  */
 async function generateShiftPlan(year, mon, numDays, createdBy) {
-  // 1. Load configuration
+  const dbsPlanningConfig = await loadDbsPlanningConfig();
+  const holidayStaffingConfig = await loadHolidayStaffingConfig();
   const defRes = await pool.query('SELECT * FROM shift_definitions WHERE is_active=TRUE ORDER BY sort_order, code');
-  const shiftDefs = defRes.rows.length > 0 ? defRes.rows : [
-    { code: 'E1', name: 'Frühschicht 1', shift_type: 'early', min_staff: 1, max_staff: 5, color_hex: '#3b82f6', sort_order: 1 },
-    { code: 'E2', name: 'Frühschicht 2', shift_type: 'early', min_staff: 1, max_staff: 5, color_hex: '#60a5fa', sort_order: 2 },
-    { code: 'L1', name: 'Spätschicht 1', shift_type: 'late', min_staff: 1, max_staff: 5, color_hex: '#f59e0b', sort_order: 3 },
-    { code: 'L2', name: 'Spätschicht 2', shift_type: 'late', min_staff: 1, max_staff: 5, color_hex: '#fbbf24', sort_order: 4 },
-    { code: 'N', name: 'Nachtschicht', shift_type: 'night', min_staff: 1, max_staff: 3, color_hex: '#8b5cf6', sort_order: 5 },
-  ];
+  const shiftDefs = (defRes.rows.length > 0 ? defRes.rows : [
+    { code: 'E1', name: 'Frühschicht 1', shift_type: 'early', min_staff: 1, max_staff: 5, color_hex: '#3b82f6', sort_order: 1, series_days: 5 },
+    { code: 'E2', name: 'Frühschicht 2', shift_type: 'early', min_staff: 1, max_staff: 5, color_hex: '#60a5fa', sort_order: 2, series_days: 5 },
+    { code: 'L1', name: 'Spätschicht 1', shift_type: 'late', min_staff: 1, max_staff: 5, color_hex: '#f59e0b', sort_order: 3, series_days: 5 },
+    { code: 'L2', name: 'Spätschicht 2', shift_type: 'late', min_staff: 1, max_staff: 5, color_hex: '#fbbf24', sort_order: 4, series_days: 5 },
+    { code: 'N', name: 'Nachtschicht', shift_type: 'night', min_staff: 1, max_staff: 3, color_hex: '#8b5cf6', sort_order: 5, series_days: 7 },
+  ])
+    .map((definition) => {
+      const shiftCode = String(definition.code || '').trim().toUpperCase();
+      if (shiftCode !== dbsPlanningConfig.shiftCode) return definition;
+      if (!dbsPlanningConfig.enabled) return null;
+
+      return {
+        ...definition,
+        applicable_days: dbsPlanningConfig.weekdays,
+        min_staff: dbsPlanningConfig.requiredStaff,
+        max_staff: Math.max(Number.parseInt(String(definition.max_staff ?? 0), 10) || 0, dbsPlanningConfig.requiredStaff),
+      };
+    })
+    .filter(Boolean)
+    .filter(isShiftDefinitionDraftPlannable);
 
   const rotRes = await pool.query('SELECT * FROM shift_rotation_rules WHERE id=1');
   const rotation = rotRes.rows[0] || {
@@ -381,76 +708,85 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       monthlyMaxAssignments: Math.max(Number.parseInt(String(row.monthly_max_assignments ?? 0), 10) || 0, 0),
     });
   }
+  const restrictedPoolShiftCodes = new Set([...specialPoolsByShift.keys()]);
+  if (dbsPlanningConfig.enabled && dbsPlanningConfig.shiftCode) restrictedPoolShiftCodes.add(dbsPlanningConfig.shiftCode);
 
   const month = `${year}-${String(mon).padStart(2, '0')}`;
-
-  // 2. Load employees
-  let employees = await loadEmployeesForPlanningYear(year);
+  let employees = await loadEmployeesForPlanningYear(year, month);
   if (employees.length === 0) {
     throw new Error('Keine Mitarbeiter im System gefunden');
   }
+  const employeeNameLookup = buildEmployeeNameLookup(employees);
 
-  // 3. Load absences
   const absRes = await pool.query(
     `SELECT employee_name, start_date, end_date, type FROM absences WHERE start_date <= $1 AND end_date >= $2`,
     [`${month}-${numDays}`, `${month}-01`]
   );
   const absenceMap = new Map();
-  for (const a of absRes.rows) {
-    if (!absenceMap.has(a.employee_name)) absenceMap.set(a.employee_name, []);
-    absenceMap.get(a.employee_name).push(a);
+  for (const absence of absRes.rows) {
+    if (!absenceMap.has(absence.employee_name)) absenceMap.set(absence.employee_name, []);
+    absenceMap.get(absence.employee_name).push(absence);
   }
 
-  // 4. Load shiftplan exclusions (dedicated table)
   const exclRes = await pool.query(
-    `SELECT employee_name FROM shiftplan_exclusions WHERE is_active = TRUE`
+    `SELECT employee_name, fixed_shift_type FROM shiftplan_exclusions WHERE is_active = TRUE`
   );
-  const shiftExcludedSet = new Set(exclRes.rows.map(r => r.employee_name));
+  const shiftExcludedSet = new Set();
+  const fixedShiftTypeByEmployee = new Map();
+  for (const row of exclRes.rows) {
+    const fixedShiftType = normalizePlanningShiftTypeKey(row.fixed_shift_type);
+    if (fixedShiftType) {
+      if (!shiftExcludedSet.has(row.employee_name)) fixedShiftTypeByEmployee.set(row.employee_name, fixedShiftType);
+      continue;
+    }
+    shiftExcludedSet.add(row.employee_name);
+    fixedShiftTypeByEmployee.delete(row.employee_name);
+  }
 
-  // Also load assignment exclusions as fallback
   const assignExclRes = await pool.query(
     `SELECT employee_name FROM assignment_employee_exclusions WHERE is_active = TRUE AND (valid_from IS NULL OR valid_from <= $1) AND (valid_to IS NULL OR valid_to >= $2)`,
     [`${month}-${numDays}`, `${month}-01`]
   );
-  for (const r of assignExclRes.rows) shiftExcludedSet.add(r.employee_name);
+  for (const row of assignExclRes.rows) shiftExcludedSet.add(row.employee_name);
 
-  // 5. Load employee skills
   const skillsRes = await pool.query('SELECT * FROM employee_skills');
   const skillsMap = new Map();
-  for (const s of skillsRes.rows) skillsMap.set(s.employee_name, s);
+  for (const skill of skillsRes.rows) skillsMap.set(skill.employee_name, skill);
 
-  // 6. Load wellbeing metrics (previous month)
   const prevMonth = mon === 1 ? `${year - 1}-12` : `${year}-${String(mon - 1).padStart(2, '0')}`;
   const prevMonthParts = prevMonth.split('-');
   const wellbeingRows = await loadWellbeingHistory(prevMonthParts[0], Number.parseInt(prevMonthParts[1], 10));
   const historyMap = new Map();
-  for (const w of wellbeingRows) historyMap.set(w.employee_name, w);
+  for (const row of wellbeingRows) historyMap.set(row.employee_name, row);
 
-  // 7. Load preferred colleagues
   const prefRes = await pool.query(
-    `SELECT pc.user_id, u.first_name || ' ' || u.last_name as requester_name, pc.preferred_employee_name
-     FROM preferred_colleagues pc JOIN users u ON u.id = pc.user_id`
+    `SELECT pc.user_id, u.first_name, u.last_name, pc.preferred_employee_name
+     FROM preferred_colleagues pc
+     JOIN users u ON u.id = pc.user_id`
   );
   const preferredMap = new Map();
-  for (const p of prefRes.rows) {
-    if (!preferredMap.has(p.requester_name)) preferredMap.set(p.requester_name, []);
-    preferredMap.get(p.requester_name).push(p.preferred_employee_name);
+  for (const row of prefRes.rows) {
+    const requesterName = resolveEmployeeName([row.first_name, row.last_name].filter(Boolean).join(' '), employeeNameLookup);
+    const preferredEmployeeName = resolveEmployeeName(row.preferred_employee_name, employeeNameLookup);
+    if (!requesterName || !preferredEmployeeName) continue;
+    if (!preferredMap.has(requesterName)) preferredMap.set(requesterName, []);
+    preferredMap.get(requesterName).push(preferredEmployeeName);
   }
 
-  // 8. Load employee preferences
   const empPrefRes = await pool.query(
-    `SELECT ep.*, u.first_name || ' ' || u.last_name as employee_name FROM employee_preferences ep JOIN users u ON u.id = ep.user_id`
+    `SELECT ep.*, u.first_name, u.last_name, u.email
+     FROM employee_preferences ep
+     JOIN users u ON u.id = ep.user_id`
   );
   const empPrefsMap = new Map();
-  for (const p of empPrefRes.rows) empPrefsMap.set(p.employee_name, p);
+  for (const row of empPrefRes.rows) {
+    const employeeName = resolveEmployeeName([row.first_name, row.last_name].filter(Boolean).join(' '), employeeNameLookup);
+    if (!employeeName) continue;
+    empPrefsMap.set(employeeName, row);
+  }
 
-  // 9. Load staffing rules
   const staffRes = await pool.query('SELECT * FROM staffing_rules');
   const staffingRules = buildStaffingRulesByShiftType(staffRes.rows);
-
-  // ================================================================
-  // DETERMINISTIC SHIFT GENERATION
-  // ================================================================
 
   const shifts = [];
   const explanations = {};
@@ -466,58 +802,158 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
     rulesApplied: [],
   };
 
-  // Per-employee tracking
   const empStats = {};
-  const empDayAssignment = {}; // emp -> { day: shiftCode }
-  const empConsecutiveWork = {}; // emp -> current consecutive work days
-  const empLastShiftType = {}; // emp -> last assigned shift type
-  const empRequiredFreeDays = {}; // emp -> remaining forced recovery days
-  const empHours = {}; // emp -> actual planned hours
-  const empRecoveryReason = {}; // emp -> reason for pending free days
+  const empDayAssignment = {};
+  const empConsecutiveWork = {};
+  const empLastShiftType = {};
+  const empRequiredFreeDays = {};
+  const empHours = {};
+  const empRecoveryReason = {};
+  const empSeriesCode = {};
+  const empSeriesRemaining = {};
 
-  const activeEmployees = employees.filter(e => !shiftExcludedSet.has(e));
+  const activeEmployees = employees.filter((employee) => !shiftExcludedSet.has(employee));
   planReport.activeEmployees = activeEmployees.length;
-  const targetHours = Math.max(Number.parseFloat(String(planConfig.monthly_target_hours ?? 174)) || 174, 1);
+  const targetHours = parseTargetHoursValue(planConfig.monthly_target_hours, 174);
   const baselineShiftSlots = buildShiftSlots(shiftDefs, staffingRules);
   const holidayMap = buildHessenHolidayMap(year);
   const ramadanRange = await getRamadanRangeForYear(year);
   const featureFlags = await loadShiftplanFeatureFlags();
+  let assignedToday = null;
+  let assignedByShiftTypeToday = { early: 0, late: 0, night: 0, special: 0 };
 
-  for (const emp of activeEmployees) {
-    empStats[emp] = { nights: 0, weekends: 0, earlyCount: 0, lateCount: 0, total: 0, actualHours: 0, targetHours, specialShiftCounts: {} };
-    empDayAssignment[emp] = {};
-    empConsecutiveWork[emp] = 0;
-    empLastShiftType[emp] = null;
-    empRequiredFreeDays[emp] = 0;
-    empHours[emp] = 0;
-    empRecoveryReason[emp] = null;
+  for (const employee of activeEmployees) {
+    empStats[employee] = { nights: 0, weekends: 0, earlyCount: 0, lateCount: 0, total: 0, actualHours: 0, targetHours, specialShiftCounts: {} };
+    empDayAssignment[employee] = {};
+    empConsecutiveWork[employee] = 0;
+    empLastShiftType[employee] = null;
+    empRequiredFreeDays[employee] = 0;
+    empHours[employee] = 0;
+    empRecoveryReason[employee] = null;
+    empSeriesCode[employee] = null;
+    empSeriesRemaining[employee] = 0;
   }
 
-  // Process each day
+  const isEmployeeAbsentOnDate = (employeeName, dateStr) => {
+    const absences = absenceMap.get(employeeName) || [];
+    const currentDate = new Date(dateStr);
+    return absences.some((absence) => currentDate >= new Date(absence.start_date) && currentDate <= new Date(absence.end_date));
+  };
+
+  const getEmployeeAbsenceOnDate = (employeeName, dateStr) => {
+    const absences = absenceMap.get(employeeName) || [];
+    const currentDate = new Date(dateStr);
+    return absences.find((absence) => currentDate >= new Date(absence.start_date) && currentDate <= new Date(absence.end_date)) || null;
+  };
+
+  const getCreditedAbsenceHours = (absence, weekend) => {
+    if (!absence || weekend) return 0;
+    return CREDITED_ABSENCE_TYPES.has(String(absence.type || '').toUpperCase()) ? CREDITED_ABSENCE_HOURS : 0;
+  };
+
+  const assignShiftToEmployee = ({ emp, shiftDef, day, dateStr, weekend, holidayName, explanationReasons = [], score = null, eligibleCount = null }) => {
+    const configuredSeriesDays = getShiftSeriesDays(shiftDef);
+    const continuingBlock = empSeriesRemaining[emp] > 0 && empSeriesCode[emp] === shiftDef.code;
+    const seriesDays = continuingBlock ? configuredSeriesDays : getAnchoredSeriesDays(shiftDef, dayOfWeek(year, mon, day));
+    const remainingBefore = continuingBlock ? empSeriesRemaining[emp] : 0;
+    const dayInSeries = continuingBlock ? Math.max(seriesDays - remainingBefore + 1, 1) : 1;
+    const remainingAfter = seriesDays > 1
+      ? (continuingBlock ? Math.max(remainingBefore - 1, 0) : seriesDays - 1)
+      : 0;
+    const blockEndsToday = remainingAfter === 0;
+
+    if (remainingAfter > 0) {
+      empSeriesCode[emp] = shiftDef.code;
+      empSeriesRemaining[emp] = remainingAfter;
+    } else {
+      empSeriesCode[emp] = null;
+      empSeriesRemaining[emp] = 0;
+    }
+
+    shifts.push({ employee_name: emp, day, shift_code: shiftDef.code });
+    assignedToday.add(emp);
+    empDayAssignment[emp][day] = shiftDef.code;
+    assignedByShiftTypeToday[shiftDef.shift_type] = Number(assignedByShiftTypeToday[shiftDef.shift_type] || 0) + 1;
+    empLastShiftType[emp] = shiftDef.shift_type;
+    empConsecutiveWork[emp]++;
+
+    const effectiveWorkdayLimit = Math.max(rotation.max_consecutive_workdays, seriesDays);
+    if (rotation.min_free_after_streak > 0 && empConsecutiveWork[emp] >= effectiveWorkdayLimit && blockEndsToday) {
+      empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.min_free_after_streak);
+      empRecoveryReason[emp] = 'Arbeitsserie';
+    }
+    if (shiftDef.shift_type === 'night' && rotation.free_days_after_night > 0 && blockEndsToday) {
+      empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_night);
+      empRecoveryReason[emp] = 'Nachtschicht';
+    }
+    if (weekend && rotation.free_days_after_weekend > 0 && blockEndsToday) {
+      empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_weekend);
+      empRecoveryReason[emp] = 'Wochenendarbeit';
+    }
+
+    const shiftHours = getShiftDurationHours(shiftDef);
+    if (shiftDef.shift_type === 'night') empStats[emp].nights++;
+    if (weekend) empStats[emp].weekends++;
+    if (shiftDef.shift_type === 'early') empStats[emp].earlyCount++;
+    if (shiftDef.shift_type === 'late') empStats[emp].lateCount++;
+    empStats[emp].total++;
+    empStats[emp].specialShiftCounts[shiftDef.code] = Number(empStats[emp].specialShiftCounts[shiftDef.code] || 0) + 1;
+    empHours[emp] += shiftHours;
+    empStats[emp].actualHours = Number(empHours[emp].toFixed(2));
+    planReport.totalShiftsPlanned++;
+
+    const expKey = `${emp}_${day}`;
+    const allReasons = [
+      'Verfügbar (kein Urlaub/Abwesenheit, nicht ausgeschlossen)',
+      `Schicht: ${shiftDef.name} (${shiftDef.code})`,
+    ];
+    if (seriesDays > 1) {
+      allReasons.push(`Serienplanung: Tag ${dayInSeries}/${seriesDays}`);
+    }
+    if (!continuingBlock && configuredSeriesDays > seriesDays) {
+      allReasons.push(`Wochenanker: Übergangsblock bis Montag (${seriesDays} Tage)`);
+    }
+    if (explanationReasons.length > 0) {
+      allReasons.push(...explanationReasons);
+    }
+    if (Number.isFinite(score) && Number.isInteger(eligibleCount) && eligibleCount > 0) {
+      allReasons.push(`Planungsbewertung: ${score} Punkte (Rang 1 von ${eligibleCount} zulässigen Kandidaten)`);
+    }
+    explanations[expKey] = { employee: emp, day, code: shiftDef.code, reasons: allReasons, score };
+
+    const prefs = empPrefsMap.get(emp);
+    if (prefs) {
+      if ((prefs.preferred_shifts || []).includes(shiftDef.code)) planReport.wishesRespected++;
+      if ((prefs.unwanted_shifts || []).includes(shiftDef.code)) planReport.wishesDenied++;
+      if (holidayName && (prefs.preferred_holidays || []).includes(holidayName)) planReport.wishesRespected++;
+      if ((prefs.preferred_holidays || []).includes('Ramadan') && ramadanRange && dateStr >= ramadanRange.start && dateStr <= ramadanRange.end) {
+        planReport.wishesRespected++;
+      }
+    }
+  };
+
   for (let day = 1; day <= numDays; day++) {
     const dateStr = `${month}-${String(day).padStart(2, '0')}`;
     const weekend = isWeekend(year, mon, day);
     const dow = dayOfWeek(year, mon, day);
     const holidayName = holidayMap[dateStr] || null;
 
-    // Determine available employees for this day
-    const availableForDay = activeEmployees.filter(emp => {
-      // Check absence
-      const absences = absenceMap.get(emp) || [];
-      for (const ab of absences) {
-        const abStart = new Date(ab.start_date);
-        const abEnd = new Date(ab.end_date);
-        const thisDate = new Date(dateStr);
-        if (thisDate >= abStart && thisDate <= abEnd) return false;
-      }
-      if (empRequiredFreeDays[emp] > 0) return false;
-      // Check max consecutive workdays
-      if (empConsecutiveWork[emp] >= rotation.max_consecutive_workdays) return false;
+    for (const employee of activeEmployees) {
+      const absence = getEmployeeAbsenceOnDate(employee, dateStr);
+      const creditedHours = getCreditedAbsenceHours(absence, weekend);
+      if (creditedHours <= 0) continue;
+      empHours[employee] += creditedHours;
+      empStats[employee].actualHours = Number(empHours[employee].toFixed(2));
+    }
+
+    const availableForDay = activeEmployees.filter((employee) => {
+      if (isEmployeeAbsentOnDate(employee, dateStr)) return false;
+      if (empRequiredFreeDays[employee] > 0) return false;
       return true;
     });
 
-    // Track who gets assigned today
-    const assignedToday = new Set();
+    assignedToday = new Set();
+  assignedByShiftTypeToday = { early: 0, late: 0, night: 0, special: 0 };
     const shiftSlots = buildDailyShiftSlots({
       shiftDefinitions: shiftDefs,
       staffingRules,
@@ -528,8 +964,8 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       numDays,
       dayOfWeek: dow,
     }).sort((left, right) => {
-      const leftPriority = specialPoolsByShift.has(left.code) ? 0 : 1;
-      const rightPriority = specialPoolsByShift.has(right.code) ? 0 : 1;
+      const leftPriority = restrictedPoolShiftCodes.has(String(left.code || '').trim().toUpperCase()) ? 0 : 1;
+      const rightPriority = restrictedPoolShiftCodes.has(String(right.code || '').trim().toUpperCase()) ? 0 : 1;
       if (leftPriority !== rightPriority) return leftPriority - rightPriority;
       const leftSort = Number.parseInt(String(left.sort_order ?? 0), 10) || 0;
       const rightSort = Number.parseInt(String(right.sort_order ?? 0), 10) || 0;
@@ -537,44 +973,86 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       return String(left.code || '').localeCompare(String(right.code || ''), 'de');
     });
 
-    // Process each shift definition
+    const availableEmployeeSet = new Set(availableForDay);
+    const availableShiftCodes = new Set(shiftSlots.map((slot) => slot.code));
+    for (const employee of activeEmployees) {
+      if (empSeriesRemaining[employee] <= 0) continue;
+      if (!availableEmployeeSet.has(employee) || !availableShiftCodes.has(empSeriesCode[employee])) {
+        empSeriesCode[employee] = null;
+        empSeriesRemaining[employee] = 0;
+      }
+    }
+
+    const continuationLockedEmployees = new Set(
+      availableForDay.filter((employee) => empSeriesRemaining[employee] > 0 && availableShiftCodes.has(empSeriesCode[employee]))
+    );
+
     for (const shiftDef of shiftSlots) {
-      const neededStaff = shiftDef.planned_slots || shiftDef.min_staff || 1;
+      const continuingEmployees = availableForDay
+        .filter((employee) => !assignedToday.has(employee) && empSeriesRemaining[employee] > 0 && empSeriesCode[employee] === shiftDef.code)
+        .sort((left, right) => left.localeCompare(right, 'de'));
+      const baseNeededStaff = Math.max(shiftDef.planned_slots || shiftDef.min_staff || 1, continuingEmployees.length);
+      const holidayShiftTypeLimit = getHolidayShiftStaffingLimit(holidayStaffingConfig, holidayName, shiftDef.shift_type);
+      const remainingHolidayCapacity = holidayShiftTypeLimit === null
+        ? null
+        : Math.max(holidayShiftTypeLimit - Number(assignedByShiftTypeToday[shiftDef.shift_type] || 0), 0);
+      const neededStaff = remainingHolidayCapacity === null
+        ? baseNeededStaff
+        : Math.max(continuingEmployees.length, Math.min(baseNeededStaff, remainingHolidayCapacity));
       const shiftSkillSignals = featureFlags.skillsEnabled ? getShiftSkillSignals(shiftDef) : { ratedSkills: [], legacySkills: [] };
 
-      for (let slot = 0; slot < neededStaff; slot++) {
-        // Build candidate list (not yet assigned today)
-        const candidates = availableForDay.filter(emp => !assignedToday.has(emp));
+      for (const employee of continuingEmployees) {
+        assignShiftToEmployee({
+          emp: employee,
+          shiftDef,
+          day,
+          dateStr,
+          weekend,
+          holidayName,
+          explanationReasons: ['Blockfortsetzung aus der Vortagsplanung'],
+        });
+      }
+
+      for (let slot = continuingEmployees.length; slot < neededStaff; slot++) {
+        const candidates = availableForDay.filter((employee) => !assignedToday.has(employee) && !(continuationLockedEmployees.has(employee) && empSeriesCode[employee] !== shiftDef.code));
         const matchingSkillCandidates = featureFlags.skillsEnabled && (shiftSkillSignals.ratedSkills.length > 0 || shiftSkillSignals.legacySkills.length > 0)
-          ? candidates.filter((emp) => {
-              const skillProfile = skillsMap.get(emp);
+          ? candidates.filter((employee) => {
+              const skillProfile = skillsMap.get(employee);
               return hasLegacySkillMatch(skillProfile, shiftSkillSignals) || !!getBestRatedSkillMatch(skillProfile, shiftSkillSignals);
             })
           : [];
 
         if (candidates.length === 0) {
           conflicts.push({
-            day, date: dateStr, shift: shiftDef.code, severity: 'critical',
+            day,
+            date: dateStr,
+            shift: shiftDef.code,
+            severity: 'critical',
             type: 'understaffed',
             message: `${shiftDef.name} (${shiftDef.code}) am ${dateStr}: Nicht genügend verfügbare Mitarbeiter (benötigt: ${neededStaff}, verfügbar: 0)`,
           });
           continue;
         }
 
-        // Score each candidate (higher score = better candidate)
-        const scored = candidates.map(emp => {
-          let score = 1000; // base score
+        const scored = candidates.map((employee) => {
+          let score = 1000;
           const reasons = [];
-          const stats = empStats[emp];
-          const history = historyMap.get(emp);
-          const prefs = empPrefsMap.get(emp);
-          const specialPool = specialPoolsByShift.get(shiftDef.code);
+          const stats = empStats[employee];
+          const history = historyMap.get(employee);
+          const prefs = empPrefsMap.get(employee);
+          const normalizedShiftCode = String(shiftDef.code || '').trim().toUpperCase();
+          const specialPool = specialPoolsByShift.get(normalizedShiftCode);
+          const isRestrictedPoolShift = restrictedPoolShiftCodes.has(normalizedShiftCode);
+          const fixedShiftType = fixedShiftTypeByEmployee.get(employee);
+          const seriesDays = getAnchoredSeriesDays(shiftDef, dow);
           let hardBlocked = false;
 
-          // === HARD RULES (violations = large penalty) ===
+          if (fixedShiftType && fixedShiftType !== normalizePlanningShiftTypeKey(shiftDef.shift_type)) {
+            hardBlocked = true;
+            reasons.push(`Feste Schichtvorgabe: nur ${fixedShiftType}`);
+          }
 
-          // Rotation: forbidden transitions
-          const lastType = empLastShiftType[emp];
+          const lastType = empLastShiftType[employee];
           if (lastType === 'night' && shiftDef.shift_type === 'early' && rotation.night_to_early_forbidden) {
             hardBlocked = true;
             reasons.push('Regelverstoß: Nacht→Früh verboten');
@@ -584,40 +1062,44 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             reasons.push('Regelverstoß: Spät→Früh verboten');
           }
 
-          // Max nights per month
-          if (shiftDef.shift_type === 'night' && stats.nights >= rotation.max_nights_per_month) {
+          const effectiveWorkdayLimit = Math.max(rotation.max_consecutive_workdays, seriesDays);
+          if (empConsecutiveWork[employee] >= effectiveWorkdayLimit) {
+            hardBlocked = true;
+            reasons.push(`Max. Arbeitstage in Folge erreicht (${empConsecutiveWork[employee]}/${effectiveWorkdayLimit})`);
+          }
+
+          if (shiftDef.shift_type === 'night' && stats.nights + seriesDays > rotation.max_nights_per_month) {
             hardBlocked = true;
             reasons.push(`Nachtlimit erreicht (${stats.nights}/${rotation.max_nights_per_month})`);
           }
 
-          // Max weekends per month
           if (weekend && stats.weekends >= rotation.max_weekends_per_month) {
             hardBlocked = true;
             reasons.push(`Wochenendlimit erreicht (${stats.weekends}/${rotation.max_weekends_per_month})`);
           }
 
-          // Max consecutive same shift type
           let consecutiveSame = 0;
-          for (let d = day - 1; d >= 1; d--) {
-            const prevCode = empDayAssignment[emp][d];
+          for (let previousDay = day - 1; previousDay >= 1; previousDay--) {
+            const prevCode = empDayAssignment[employee][previousDay];
             if (!prevCode) break;
-            const prevDef = shiftDefs.find(sd => sd.code === prevCode);
+            const prevDef = shiftDefs.find((definition) => definition.code === prevCode);
             if (prevDef && prevDef.shift_type === shiftDef.shift_type) consecutiveSame++;
             else break;
           }
-          if (consecutiveSame >= rotation.max_consecutive_same) {
+          const effectiveSameShiftLimit = Math.max(rotation.max_consecutive_same, seriesDays);
+          if (consecutiveSame >= effectiveSameShiftLimit) {
             hardBlocked = true;
-            reasons.push(`Max. gleiche Schichtart in Folge erreicht (${consecutiveSame})`);
+            reasons.push(`Max. gleiche Schichtart in Folge erreicht (${consecutiveSame}/${effectiveSameShiftLimit})`);
           }
 
-          if (specialPool) {
-            const poolEntry = specialPool.get(emp);
+          if (isRestrictedPoolShift) {
+            const poolEntry = specialPool?.get(employee);
             if (!poolEntry) {
               hardBlocked = true;
               reasons.push(`Nicht im festen Pool für ${shiftDef.code}`);
             } else {
               const assignedCount = Number(stats.specialShiftCounts?.[shiftDef.code] || 0);
-              if (assignedCount >= poolEntry.monthlyMaxAssignments) {
+              if (assignedCount + seriesDays > poolEntry.monthlyMaxAssignments) {
                 hardBlocked = true;
                 reasons.push(`${shiftDef.code}-Limit erreicht (${assignedCount}/${poolEntry.monthlyMaxAssignments})`);
               } else {
@@ -629,11 +1111,16 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           }
 
           if (hardBlocked) {
-            return { emp, score: Number.NEGATIVE_INFINITY, reasons, hardBlocked: true };
+            return { emp: employee, score: Number.NEGATIVE_INFINITY, reasons, hardBlocked: true };
+          }
+
+          if (fixedShiftType && fixedShiftType === normalizePlanningShiftTypeKey(shiftDef.shift_type)) {
+            score += 200;
+            reasons.push(`Feste Schichtvorgabe erfüllt: ${fixedShiftType}`);
           }
 
           if (featureFlags.skillsEnabled && (shiftSkillSignals.ratedSkills.length > 0 || shiftSkillSignals.legacySkills.length > 0)) {
-            const skillProfile = skillsMap.get(emp);
+            const skillProfile = skillsMap.get(employee);
             const ratedSkillMatch = getBestRatedSkillMatch(skillProfile, shiftSkillSignals);
             const legacySkillMatch = hasLegacySkillMatch(skillProfile, shiftSkillSignals);
 
@@ -653,47 +1140,33 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
             }
           }
 
-          // === FAIRNESS (soft scoring) ===
-
-          // Total shift balance: prefer employees with fewer total shifts
           if (fairnessRules.balance_total_load) {
-            const avgHours = activeEmployees.reduce((sum, e) => sum + empHours[e], 0) / activeEmployees.length || 0;
-            const diffHours = empHours[emp] - avgHours;
+            const avgHours = activeEmployees.reduce((sum, currentEmployee) => sum + empHours[currentEmployee], 0) / activeEmployees.length || 0;
+            const diffHours = empHours[employee] - avgHours;
             score -= diffHours * 8;
             if (diffHours < -8) reasons.push('Fairness: Weniger Stunden als Durchschnitt');
             if (diffHours > 8) reasons.push('Fairness: Mehr Stunden als Durchschnitt');
           }
 
-          const remainingToTarget = targetHours - empHours[emp];
+          const remainingToTarget = targetHours - empHours[employee];
           score += remainingToTarget * 12;
           if (remainingToTarget > 16) reasons.push(`Sollzeit offen: ${remainingToTarget.toFixed(1)}h`);
           if (remainingToTarget < -8) reasons.push(`Bereits über Sollzeit: ${Math.abs(remainingToTarget).toFixed(1)}h`);
 
-          if (shiftDef.shift_type === 'night' && rotation.free_days_after_night > 0) {
-            score -= rotation.free_days_after_night * 25;
-          }
-          if (weekend && rotation.free_days_after_weekend > 0) {
-            score -= rotation.free_days_after_weekend * 15;
-          }
-
-          // Night balance
           if (shiftDef.shift_type === 'night' && fairnessRules.balance_nights) {
-            const avgNights = activeEmployees.reduce((sum, e) => sum + empStats[e].nights, 0) / activeEmployees.length || 0;
+            const avgNights = activeEmployees.reduce((sum, currentEmployee) => sum + empStats[currentEmployee].nights, 0) / activeEmployees.length || 0;
             score -= (stats.nights - avgNights) * 80;
-            // Also consider previous month
             if (history && history.night_count > 3) {
               score -= 100;
               reasons.push('Fairnessausgleich: Hohe Nachtlast im Vormonat');
             }
           }
 
-          // Weekend balance
           if (weekend && fairnessRules.balance_weekends) {
-            const avgWe = activeEmployees.reduce((sum, e) => sum + empStats[e].weekends, 0) / activeEmployees.length || 0;
-            score -= (stats.weekends - avgWe) * 80;
+            const avgWeekends = activeEmployees.reduce((sum, currentEmployee) => sum + empStats[currentEmployee].weekends, 0) / activeEmployees.length || 0;
+            score -= (stats.weekends - avgWeekends) * 80;
           }
 
-          // === EMPLOYEE PREFERENCES ===
           if (planConfig.respect_employee_wishes && prefs) {
             const preferredShifts = prefs.preferred_shifts || [];
             const unwantedShifts = prefs.unwanted_shifts || [];
@@ -718,197 +1191,158 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
               score += planConfig.soft_wishes_priority * 3;
               reasons.push(`Mitarbeiterwunsch: Tag ${dow} bevorzugt`);
             }
-            if (holidayName && preferredHolidays.includes(holidayName)) {
-              score -= planConfig.soft_wishes_priority * 18;
-              reasons.push(`Mitarbeiterwunsch: ${holidayName} freihalten`);
-            }
-            if (preferredHolidays.includes('Ramadan') && ramadanRange && dateStr >= ramadanRange.start && dateStr <= ramadanRange.end) {
-              score -= planConfig.soft_wishes_priority * 6;
-              reasons.push('Mitarbeiterwunsch: Ramadan-Entlastung');
-
-              if (shiftDef.shift_type === 'early') {
-                score += planConfig.soft_wishes_priority * 2;
-                reasons.push('Ramadan: Frühschicht bevorzugt');
-              }
-              if (shiftDef.shift_type === 'late') {
-                score -= planConfig.soft_wishes_priority * 10;
-                reasons.push('Ramadan: Spätschicht möglichst vermeiden');
-              }
-              if (shiftDef.shift_type === 'night') {
-                score -= planConfig.soft_wishes_priority * 16;
-                reasons.push('Ramadan: Nachtschicht möglichst vermeiden');
-              }
-            }
+            ({ score, reasons } = applyHolidayWorkPreferenceScore({
+              score,
+              reasons,
+              holidayName,
+              preferredHolidays,
+              ramadanRange,
+              dateStr,
+              softWishesPriority: planConfig.soft_wishes_priority,
+            }));
             if (maxNights !== null && maxNights !== undefined && shiftDef.shift_type === 'night' && stats.nights >= maxNights) {
               score -= 1500;
               reasons.push(`Individuelles Nachtlimit erreicht (${stats.nights}/${maxNights})`);
             }
 
-            // Avoid colleagues
-            const avoidList = prefs.avoid_colleagues || [];
-            if (avoidList.length > 0) {
-              const dayShifts = shifts.filter(s => s.day === day);
-              for (const avoid of avoidList) {
-                if (dayShifts.some(s => s.employee_name === avoid)) {
-                  score -= 200;
-                  reasons.push(`Mitarbeiterwunsch: Vermeidet Kollege ${avoid}`);
-                }
-              }
-            }
           }
 
-          // === COLLEAGUE PREFERENCES ===
-          const preferred = preferredMap.get(emp);
+          const preferred = preferredMap.get(employee);
           if (preferred) {
-            const dayShifts = shifts.filter(s => s.day === day);
-            for (const pref of preferred) {
-              if (dayShifts.some(s => s.employee_name === pref)) {
-                score += 30;
-                reasons.push(`Wunschkollege ${pref} ebenfalls eingeteilt`);
+            const dayShifts = shifts.filter((entry) => entry.day === day);
+            const colleaguePreferenceBonus = Math.max(0, Math.round((planConfig.soft_wishes_priority || 0) * 0.3));
+            for (const preferredEmployee of preferred) {
+              if (colleaguePreferenceBonus > 0 && dayShifts.some((entry) => entry.employee_name === preferredEmployee)) {
+                score += colleaguePreferenceBonus;
+                reasons.push(`Wunschkollege ${preferredEmployee} ebenfalls eingeteilt`);
               }
             }
           }
 
-          // Deterministic tiebreaker: alphabetical by name
-          return { emp, score, reasons, hardBlocked: false };
+          return { emp: employee, score, reasons, hardBlocked: false };
         });
 
         const eligibleScored = scored.filter((entry) => Number.isFinite(entry.score));
-
         if (eligibleScored.length === 0) {
           const blockedPreview = scored
             .filter((entry) => entry.hardBlocked && entry.reasons.length > 0)
             .slice(0, 3)
             .map((entry) => `${entry.emp}: ${entry.reasons.join(', ')}`);
           conflicts.push({
-            day, date: dateStr, shift: shiftDef.code, severity: 'critical',
+            day,
+            date: dateStr,
+            shift: shiftDef.code,
+            severity: 'critical',
             type: 'no_eligible_candidate',
             message: `${shiftDef.name} (${shiftDef.code}) am ${dateStr}: Keine zulässigen Kandidaten${blockedPreview.length > 0 ? ` (${blockedPreview.join(' | ')})` : ''}`,
           });
           continue;
         }
 
-        // Sort by score descending, then name ascending for determinism
-        eligibleScored.sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          return a.emp.localeCompare(b.emp, 'de');
+        eligibleScored.sort((left, right) => {
+          if (right.score !== left.score) return right.score - left.score;
+          return left.emp.localeCompare(right.emp, 'de');
         });
 
         const winner = eligibleScored[0];
         if (!winner) continue;
 
-        const emp = winner.emp;
-        shifts.push({ employee_name: emp, day, shift_code: shiftDef.code });
-        assignedToday.add(emp);
-        empDayAssignment[emp][day] = shiftDef.code;
-        empLastShiftType[emp] = shiftDef.shift_type;
-        empConsecutiveWork[emp]++;
-        if (rotation.min_free_after_streak > 0 && empConsecutiveWork[emp] >= rotation.max_consecutive_workdays) {
-          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.min_free_after_streak);
-          empRecoveryReason[emp] = 'Arbeitsserie';
-        }
-        if (shiftDef.shift_type === 'night' && rotation.free_days_after_night > 0) {
-          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_night);
-          empRecoveryReason[emp] = 'Nachtschicht';
-        }
-        if (weekend && rotation.free_days_after_weekend > 0) {
-          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp], rotation.free_days_after_weekend);
-          empRecoveryReason[emp] = 'Wochenendarbeit';
+        // Add relative ranking context to the winner's reasons
+        if (eligibleScored.length > 1) {
+          const runnerUp = eligibleScored[1];
+          const scoreDiff = winner.score - runnerUp.score;
+          if (scoreDiff > 0) {
+            winner.reasons.push(`Vorsprung: +${scoreDiff} Punkte vor ${runnerUp.emp}`);
+          } else {
+            winner.reasons.push(`Gleichstand mit ${runnerUp.emp} — alphabetisch aufgelöst`);
+          }
+        } else {
+          winner.reasons.push('Einziger zulässiger Kandidat');
         }
 
-        // Update stats
-        const shiftHours = getShiftDurationHours(shiftDef);
-        if (shiftDef.shift_type === 'night') empStats[emp].nights++;
-        if (weekend) empStats[emp].weekends++;
-        if (shiftDef.shift_type === 'early') empStats[emp].earlyCount++;
-        if (shiftDef.shift_type === 'late') empStats[emp].lateCount++;
-        empStats[emp].total++;
-        empStats[emp].specialShiftCounts[shiftDef.code] = Number(empStats[emp].specialShiftCounts[shiftDef.code] || 0) + 1;
-        empHours[emp] += shiftHours;
-        empStats[emp].actualHours = Number(empHours[emp].toFixed(2));
-        planReport.totalShiftsPlanned++;
-
-        // Build explanation
-        const expKey = `${emp}_${day}`;
-        const allReasons = [
-          'Verfügbar (kein Urlaub/Abwesenheit, nicht ausgeschlossen)',
-          `Schicht: ${shiftDef.name} (${shiftDef.code})`,
-          ...winner.reasons,
-          `Planungsbewertung: ${winner.score} Punkte (Rang 1 von ${eligibleScored.length} zulässigen Kandidaten)`,
-        ];
-        explanations[expKey] = { employee: emp, day, code: shiftDef.code, reasons: allReasons, score: winner.score };
-
-        // Track wishes
-        const prefs = empPrefsMap.get(emp);
-        if (prefs) {
-          if ((prefs.preferred_shifts || []).includes(shiftDef.code)) planReport.wishesRespected++;
-          if ((prefs.unwanted_shifts || []).includes(shiftDef.code)) planReport.wishesDenied++;
-          if (holidayName && (prefs.preferred_holidays || []).includes(holidayName)) planReport.wishesDenied++;
-        }
+        assignShiftToEmployee({
+          emp: winner.emp,
+          shiftDef,
+          day,
+          dateStr,
+          weekend,
+          holidayName,
+          explanationReasons: winner.reasons,
+          score: winner.score,
+          eligibleCount: eligibleScored.length,
+        });
       }
     }
 
-    // Reset consecutive work for unassigned employees
-    for (const emp of activeEmployees) {
-      if (!assignedToday.has(emp)) {
-        const recoveryDaysBefore = empRequiredFreeDays[emp];
-        const recoveryReasonBefore = empRecoveryReason[emp];
-        empConsecutiveWork[emp] = 0;
-        empLastShiftType[emp] = null;
-        if (empRequiredFreeDays[emp] > 0) {
-          empRequiredFreeDays[emp] = Math.max(empRequiredFreeDays[emp] - 1, 0);
-          if (empRequiredFreeDays[emp] === 0) empRecoveryReason[emp] = null;
+    for (const employee of activeEmployees) {
+      if (!assignedToday.has(employee)) {
+        if (empSeriesRemaining[employee] > 0) {
+          empSeriesCode[employee] = null;
+          empSeriesRemaining[employee] = 0;
         }
-        // Explanation for non-assignment
-        const expKey = `${emp}_${day}`;
+        const recoveryDaysBefore = empRequiredFreeDays[employee];
+        const recoveryReasonBefore = empRecoveryReason[employee];
+        empConsecutiveWork[employee] = 0;
+        empLastShiftType[employee] = null;
+        if (empRequiredFreeDays[employee] > 0) {
+          empRequiredFreeDays[employee] = Math.max(empRequiredFreeDays[employee] - 1, 0);
+          if (empRequiredFreeDays[employee] === 0) empRecoveryReason[employee] = null;
+        }
+        const expKey = `${employee}_${day}`;
         if (!explanations[expKey]) {
-          const absences = absenceMap.get(emp) || [];
-          const isAbsent = absences.some(ab => {
-            const abStart = new Date(ab.start_date);
-            const abEnd = new Date(ab.end_date);
-            const thisDate = new Date(dateStr);
-            return thisDate >= abStart && thisDate <= abEnd;
-          });
+          const absence = getEmployeeAbsenceOnDate(employee, dateStr);
+          const isAbsent = Boolean(absence);
+          const creditedAbsenceHours = getCreditedAbsenceHours(absence, weekend);
+          const absenceLabel = String(absence?.type || 'ABW').toUpperCase();
           explanations[expKey] = {
-            employee: emp, day, code: null,
-            reasons: isAbsent ? ['Nicht eingeteilt: Abwesend (Urlaub/Krankheit)']
-              : recoveryDaysBefore > 0 ? [`Nicht eingeteilt: Erholungstag nach ${recoveryReasonBefore || 'Belastung'} erforderlich (${recoveryDaysBefore} verbleibend)`]
-              : ['Nicht eingeteilt: Genügend andere Mitarbeiter für alle Schichten verfügbar'],
+            employee,
+            day,
+            code: null,
+            reasons: isAbsent
+              ? [creditedAbsenceHours > 0
+                ? `Nicht eingeteilt: ${absenceLabel} (${creditedAbsenceHours}h gutgeschrieben)`
+                : `Nicht eingeteilt: ${absenceLabel} (keine Stundenanrechnung)`]
+              : recoveryDaysBefore > 0
+                ? [`Nicht eingeteilt: Erholungstag nach ${recoveryReasonBefore || 'Belastung'} erforderlich (${recoveryDaysBefore} verbleibend)`]
+                : ['Nicht eingeteilt: Genügend andere Mitarbeiter für alle Schichten verfügbar'],
           };
         }
       }
     }
 
-    // Explanations for excluded employees
-    for (const emp of employees) {
-      if (shiftExcludedSet.has(emp)) {
-        const expKey = `${emp}_${day}`;
+    for (const employee of employees) {
+      if (shiftExcludedSet.has(employee)) {
+        const expKey = `${employee}_${day}`;
         explanations[expKey] = {
-          employee: emp, day, code: null,
+          employee,
+          day,
+          code: null,
           reasons: ['Von der Schichtplanung ausgeschlossen (Admin-Einstellung)'],
         };
       }
     }
   }
 
-  // Build fairness data
   const fairness = {};
-  for (const emp of activeEmployees) {
-    fairness[emp] = {
-      nights: empStats[emp].nights,
-      weekends: empStats[emp].weekends,
-      earlyCount: empStats[emp].earlyCount,
-      lateCount: empStats[emp].lateCount,
-      total: empStats[emp].total,
-      actualHours: Number(empHours[emp].toFixed(2)),
+  for (const employee of activeEmployees) {
+    fairness[employee] = {
+      nights: empStats[employee].nights,
+      weekends: empStats[employee].weekends,
+      earlyCount: empStats[employee].earlyCount,
+      lateCount: empStats[employee].lateCount,
+      total: empStats[employee].total,
+      actualHours: Number(empHours[employee].toFixed(2)),
       targetHours,
-      deltaHours: Number((empHours[emp] - targetHours).toFixed(2)),
+      deltaHours: Number((empHours[employee] - targetHours).toFixed(2)),
     };
   }
 
   planReport.conflictsCount = conflicts.length;
   planReport.rulesApplied = [
     `Rotationsregeln: Max ${rotation.max_consecutive_workdays} Arbeitstage, ${rotation.max_nights_per_month} Nächte/Monat`,
+    `Serienplanung aktiv: ${shiftDefs.map((definition) => `${definition.code}=${getShiftSeriesDays(definition)} Tage`).join(', ')}`,
+    'Wochenanker aktiv: Neue Serien werden zur nächsten Montagkante ausgerichtet',
+    `Abwesenheitsgutschrift: Urlaub, Krank und Seminar zählen mit ${CREDITED_ABSENCE_HOURS} Stunden pro Werktag`,
     `Freitage nach Nacht: ${rotation.free_days_after_night || 0}, nach Wochenendarbeit: ${rotation.free_days_after_weekend || 0}`,
     `Monatliche Sollzeit: ${targetHours} Stunden`,
     `Fairnessregeln: Nächte=${fairnessRules.balance_nights ? 'Ja' : 'Nein'}, Wochenenden=${fairnessRules.balance_weekends ? 'Ja' : 'Nein'}`,
@@ -929,19 +1363,21 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
       activeEmployees: activeEmployees.length,
       excluded: shiftExcludedSet.size,
       daysInMonth: numDays,
-      shiftDefinitions: shiftDefs.map(d => ({
-        code: d.code,
-        name: d.name,
-        type: d.shift_type,
-        minStaff: d.min_staff,
-        maxStaff: d.max_staff,
-        durationHours: getShiftDurationHours(d),
-        startDayOffset: Number.parseInt(String(d.start_day_offset ?? 0), 10) || 0,
-        endDayOffset: Number.parseInt(String(d.end_day_offset ?? (d.shift_type === 'night' ? 1 : 0)), 10) || 0,
+      shiftDefinitions: shiftDefs.map((definition) => ({
+        code: definition.code,
+        name: definition.name,
+        type: definition.shift_type,
+        minStaff: definition.min_staff,
+        maxStaff: definition.max_staff,
+        durationHours: getShiftDurationHours(definition),
+        seriesDays: getShiftSeriesDays(definition),
+        startDayOffset: Number.parseInt(String(definition.start_day_offset ?? 0), 10) || 0,
+        endDayOffset: Number.parseInt(String(definition.end_day_offset ?? (definition.shift_type === 'night' ? 1 : 0)), 10) || 0,
       })),
       rotationRules: rotation,
       fairnessRules,
       planningConfig: planConfig,
+      dbsPlanningConfig,
       staffingRules,
       specialPools: Object.fromEntries(
         [...specialPoolsByShift.entries()].map(([shiftCode, entries]) => [
@@ -949,7 +1385,13 @@ async function generateShiftPlan(year, mon, numDays, createdBy) {
           [...entries.entries()].map(([employeeName, value]) => ({ employeeName, monthlyMaxAssignments: value.monthlyMaxAssignments })),
         ])
       ),
-      effectiveShiftSlots: baselineShiftSlots.map(d => ({ code: d.code, type: d.shift_type, plannedSlots: d.planned_slots, durationHours: getShiftDurationHours(d) })),
+      effectiveShiftSlots: baselineShiftSlots.map((definition) => ({
+        code: definition.code,
+        type: definition.shift_type,
+        plannedSlots: definition.planned_slots,
+        durationHours: getShiftDurationHours(definition),
+        seriesDays: getShiftSeriesDays(definition),
+      })),
       generatedAt: new Date().toISOString(),
     },
   };
@@ -981,7 +1423,30 @@ router.get('/drafts/:id', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM shiftplan_drafts WHERE id = $1', [parseInt(req.params.id)]);
     if (!rows.length) return res.status(404).json({ ok: false, error: 'Draft nicht gefunden' });
-    res.json({ ok: true, draft: rows[0] });
+    const draft = rows[0];
+    const draftEmployees = deduplicateEmployees([
+      ...(Array.isArray(draft.shifts_json) ? draft.shifts_json.map((entry) => entry.employee_name) : []),
+      ...Object.keys(draft.fairness || {}),
+    ]);
+    const wishStatus = await loadDraftWishStatus(draftEmployees);
+    const wishSummary = wishStatus.reduce((summary, entry) => {
+      if (entry.submitted) summary.submitted += 1;
+      else summary.missing += 1;
+      return summary;
+    }, { submitted: 0, missing: 0 });
+    const absences = await loadDraftAbsences(draft.month);
+    const manualEmployees = await loadManualEmployeesForDraftMonth(draft.month);
+
+    res.json({
+      ok: true,
+      draft: {
+        ...draft,
+        wish_status: wishStatus,
+        wish_summary: wishSummary,
+        absences,
+        manual_employees: manualEmployees,
+      },
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -1106,14 +1571,16 @@ router.post('/drafts/:id/activate', requirePageAccess('shiftplan_control', 'writ
       return res.status(400).json({ ok: false, error: 'Monatslabel konnte nicht erzeugt werden' });
     }
 
+    const manualEmployeeNames = await loadManualEmployeeNameSetForDraftMonth(draftMonth, client);
+
     // Delete existing shifts for this month. Also clean up legacy rows written with the raw YYYY-MM key.
     await client.query('DELETE FROM shifts WHERE month = $1 OR month = $2', [liveMonthLabel, draftMonth]);
 
     // Insert draft shifts
     for (const s of shifts) {
       await client.query(
-        'INSERT INTO shifts (month, employee_name, day, shift_code) VALUES ($1, $2, $3, $4) ON CONFLICT (month, employee_name, day) DO UPDATE SET shift_code = $4',
-        [liveMonthLabel, s.employee_name, s.day, s.shift_code]
+        'INSERT INTO shifts (month, employee_name, day, shift_code, source) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (month, employee_name, day) DO UPDATE SET shift_code = $4, source = $5',
+        [liveMonthLabel, s.employee_name, s.day, s.shift_code, manualEmployeeNames.has(s.employee_name) ? 'manual' : 'import']
       );
     }
 
@@ -1438,7 +1905,8 @@ router.get('/planning-basis', async (req, res) => {
     const numDays = daysInMonth(year, mon);
 
     // Employees
-    const employees = await loadEmployeesForPlanningYear(year);
+    const employees = await loadEmployeesForPlanningYear(year, String(month));
+    const manualEmployees = await loadManualEmployeesForDraftMonth(String(month));
 
     // Absences
     const absRes = await pool.query(
@@ -1479,12 +1947,136 @@ router.get('/planning-basis', async (req, res) => {
         staffingRules: staffRes.rows,
         wellbeing: wbRes.rows,
         preferredColleagues: prefRes.rows,
+        manualEmployees,
         month,
         daysInMonth: numDays,
       }
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/manual-employees', requirePageAccess('shiftplan_control', 'view'), async (req, res) => {
+  try {
+    const month = String(req.query?.month || '').trim();
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ ok: false, error: 'month parameter required (YYYY-MM)' });
+    }
+
+    const employees = await loadManualEmployeesForDraftMonth(month);
+    res.json({ ok: true, employees });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/manual-employees/summary', requirePageAccess('shiftplan_control', 'view'), async (req, res) => {
+  try {
+    const year = Number.parseInt(String(req.query?.year || ''), 10);
+    if (!Number.isInteger(year)) {
+      return res.status(400).json({ ok: false, error: 'year parameter required' });
+    }
+
+    const months = await loadManualEmployeeSummaryForYear(year);
+    res.json({ ok: true, months });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post('/manual-employees', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
+  try {
+    const month = String(req.body?.month || '').trim();
+    const employeeName = normalizeEmployeeName(req.body?.employeeName);
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ ok: false, error: 'month parameter required (YYYY-MM)' });
+    }
+    if (!employeeName) {
+      return res.status(400).json({ ok: false, error: 'employeeName is required' });
+    }
+
+    const liveMonthLabel = resolveLiveMonthLabelFromDraftMonth(month);
+    if (!liveMonthLabel) {
+      return res.status(400).json({ ok: false, error: 'Ungültiges Monatsformat' });
+    }
+
+    const duplicateRes = await pool.query(
+      `SELECT COALESCE(source, 'import') AS source
+         FROM shifts
+        WHERE month = $1
+          AND employee_name = $2
+        LIMIT 1`,
+      [liveMonthLabel, employeeName]
+    );
+    if (duplicateRes.rowCount > 0 && duplicateRes.rows[0]?.source !== 'manual') {
+      return res.status(409).json({ ok: false, error: 'Employee already exists in the imported shiftplan for this month' });
+    }
+
+    const createdBy = req.user?.displayName || req.user?.email || req.user?.username || 'unknown';
+    const { rows } = await pool.query(
+      `INSERT INTO manual_shiftplan_employees (month, employee_name, created_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (month, employee_name) DO NOTHING
+       RETURNING employee_name, created_at, created_by`,
+      [liveMonthLabel, employeeName, createdBy]
+    );
+
+    if (!rows.length) {
+      return res.status(409).json({ ok: false, error: 'Manual employee already exists for this month' });
+    }
+
+    res.status(201).json({ ok: true, employee: rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.delete('/manual-employees', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const month = String(req.query?.month || '').trim();
+    const employeeName = normalizeEmployeeName(req.query?.employeeName);
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ ok: false, error: 'month parameter required (YYYY-MM)' });
+    }
+    if (!employeeName) {
+      return res.status(400).json({ ok: false, error: 'employeeName is required' });
+    }
+
+    const liveMonthLabel = resolveLiveMonthLabelFromDraftMonth(month);
+    if (!liveMonthLabel) {
+      return res.status(400).json({ ok: false, error: 'Ungültiges Monatsformat' });
+    }
+
+    await client.query('BEGIN');
+    const deleteManualRes = await client.query(
+      `DELETE FROM manual_shiftplan_employees
+        WHERE month = $1
+          AND employee_name = $2`,
+      [liveMonthLabel, employeeName]
+    );
+
+    if (deleteManualRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: 'Manual employee not found' });
+    }
+
+    await client.query(
+      `DELETE FROM shifts
+        WHERE month = $1
+          AND employee_name = $2
+          AND COALESCE(source, 'import') = 'manual'`,
+      [liveMonthLabel, employeeName]
+    );
+
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    client.release();
   }
 });
 

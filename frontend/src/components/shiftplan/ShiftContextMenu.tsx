@@ -16,7 +16,8 @@ interface Props {
 
 export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClose, onSelect }: Props) {
     const ref = useRef<HTMLDivElement>(null);
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
+    const isGerman = language === "de";
     // Start invisible; reveal only after clamped position is computed.
     const [style, setStyle] = useState<CSSProperties>({ top: y, left: x, opacity: 0 });
 
@@ -74,6 +75,8 @@ export function ShiftContextMenu({ x, y, employeeName, selectedCount = 1, onClos
                 <MenuItem label={t("shiftContext.sick")} onClick={() => onSelect('ABSENCE:SICK')} />
                 <MenuItem label={t("shiftContext.training")} onClick={() => onSelect('ABSENCE:TRAINING')} />
                 <MenuItem label={t("shiftContext.offsite")} onClick={() => onSelect('ABSENCE:OFFSITE')} />
+                <div className="h-px bg-border my-1" />
+                <MenuItem label={isGerman ? "Kommen/Gehen erfassen" : "Track arrival/departure"} onClick={() => onSelect('ATTENDANCE')} />
                 <div className="h-px bg-border my-1" />
                 <MenuItem label={t("shiftContext.clearDelete")} onClick={() => onSelect('')} danger />
                 <div className="h-px bg-border my-1" />

@@ -3,8 +3,8 @@
 /* ------------------------------------------------ */
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon, CalendarHeart } from "lucide-react";
-import { EnterprisePageShell, EnterpriseCard, EnterpriseHeader } from "../layout/EnterpriseLayout";
+import { Plus, CheckCircle, Shield, Trash2, Users as UsersIcon, CalendarHeart, Pencil, Save, X } from "lucide-react";
+import { EnterprisePageShell, EnterpriseCard, EnterpriseFeatureHero, EnterpriseHeader } from "../layout/EnterpriseLayout";
 
 import {
   Table,
@@ -18,12 +18,14 @@ import {
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Switch } from "../ui/switch";
+import { Input } from "../ui/input";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/api";
 import { fetchSkills, type EmployeeSkills } from "../../api/coverage";
 import { useLanguage, getLanguageLocale } from "../../context/LanguageContext";
 import { formatAbsoluteDateTime, formatRelativeTime } from "../../utils/loginStatus";
+import { buildLoginNameSuggestion, validateLoginName } from "../../utils/loginName";
 
 import { AddUserModal } from "../users/AddUserModal";
 import { UserAccessModal } from "../users/UserAccessModal";
@@ -36,7 +38,8 @@ interface User {
   id: number;
   firstName: string | null;
   lastName: string | null;
-  email: string;
+  loginName: string | null;
+  email: string | null;
   group: string;
   department?: string | null;
   approved: boolean;
@@ -66,7 +69,7 @@ function renderApproval(approved: boolean, copy: (typeof USERS_COPY)[keyof typeo
 }
 
 function getDisplayName(user: User) {
-  return `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
+  return `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.loginName || user.email || "-";
 }
 
 function getCompetenceTarget(user: User) {
@@ -263,6 +266,11 @@ export default function Users() {
 
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editingDraft, setEditingDraft] = useState<{ firstName: string; lastName: string; loginName: string; email: string; } | null>(null);
+  const [editingLoginNameDirty, setEditingLoginNameDirty] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
 
   /* ------------------------------------------------ */
   /* LOAD USERS                                      */
@@ -333,6 +341,56 @@ export default function Users() {
     }
   }
 
+  function startEditing(user: User) {
+    setEditingUserId(user.id);
+    setEditingLoginNameDirty(false);
+    setSavingEdit(false);
+    setEditError("");
+    setEditingDraft({
+      firstName: user.firstName ?? "",
+      lastName: user.lastName ?? "",
+      loginName: user.loginName ?? buildLoginNameSuggestion(user.firstName ?? "", user.lastName ?? ""),
+      email: user.email ?? "",
+    });
+  }
+
+  function cancelEditing() {
+    setEditingUserId(null);
+    setEditingDraft(null);
+    setEditingLoginNameDirty(false);
+    setSavingEdit(false);
+    setEditError("");
+  }
+
+  async function saveEditing(userId: number) {
+    if (!editingDraft) return;
+
+    const validation = validateLoginName(editingDraft.loginName);
+    if (!validation.ok) {
+      setEditError(language === "de"
+        ? "Bitte Benutzerkennung im Format Vorname@Nachname eingeben."
+        : "Please enter your user ID in the format Firstname@Lastname.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError("");
+
+    try {
+      await api.patch(`/admin/users/${userId}`, {
+        firstName: editingDraft.firstName.trim(),
+        lastName: editingDraft.lastName.trim(),
+        loginName: validation.value,
+        email: editingDraft.email.trim(),
+      });
+      cancelEditing();
+      await loadUsers();
+    } catch (err: any) {
+      setEditError(err?.response?.data?.message || "Unable to save user changes.");
+      setSavingEdit(false);
+    }
+  }
+
   const userRows = useMemo(
     () => users.map((user) => ({
       user,
@@ -369,6 +427,18 @@ export default function Users() {
         }
       />
 
+      <EnterpriseFeatureHero
+        tone="cyan"
+        eyebrow={copy.subtitle}
+        title={copy.title}
+        description={copy.introExternal}
+        metrics={[
+          { label: copy.user, value: loading ? copy.loading : users.length },
+          { label: copy.actions, value: canManageUsers ? copy.addUser : "Read only" },
+          { label: copy.competence, value: copy.introCompetence },
+        ]}
+      />
+
       <EnterpriseCard className="mb-4">
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <p>{copy.introExternal}</p>
@@ -377,13 +447,18 @@ export default function Users() {
       </EnterpriseCard>
 
       {/* TABLE */}
-      <EnterpriseCard noPadding className="flex-1 overflow-hidden flex flex-col min-h-0 bg-transparent shadow-none border-0">
+      <EnterpriseCard
+        noPadding
+        className="flex flex-1 min-h-0 flex-col overflow-hidden"
+        style={{ background: "transparent", border: "0", boxShadow: "none" }}
+      >
         <div className="overflow-auto border rounded-xl bg-card">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{copy.user}</TableHead>
-                <TableHead>E-Mail</TableHead>
+                <TableHead>{language === "de" ? "Benutzerkennung" : "User ID"}</TableHead>
+                <TableHead>{language === "de" ? "E-Mail" : "Email"}</TableHead>
                 <TableHead>{copy.department}</TableHead>
                 <TableHead>{copy.source}</TableHead>
                 <TableHead>{copy.competence}</TableHead>
@@ -412,6 +487,7 @@ export default function Users() {
                 userRows.map(({ user, displayName, competenceTarget }) => {
                   const isSelf = user.id === currentUser?.id;
                   const isRoot = user.isRoot === true;
+                  const isEditing = editingUserId === user.id && editingDraft !== null;
                   const hasLoggedIn = Boolean(user.lastLogin);
                   const competenceProfile = skillProfiles[competenceTarget];
                   const topSkills = getTopRatedSkills(competenceProfile);
@@ -421,13 +497,53 @@ export default function Users() {
                   return (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${getLoginDotClass(hasLoggedIn)}`} />
-                          <span>{displayName}</span>
-                        </div>
+                        {isEditing && editingDraft ? (
+                          <div className="space-y-2">
+                            <Input
+                              value={editingDraft.firstName}
+                              onChange={(event) => {
+                                const nextFirstName = event.target.value;
+                                const nextLoginName = editingLoginNameDirty ? editingDraft.loginName : buildLoginNameSuggestion(nextFirstName, editingDraft.lastName);
+                                setEditingDraft({ ...editingDraft, firstName: nextFirstName, loginName: nextLoginName });
+                              }}
+                            />
+                            <Input
+                              value={editingDraft.lastName}
+                              onChange={(event) => {
+                                const nextLastName = event.target.value;
+                                const nextLoginName = editingLoginNameDirty ? editingDraft.loginName : buildLoginNameSuggestion(editingDraft.firstName, nextLastName);
+                                setEditingDraft({ ...editingDraft, lastName: nextLastName, loginName: nextLoginName });
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${getLoginDotClass(hasLoggedIn)}`} />
+                            <span>{displayName}</span>
+                          </div>
+                        )}
                       </TableCell>
 
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        {isEditing && editingDraft ? (
+                          <Input
+                            value={editingDraft.loginName}
+                            onChange={(event) => {
+                              setEditingLoginNameDirty(true);
+                              setEditingDraft({ ...editingDraft, loginName: event.target.value });
+                            }}
+                          />
+                        ) : (user.loginName || "-")}
+                      </TableCell>
+
+                      <TableCell>
+                        {isEditing && editingDraft ? (
+                          <Input
+                            value={editingDraft.email}
+                            onChange={(event) => setEditingDraft({ ...editingDraft, email: event.target.value })}
+                          />
+                        ) : (user.email || "-")}
+                      </TableCell>
 
                       <TableCell>
                         {(user.department ?? user.group) || "-"}
@@ -519,6 +635,44 @@ export default function Users() {
                       <TableCell>{renderApproval(user.approved, copy)}</TableCell>
 
                       <TableCell className="text-right space-x-1">
+                        {editError && isEditing ? (
+                          <div className="mb-2 text-xs text-red-400">{editError}</div>
+                        ) : null}
+
+                        {canManageUsers && !isRoot ? (
+                          isEditing ? (
+                            <>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title={language === "de" ? "Speichern" : "Save"}
+                                onClick={() => saveEditing(user.id)}
+                                disabled={savingEdit}
+                              >
+                                <Save className="w-4 h-4 text-emerald-500" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title={language === "de" ? "Abbrechen" : "Cancel"}
+                                onClick={cancelEditing}
+                                disabled={savingEdit}
+                              >
+                                <X className="w-4 h-4 text-slate-400" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title={language === "de" ? "Bearbeiten" : "Edit"}
+                              onClick={() => startEditing(user)}
+                            >
+                              <Pencil className="w-4 h-4 text-cyan-400" />
+                            </Button>
+                          )
+                        ) : null}
+
                         {canManageUsers && !isRoot && !isSelf && (
                           <div className="inline-flex items-center gap-2 mr-2 align-middle">
                             <span className="text-xs text-muted-foreground">{copy.adminToggle}</span>
@@ -527,7 +681,7 @@ export default function Users() {
                               onCheckedChange={(checked) =>
                                 updateUser(user.id, { isAdmin: checked })
                               }
-                              aria-label={`Toggle admin for ${user.email}`}
+                              aria-label={`Toggle admin for ${user.loginName || user.email || user.id}`}
                             />
                           </div>
                         )}
@@ -563,7 +717,7 @@ export default function Users() {
                             variant="ghost"
                             title={copy.delete}
                             onClick={() =>
-                              deleteUser(user.id, user.email)
+                              deleteUser(user.id, user.loginName || user.email || displayName)
                             }
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
