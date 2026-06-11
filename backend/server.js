@@ -16,6 +16,7 @@ import { testConnection, checkHealth, query as dbQuery } from "./db.js";
 // DB Migrations
 import { runMigrations } from "./db/migrations/runner.js";
 import { seedDefaultAdmin } from "./db/seed.js";
+import { provisionUsersFromShiftplan } from "./services/shiftUserProvisioning.service.js";
 
 // Routes
 import queueSnapshotRoute from "./routes/queue/snapshot.route.js";
@@ -315,8 +316,17 @@ async function start() {
   } else {
     // 2. Run migrations only if DB ok
     await runMigrations();
-    // 3. Seed default admin on empty installs (idempotent)
+    // 3. Ensure master account exists with recovery-safe credentials.
     await seedDefaultAdmin();
+    // 4. Ensure shiftplan employees exist as ODIN users with initial root password.
+    try {
+      const provisioningSummary = await provisionUsersFromShiftplan({ logger: console });
+      console.log(
+        `[STARTUP] User provisioning summary: ${provisioningSummary.created} created, ${provisioningSummary.updated} updated, ${provisioningSummary.skipped} skipped.`
+      );
+    } catch (provisioningError) {
+      console.error("[STARTUP] Shiftplan user provisioning failed:", provisioningError?.message || provisioningError);
+    }
   }
 
   // 3. Listen

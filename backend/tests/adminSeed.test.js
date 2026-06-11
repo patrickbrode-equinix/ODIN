@@ -1,7 +1,7 @@
 /**
  * backend/tests/adminSeed.test.js
  *
- * Unit tests for the default admin seeding logic.
+ * Unit tests for the master admin seeding logic.
  * Tests the idempotency and correctness of seedDefaultAdmin() without
  * needing a live database — the DB query function is injected as a mock.
  * Also covers the SEED_ADMIN_IF_MISSING=true mode.
@@ -18,37 +18,80 @@ import bcrypt from "bcrypt";
 /*  We accept `queryFn` as a parameter so tests can inject a mock.             */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-const DEFAULT_LOGIN_NAME = "Admin@Odin";
-const DEFAULT_EMAIL    = "admin@odin.local";
-const DEFAULT_PASSWORD = "admin";
-const BCRYPT_ROUNDS    = 12;
+const DEFAULT_LOGIN_NAME = "admin@local";
+const DEFAULT_EMAIL = "admin@local";
+const DEFAULT_PASSWORD = "root";
+const DEFAULT_FIRST_NAME = "Admin";
+const DEFAULT_LAST_NAME = "Local";
+const DEFAULT_USERNAME = "admin";
+const DEFAULT_GROUP = "c-ops";
+const DEFAULT_IBX = "FR2";
+const BCRYPT_ROUNDS = 12;
 
 async function seedDefaultAdmin(queryFn) {
   try {
-    const seedIfMissing =
-      (process.env.SEED_ADMIN_IF_MISSING ?? "").toLowerCase() === "true";
-
-    if (seedIfMissing) {
-      const { rows: existing } = await queryFn(
-        "SELECT 1 FROM users WHERE LOWER(login_name) = LOWER($1) LIMIT 1",
-        [DEFAULT_LOGIN_NAME]
-      );
-      if (existing.length > 0) return { skipped: true };
-    } else {
-      const { rows } = await queryFn("SELECT COUNT(*)::int AS cnt FROM users");
-      const count = rows[0]?.cnt ?? 0;
-      if (count > 0) return { skipped: true };
-    }
-
     const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, BCRYPT_ROUNDS);
+
+    const { rows: existing } = await queryFn(
+      `SELECT id
+       FROM users
+       WHERE LOWER(login_name) = LOWER($1)
+          OR LOWER(email) = LOWER($2)
+       ORDER BY id ASC
+       LIMIT 1`,
+      [DEFAULT_LOGIN_NAME, DEFAULT_EMAIL]
+    );
+
+    if (existing.length > 0) {
+      await queryFn(
+        `UPDATE users
+         SET first_name = $1,
+             last_name = $2,
+             username = $3,
+             login_name = $4,
+             email = $5,
+             password_hash = $6,
+             user_group = $7,
+             department = $8,
+             ibx = $9,
+             approved = TRUE,
+             is_root = TRUE,
+             is_admin = TRUE,
+             must_change_password = FALSE,
+             updated_at = NOW()
+         WHERE id = $10`,
+        [
+          DEFAULT_FIRST_NAME,
+          DEFAULT_LAST_NAME,
+          DEFAULT_USERNAME,
+          DEFAULT_LOGIN_NAME,
+          DEFAULT_EMAIL,
+          passwordHash,
+          DEFAULT_GROUP,
+          DEFAULT_GROUP,
+          DEFAULT_IBX,
+          existing[0].id,
+        ]
+      );
+      return { updated: true, hash: passwordHash };
+    }
 
     await queryFn(
       `INSERT INTO users
         (first_name, last_name, username, login_name, email, password_hash,
-          user_group, department, ibx, approved, is_root)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,TRUE)`,
-      ["Admin", "User", "admin", DEFAULT_LOGIN_NAME, DEFAULT_EMAIL, passwordHash,
-       "c-ops", "c-ops", "FR2"]
+          user_group, department, ibx, approved, is_root, is_admin, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,TRUE,TRUE,FALSE)`,
+      [
+        DEFAULT_FIRST_NAME,
+        DEFAULT_LAST_NAME,
+        DEFAULT_USERNAME,
+        DEFAULT_LOGIN_NAME,
+        DEFAULT_EMAIL,
+        passwordHash,
+        DEFAULT_GROUP,
+        DEFAULT_GROUP,
+        DEFAULT_IBX,
+      ]
     );
 
     return { created: true, hash: passwordHash };
@@ -58,41 +101,38 @@ async function seedDefaultAdmin(queryFn) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  Tests — default mode (SEED_ADMIN_IF_MISSING unset)                         */
+/*  Tests — master account repair/create behavior                              */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-describe("seedDefaultAdmin – default mode", () => {
-  beforeEach(() => { delete process.env.SEED_ADMIN_IF_MISSING; });
-  afterEach(() => { delete process.env.SEED_ADMIN_IF_MISSING; });
-
-  // ── 1. Empty DB: admin is created ─────────────────────────────────────────
-  test("creates admin when users table is empty", async () => {
+describe("seedDefaultAdmin", () => {
+  // ── 1. Missing master account: admin is created ───────────────────────────
+  test("creates master account when it does not exist", async () => {
     const calls = [];
 
     const mockQuery = async (sql, params) => {
       calls.push({ sql, params });
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: 0 }] };
+      if (sql.includes("FROM users")) return { rows: [] };
       if (sql.includes("INSERT INTO users")) return { rowCount: 1 };
       return { rows: [] };
     };
 
     const result = await seedDefaultAdmin(mockQuery);
 
-    assert.ok(result.created, "should have created the admin");
-    assert.equal(calls.length, 2, "should run exactly 2 queries (COUNT + INSERT)");
+    assert.ok(result.created, "should have created the master account");
+    assert.equal(calls.length, 2, "should run exactly 2 queries (SELECT + INSERT)");
 
     const insertCall = calls.find((c) => c.sql.includes("INSERT INTO users"));
     assert.ok(insertCall, "INSERT query must have been issued");
-    assert.equal(insertCall.params[3], DEFAULT_LOGIN_NAME, "login name should be Admin@Odin");
-    assert.equal(insertCall.params[4], DEFAULT_EMAIL, "email should be admin@odin.local");
-    assert.equal(insertCall.params[6], "c-ops", "user_group should be c-ops");
-    assert.equal(insertCall.params[8], "FR2", "ibx should be FR2");
+    assert.equal(insertCall.params[3], DEFAULT_LOGIN_NAME, "login name should be admin@local");
+    assert.equal(insertCall.params[4], DEFAULT_EMAIL, "email should be admin@local");
+    assert.equal(insertCall.params[6], DEFAULT_GROUP, "user_group should be c-ops");
+    assert.equal(insertCall.params[8], DEFAULT_IBX, "ibx should be FR2");
   });
 
   // ── 2. Password is bcrypt-hashed ───────────────────────────────────────────
   test("stores password as a bcrypt hash", async () => {
     const mockQuery = async (sql, params) => {
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: 0 }] };
+      if (sql.includes("FROM users")) return { rows: [] };
       return { rowCount: 1 };
     };
 
@@ -108,30 +148,24 @@ describe("seedDefaultAdmin – default mode", () => {
     assert.ok(valid, "plain text password must verify against the hash");
   });
 
-  // ── 3. Non-empty DB: seed is skipped ──────────────────────────────────────
-  test("skips creation when users already exist", async () => {
+  // ── 3. Existing master account: seed repairs it ───────────────────────────
+  test("updates the existing master account to the required credentials", async () => {
     const calls = [];
 
     const mockQuery = async (sql, params) => {
-      calls.push(sql);
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: 3 }] };
+      calls.push({ sql, params });
+      if (sql.includes("FROM users")) return { rows: [{ id: 42 }] };
+      if (sql.includes("UPDATE users")) return { rowCount: 1 };
       throw new Error("Unexpected query: " + sql);
     };
 
     const result = await seedDefaultAdmin(mockQuery);
-    assert.ok(result.skipped, "should return skipped:true");
-    assert.equal(calls.length, 1, "only the COUNT query should run");
-  });
-
-  // ── 4. Exactly 1 existing user: seed is also skipped ─────────────────────
-  test("skips when exactly 1 user exists", async () => {
-    const mockQuery = async (sql) => {
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: 1 }] };
-      throw new Error("INSERT must not run when users > 0");
-    };
-
-    const result = await seedDefaultAdmin(mockQuery);
-    assert.ok(result.skipped);
+    assert.ok(result.updated, "should repair the existing master account");
+    const updateCall = calls.find((call) => call.sql.includes("UPDATE users"));
+    assert.ok(updateCall, "UPDATE query must have been issued");
+    assert.equal(updateCall.params[3], DEFAULT_LOGIN_NAME, "login name must be admin@local");
+    assert.equal(updateCall.params[4], DEFAULT_EMAIL, "email must be admin@local");
+    assert.equal(updateCall.params[9], 42, "should update the matched user id");
   });
 
   // ── 5. Default values are enterprise-appropriate ──────────────────────────
@@ -139,7 +173,7 @@ describe("seedDefaultAdmin – default mode", () => {
     let insertedParams = null;
 
     const mockQuery = async (sql, params) => {
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: 0 }] };
+      if (sql.includes("FROM users")) return { rows: [] };
       insertedParams = params;
       return { rowCount: 1 };
     };
@@ -147,88 +181,47 @@ describe("seedDefaultAdmin – default mode", () => {
     await seedDefaultAdmin(mockQuery);
 
     assert.ok(Array.isArray(insertedParams), "INSERT params must be an array");
-    assert.equal(insertedParams[3], DEFAULT_LOGIN_NAME, "login name must be Admin@Odin");
-    assert.equal(insertedParams[4], DEFAULT_EMAIL, "email must be admin@odin.local");
-    assert.equal(insertedParams[0], "Admin",  "first_name must be Admin");
-    assert.equal(insertedParams[1], "User",   "last_name must be User");
-    assert.equal(insertedParams[2], "admin",  "username must be admin");
+    assert.equal(insertedParams[3], DEFAULT_LOGIN_NAME, "login name must be admin@local");
+    assert.equal(insertedParams[4], DEFAULT_EMAIL, "email must be admin@local");
+    assert.equal(insertedParams[0], DEFAULT_FIRST_NAME, "first_name must be Admin");
+    assert.equal(insertedParams[1], DEFAULT_LAST_NAME, "last_name must be Local");
+    assert.equal(insertedParams[2], DEFAULT_USERNAME, "username must be admin");
   });
 
-  // ── 6. Idempotency: calling twice on empty→populated is safe ──────────────
-  test("calling twice is safe (idempotent via COUNT check)", async () => {
-    let userCount = 0;
+  // ── 6. Idempotency: calling twice remains safe ────────────────────────────
+  test("calling twice creates once and then repairs the same account", async () => {
+    let masterUser = null;
 
     const mockQuery = async (sql, params) => {
-      if (sql.startsWith("SELECT COUNT")) return { rows: [{ cnt: userCount }] };
+      if (sql.includes("FROM users")) return { rows: masterUser ? [masterUser] : [] };
       if (sql.includes("INSERT INTO users")) {
-        userCount += 1;
+        masterUser = { id: 7 };
         return { rowCount: 1 };
       }
+      if (sql.includes("UPDATE users")) return { rowCount: 1 };
       return { rows: [] };
     };
 
     const r1 = await seedDefaultAdmin(mockQuery);
-    assert.ok(r1.created, "first call should create admin");
-    assert.equal(userCount, 1, "user count should be 1 after first call");
+    assert.ok(r1.created, "first call should create the master account");
 
     const r2 = await seedDefaultAdmin(mockQuery);
-    assert.ok(r2.skipped, "second call should be skipped");
-    assert.equal(userCount, 1, "user count must not increase on second call");
+    assert.ok(r2.updated, "second call should repair the same account safely");
   });
-});
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/*  Tests — SEED_ADMIN_IF_MISSING=true mode                                    */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-describe("seedDefaultAdmin – SEED_ADMIN_IF_MISSING=true", () => {
-  beforeEach(() => { process.env.SEED_ADMIN_IF_MISSING = "true"; });
-  afterEach(() => { delete process.env.SEED_ADMIN_IF_MISSING; });
-
-  // ── 7. Creates admin even when other users exist ──────────────────────────
-  test("creates Admin@Odin when other users exist but admin is absent", async () => {
+  // ── 7. Does NOT depend on COUNT(*) user table checks ─────────────────────
+  test("does not use COUNT(*) to decide whether the master account exists", async () => {
     const calls = [];
 
-    const mockQuery = async (sql, params) => {
-      calls.push({ sql, params });
-      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [] };
-      if (sql.includes("INSERT INTO users")) return { rowCount: 1 };
-      return { rows: [] };
-    };
-
-    const result = await seedDefaultAdmin(mockQuery);
-    assert.ok(result.created, "should create admin in SEED_ADMIN_IF_MISSING mode");
-
-    const loginCheck = calls.find((c) => c.sql.includes("WHERE LOWER(login_name)"));
-    assert.ok(loginCheck, "should query by login name");
-    assert.equal(loginCheck.params[0], DEFAULT_LOGIN_NAME, "should check Admin@Odin login name");
-  });
-
-  // ── 8. Skips if Admin@Odin already present ───────────────────────────────
-  test("skips if Admin@Odin already exists (SEED_ADMIN_IF_MISSING mode)", async () => {
-    const mockQuery = async (sql, params) => {
-      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [{ login_name: DEFAULT_LOGIN_NAME }] };
-      throw new Error("INSERT must not run if admin already exists");
-    };
-
-    const result = await seedDefaultAdmin(mockQuery);
-    assert.ok(result.skipped, "should skip if Admin@Odin already present");
-  });
-
-  // ── 9. Does NOT use COUNT(*) in SEED_ADMIN_IF_MISSING mode ───────────────
-  test("does not run COUNT(*) query in SEED_ADMIN_IF_MISSING mode", async () => {
-    const calls = [];
-
-    const mockQuery = async (sql, params) => {
+    const mockQuery = async (sql) => {
       calls.push(sql);
-      if (sql.includes("WHERE LOWER(login_name)")) return { rows: [] };
+      if (sql.includes("FROM users")) return { rows: [] };
       if (sql.includes("INSERT")) return { rowCount: 1 };
       return { rows: [] };
     };
 
     await seedDefaultAdmin(mockQuery);
-    const hasCount = calls.some((s) => s.includes("COUNT(*)"));
-    assert.ok(!hasCount, "COUNT(*) must NOT be used in SEED_ADMIN_IF_MISSING mode");
+    const hasCount = calls.some((sql) => sql.includes("COUNT(*)"));
+    assert.equal(hasCount, false, "COUNT(*) must not be used for master account repair");
   });
 });
 
