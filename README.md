@@ -59,10 +59,10 @@ ODIN_APP/
 
 ## 3. Environment Variables
 
-All backend config lives in **`backend/.env`**.
+All backend config lives in **`Backend/.env`**.
 
 ```bash
-cp backend/.env.example backend/.env
+cp Backend/.env.example Backend/.env
 # Edit: set DB_PASSWORD, JWT_SECRET, QUEUE_INGEST_KEY
 ```
 
@@ -142,13 +142,13 @@ This project is fully compatible with both Docker Compose and Podman Compose.
 
 ```bash
 # 1. Configure
-cp backend/.env.example backend/.env
+cp Backend/.env.example Backend/.env
 # Edit: set DB_PASSWORD, JWT_SECRET, QUEUE_INGEST_KEY
 
 # 2. Start all services
 docker compose up -d
 # Or for Podman (uses explicit Podman config):
-# podman-compose -f podman-compose.yml up -d
+# podman-compose -f podman-compose.wsl.yml up -d
 docker compose up -d
 
 # 3. View logs
@@ -192,8 +192,8 @@ docker compose down -v        # stop + DELETE postgres volume (data loss!)
 git clone <repo-url> && cd Merged
 
 # 2. Configure production secrets
-cp backend/.env.production.example backend/.env
-nano backend/.env
+cp Backend/.env.production.example Backend/.env
+nano Backend/.env
 # Set: DB_PASSWORD (strong), JWT_SECRET (32-byte hex), QUEUE_INGEST_KEY, CORS_ORIGINS
 
 # 3. Start with production overrides (built images, no hot-reload)
@@ -203,6 +203,17 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose ps
 docker compose logs backend --tail=50
 ```
+
+## 6.1 Run in Portainer (Oracle Linux)
+
+Use the root [docker-compose.yml](c:/Users/Admin/Desktop/ODIN_APP/docker-compose.yml) as the Portainer stack file.
+
+Portainer-specific notes:
+- Use `docker-compose.yml` as the stack path when deploying from Git.
+- Enter environment variables from [`.env.example`](c:/Users/Admin/Desktop/ODIN_APP/.env.example) directly in the Portainer `Env` UI.
+- Do not override `VITE_API_BASE_URL` in the stack env for the normal setup. The frontend image is already built for same-origin `/api` routing.
+- Frontend is published on host port `8080`, backend on `8001`.
+- The build contexts are intentionally `./Backend` and `./Frontend` with uppercase initials because Oracle Linux is case-sensitive.
 
 **Verify login flow end-to-end:**
 ```bash
@@ -216,7 +227,7 @@ curl -f http://VM_IP:8001/api/health
 curl -s http://VM_IP:8001/api/shifts | head -c 200
 
 # 4. Frontend reachable (if serving static build)
-curl -sf http://VM_IP:8000 > /dev/null && echo "Frontend OK"
+curl -sf http://VM_IP:8080 > /dev/null && echo "Frontend OK"
 ```
 
 **With nginx reverse proxy (recommended for production):**
@@ -227,7 +238,7 @@ server {
 
     # Frontend
     location / {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://localhost:8080;
     }
 
     # Backend API — same-origin proxy
@@ -243,7 +254,7 @@ server {
 }
 ```
 
-> With nginx: set `CORS_ORIGINS=https://your-domain.com` in `backend/.env`.
+> With nginx: set `CORS_ORIGINS=https://your-domain.com` in `Backend/.env`.
 
 ---
 

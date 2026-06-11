@@ -17,7 +17,7 @@ Da in den Compose-Dateien **kein `env_file`** mehr verwendet wird, müssen diese
 | `JWT_EXPIRES_IN` | backend | Ja (`8h`) | Nein | `12h` oder `7d` |
 | `QUEUE_INGEST_KEY`| backend | Ja (`CHANGE_ME_DEV_KEY`) | **Ja** (Zwingend für Crawler) | `CrawlerSecret2026!` |
 | `CORS_ORIGINS` | backend | Ja (`http://localhost:8000`) | **Ja** (Zwingend für Remote) | `https://odin.meine-firma.de` |
-| `VITE_API_BASE_URL` | frontend | Nein (Leer) | **Ja** (Zwingend für API-Calls im Browser) | `https://odin.meine-firma.de` oder `http://<VM-IP>:8001` |
+| `VITE_API_BASE_URL` | frontend build arg / frontend container | Ja (`/api` im Compose) | Nein, normalerweise **nicht** in Portainer setzen | Nur für Spezialfälle ohne internen `/api`-Proxy |
 | `TV_KEY` | backend | Nein (disabled) | Optional – siehe TV Public Mode | `TvKiosk2026!` |
 
 ## TV Public Mode (`/tv-dashboard`)
@@ -54,7 +54,8 @@ Alle anderen `/api/*` Endpoints bleiben weiterhin hinter `requireAuth` geschütz
 
 ## Wichtige Notizen zu Portainer
 1. **Keine `.env` Datei erforderlich:** Portainer injiziert diese Variablen direkt als Umgebungsvariablen in die Container zur Laufzeit. Das Mounten einer physischen `.env` Datei (`env_file`) entfällt komplett, was FileNotFound-Crashes verhindert.
-2. **Auto-Interpolation:** Portainer/Compose liest z.B. `POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}` und ersetzt es nahtlos. Fehlt die Variable in Portainer, wird der Default `postgres` genommen (was die Fallback-Stabilität sichert).
+2. **Auto-Interpolation:** Portainer/Compose liest z.B. `POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}` und ersetzt es nahtlos. Fehlt die Variable in Portainer, wird der Default `postgres` genommen.
+3. **Case-sensitive Linux-Pfade:** Das Repo verwendet die Ordnernamen `Backend/` und `Frontend/`. Die Portainer-Compose-Datei muss deshalb exakt diese Groß-/Kleinschreibung in den Build-Kontexten verwenden.
 
 ## Changelog
 - **Refactoring:** `DB_HOST` (Backend) und `VITE_API_BASE_URL` (Frontend) als explizite Container-Umgebungsvariablen hinzugefügt, um harte Koppelungen in Prod-Environments zu vermeiden.

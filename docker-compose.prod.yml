@@ -11,7 +11,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./Frontend
       dockerfile: Dockerfile # static build + serve
       args:
         VITE_API_BASE_URL: "/api"

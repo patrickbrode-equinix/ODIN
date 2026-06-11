@@ -25,12 +25,12 @@ sudo dnf install -y podman podman-compose
 ```
 
 **Firewall-Konfiguration (falls `firewalld` aktiv ist):**
-Es müssen die Ports für das Frontend (8000) und das Backend (8001) extern freigegeben werden. 
+Es müssen die Ports für das Frontend (8080) und das Backend (8001) extern freigegeben werden. 
 *Hinweis: Port 8002 (Postgres) sollte standardmäßig **NICHT** nach außen geöffnet werden, da die Applikation intern mit der Datenbank kommuniziert. Falls Postgres-Port 8002 in Compose nach außen published ist, sollte er in Production optional deaktiviert bleiben (Security).*
 
 ```bash
 # Ports für Frontend und Backend öffnen
-sudo firewall-cmd --permanent --add-port=8000/tcp  # Frontend
+sudo firewall-cmd --permanent --add-port=8080/tcp  # Frontend
 sudo firewall-cmd --permanent --add-port=8001/tcp  # Backend API
 
 # Optional: Ports für Portainer öffnen (falls extern erreichbar sein soll)
@@ -70,8 +70,9 @@ Das Deployment erfolgt als Compose-Stack in der Portainer UI.
 2. Navigiere zu **Stacks** -> **Add stack**.
 3. **Name:** `odin`
 4. **Deployment-Methode:**
-   - **Variante A (Git Repository):** Wähle "Repository" und gib die URL des Git-Repos ein, sowie den Pfad zum Compose-File (bevorzugt `podman-compose.yml`, falls vorhanden, ansonsten `docker-compose.yml`).
-   - **Variante B (Web Editor):** Wähle "Web editor" und kopiere den Inhalt der `podman-compose.yml` (oder `docker-compose.yml`) direkt in das Textfeld.
+  - **Variante A (Git Repository):** Wähle "Repository" und gib die URL des Git-Repos ein sowie als Compose-Pfad `docker-compose.yml`.
+  - **Variante B (Web Editor):** Wähle "Web editor" und kopiere den Inhalt der `docker-compose.yml` direkt in das Textfeld.
+  - **Wichtig für Linux/Portainer:** Die Build-Kontexte im Compose zeigen auf `./Backend` und `./Frontend` mit großem Anfangsbuchstaben. Diese Schreibweise muss exakt so bleiben, da Oracle Linux Dateipfade case-sensitiv behandelt.
 
 ## 5. Pflicht-ENV Variablen
 
@@ -86,8 +87,8 @@ Alle notwendigen Variablen werden im Bereich "Environment variables" in Portaine
 | **`DB_PASSWORD`** | `<Ein-sehr-sicheres-Passwort>` |
 | **`JWT_SECRET`** | `<Ein-Sicherer-Zufalls-String>` |
 | **`QUEUE_INGEST_KEY`** | `<Crawler-Security-Key>` (Wichtig für *Category-C* Ingest) |
-| **`CORS_ORIGINS`** | `http://<VM-IP>:8000` (oder die HTTPS Domain des Frontends) |
-| **`VITE_API_BASE_URL`** | `http://<VM-IP>:8001` (oder die HTTPS Domain des Backends) |
+| **`CORS_ORIGINS`** | `http://<VM-IP>:8080` (oder die HTTPS Domain des Frontends) |
+| **`VITE_API_BASE_URL`** | **Leer lassen / nicht setzen**. Der vorbereitete Stack baut das Frontend bereits mit `/api`. |
 
 *Zusätzlich optionale Variablen:*
 - `JWT_EXPIRES_IN`: z.B. `12h` oder `7d`
@@ -102,23 +103,23 @@ Alle notwendigen Variablen werden im Bereich "Environment variables" in Portaine
    ```
    Erwartet wird ein HTTP `200 OK`.
 4. **Frontend Check:**
-   Rufe im Browser `http://<VM-IP>:8000` auf. Das Login-Fenster sollte erscheinen.
+  Rufe im Browser `http://<VM-IP>:8080` auf. Das Login-Fenster sollte erscheinen.
 
 ## 7. Connectivity Szenarien
 
 Je nach Infrastruktur wird das ODIN Setup unterschiedlich angebunden (siehe auch `PROD_CONNECTIVITY.md`):
 
-- **Szenario A (Portainer Direct / Host Routing):** Kein Nginx/Proxy. Der Browser kommuniziert direkt auf Port 8000 (Frontend) und 8001 (Backend). **Wichtig:** `VITE_API_BASE_URL` *muss* in Portainer auf `http://<VM-IP>:8001` gesetzt werden. `CORS_ORIGINS` muss analog konfiguriert werden.
+- **Szenario A (Portainer Direct / Host Routing):** Kein Nginx/Proxy. Der Browser kommuniziert direkt auf Port 8080 (Frontend) und 8001 (Backend). **Wichtig:** `VITE_API_BASE_URL` sollte im Standardfall **nicht** in Portainer gesetzt werden, weil das Frontend im Container bereits auf `/api` gebaut wird und intern an `backend:8001` proxyt. `CORS_ORIGINS` muss den Frontend-Ursprung `http://<VM-IP>:8080` enthalten.
 - **Szenario B (Reverse Proxy):** Nginx, Traefik o.ä. sitzt davor und routet Traffic derselben Domain. Das Frontend wird unter `/` und das Backend unter `/api` serviert. In diesem Fall *muss* `VITE_API_BASE_URL` in Portainer **leer** bleiben oder gelöscht werden, sodass das Frontend relative Requests an `/api` sendet.
 
 ## 8. Troubleshooting
 
-- **Fehler: 404 Not Found auf `/api` Calls**
-  - *Ursache:* Das Frontend rennt ohne vorgeschalteten Reverse Proxy (Szenario A) und die URL für das Backend fehlt.
-  - *Lösung:* Setze `VITE_API_BASE_URL=http://<VM-IP>:8001` in den Portainer Configs des Stacks und deploye neu.
+- **Fehler: Stack-Build bricht in Portainer auf Oracle Linux sofort ab**
+  - *Ursache:* Case-sensitive Build-Kontexte zeigen auf `./backend` oder `./frontend`, obwohl die Repo-Ordner `Backend/` und `Frontend/` heißen.
+  - *Lösung:* Ausschließlich die vorbereitete `docker-compose.yml` aus diesem Repo verwenden. Dort zeigen die Build-Kontexte korrekt auf `./Backend` und `./Frontend`.
 - **Fehler: CORS blocked im Browser (F12 Konsole)**
   - *Ursache:* Das Backend (Port 8001) lehnt Requests der Frontend-Domain ab.
-  - *Lösung:* Überprüfe den Wert von `CORS_ORIGINS`. Er muss exakt den Frontend-Ursprung beinhalten (z.B. `http://<VM-IP>:8000`).
+  - *Lösung:* Überprüfe den Wert von `CORS_ORIGINS`. Er muss exakt den Frontend-Ursprung beinhalten (z.B. `http://<VM-IP>:8080`).
 - **Fehler: Mixed Content Error**
   - *Ursache:* Das Frontend wird via HTTPS aufgerufen, das Backend aber nur via HTTP. Ein Browser wird diese unsicheren API-Gespräche blockieren.
   - *Lösung:* Auch das Backend muss hinter einem SSL-Proxy laufen (Szenario B nutzen oder separaten Proxy einrichten) und `VITE_API_BASE_URL` muss mit `https://...` beginnen.
@@ -131,9 +132,9 @@ Je nach Infrastruktur wird das ODIN Setup unterschiedlich angebunden (siehe auch
 ---
 
 ## Definition of Done (Checklist)
-- [ ] Ports 8000 und 8001 in der Firewall freigeschaltet (Postgres 8002 ist dicht).
+- [ ] Ports 8080 und 8001 in der Firewall freigeschaltet (Postgres bleibt intern).
 - [ ] Portainer Ports (9443/9000) kollidieren nicht mit ODIN.
 - [ ] Stack ist in Portainer deployed, ohne Verwendung einer `.env` Datei.
-- [ ] Alle Pflicht-ENVs (insb. Secrets, `CORS_ORIGINS` und `VITE_API_BASE_URL`) sind korrekt im Stack via Web-UI eingetragen.
+- [ ] Alle Pflicht-ENVs (insb. Secrets und `CORS_ORIGINS`) sind korrekt im Stack via Web-UI eingetragen.
 - [ ] HTTP-Healthcheck an Port 8001 (`/api/health`) liefert `200 OK`.
-- [ ] UI im Browser unter Port 8000 erreichbar und Login-API wird via Browser nicht als CORS-Fehler oder 404 abgewiesen.
+- [ ] UI im Browser unter Port 8080 erreichbar und Login-API wird via Browser nicht als CORS-Fehler oder 404 abgewiesen.
