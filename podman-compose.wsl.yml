@@ -41,7 +41,7 @@ services:
   # ── Backend (Node / Express) ───────────────────────────────────────────────
   backend:
     build:
-      context: ./Backend
+      context: ./backend
       dockerfile: Dockerfile.dev
     image: odin-backend:dev
     container_name: odin-backend
@@ -72,7 +72,7 @@ services:
   # ── Frontend (Vite Static Build Profile) ───────────────────────────────────
   frontend:
     build:
-      context: ./Frontend
+      context: ./frontend
       dockerfile: Dockerfile.dev
     image: odin-frontend:dev
     container_name: odin-frontend

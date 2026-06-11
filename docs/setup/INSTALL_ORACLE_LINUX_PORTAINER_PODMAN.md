@@ -72,7 +72,7 @@ Das Deployment erfolgt als Compose-Stack in der Portainer UI.
 4. **Deployment-Methode:**
   - **Variante A (Git Repository):** Wähle "Repository" und gib die URL des Git-Repos ein sowie als Compose-Pfad `docker-compose.yml`.
   - **Variante B (Web Editor):** Wähle "Web editor" und kopiere den Inhalt der `docker-compose.yml` direkt in das Textfeld.
-  - **Wichtig für Linux/Portainer:** Die Build-Kontexte im Compose zeigen auf `./Backend` und `./Frontend` mit großem Anfangsbuchstaben. Diese Schreibweise muss exakt so bleiben, da Oracle Linux Dateipfade case-sensitiv behandelt.
+  - **Wichtig für Linux/Portainer:** Die Build-Kontexte im Compose müssen exakt den im Git-Repo vorhandenen Ordnernamen folgen. In diesem Repo sind das `./backend` und `./frontend` in Kleinschreibung.
 
 ## 5. Pflicht-ENV Variablen
 
@@ -115,8 +115,8 @@ Je nach Infrastruktur wird das ODIN Setup unterschiedlich angebunden (siehe auch
 ## 8. Troubleshooting
 
 - **Fehler: Stack-Build bricht in Portainer auf Oracle Linux sofort ab**
-  - *Ursache:* Case-sensitive Build-Kontexte zeigen auf `./backend` oder `./frontend`, obwohl die Repo-Ordner `Backend/` und `Frontend/` heißen.
-  - *Lösung:* Ausschließlich die vorbereitete `docker-compose.yml` aus diesem Repo verwenden. Dort zeigen die Build-Kontexte korrekt auf `./Backend` und `./Frontend`.
+  - *Ursache:* Die Compose-Datei zeigt auf einen Ordnernamen, der nicht exakt im Git-Checkout existiert. Oracle Linux und Portainer behandeln `backend` und `Backend` als unterschiedliche Pfade.
+  - *Lösung:* Ausschließlich die vorbereitete `docker-compose.yml` aus diesem Repo verwenden. Dort zeigen die Build-Kontexte korrekt auf `./backend` und `./frontend`.
 - **Fehler: CORS blocked im Browser (F12 Konsole)**
   - *Ursache:* Das Backend (Port 8001) lehnt Requests der Frontend-Domain ab.
   - *Lösung:* Überprüfe den Wert von `CORS_ORIGINS`. Er muss exakt den Frontend-Ursprung beinhalten (z.B. `http://<VM-IP>:8080`).

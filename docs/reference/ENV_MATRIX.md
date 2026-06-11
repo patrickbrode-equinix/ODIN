@@ -55,7 +55,7 @@ Alle anderen `/api/*` Endpoints bleiben weiterhin hinter `requireAuth` geschütz
 ## Wichtige Notizen zu Portainer
 1. **Keine `.env` Datei erforderlich:** Portainer injiziert diese Variablen direkt als Umgebungsvariablen in die Container zur Laufzeit. Das Mounten einer physischen `.env` Datei (`env_file`) entfällt komplett, was FileNotFound-Crashes verhindert.
 2. **Auto-Interpolation:** Portainer/Compose liest z.B. `POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}` und ersetzt es nahtlos. Fehlt die Variable in Portainer, wird der Default `postgres` genommen.
-3. **Case-sensitive Linux-Pfade:** Das Repo verwendet die Ordnernamen `Backend/` und `Frontend/`. Die Portainer-Compose-Datei muss deshalb exakt diese Groß-/Kleinschreibung in den Build-Kontexten verwenden.
+3. **Case-sensitive Linux-Pfade:** Das Repo verwendet in Git die Ordnernamen `backend/` und `frontend/`. Die Portainer-Compose-Datei muss deshalb exakt diese Schreibweise in den Build-Kontexten verwenden.
 
 ## Changelog
 - **Refactoring:** `DB_HOST` (Backend) und `VITE_API_BASE_URL` (Frontend) als explizite Container-Umgebungsvariablen hinzugefügt, um harte Koppelungen in Prod-Environments zu vermeiden.

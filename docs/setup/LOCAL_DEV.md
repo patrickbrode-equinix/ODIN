@@ -7,16 +7,16 @@
 - **PostgreSQL** lokal installiert und laufend (Port 5432)
   - Datenbank: `oes_merged`
   - User: `postgres`
-  - Passwort: in `Backend/.env` als `DB_PASSWORD` gesetzt
+  - Passwort: in `backend/.env` als `DB_PASSWORD` gesetzt
 - **Git** (für Repo-Zugriff)
 
 ## ENV-Dateien
 
 | Datei | Zweck | Status |
 |---|---|---|
-| `Backend/.env` | Backend-Konfiguration (DB, Auth, CORS) | **Pflicht** – aus `Backend/.env.example` erstellen |
+| `backend/.env` | Backend-Konfiguration (DB, Auth, CORS) | **Pflicht** – aus `backend/.env.example` erstellen |
 | `teams-bot/odin/.env` | Teams Bot-Konfiguration (Azure, Graph) | **Pflicht** – aus `teams-bot/odin/.env.example` erstellen |
-| `Frontend/.env` | Nicht benötigt für lokalen Dev | Nicht nötig (Defaults korrekt) |
+| `frontend/.env` | Nicht benötigt für lokalen Dev | Nicht nötig (Defaults korrekt) |
 | `.env` (Root) | Docker Compose / Portainer – **nicht für lokalen Dev** | Nicht anfassen |
 
 ### Backend `.env` Minimalbeispiel
@@ -115,9 +115,9 @@ Nach `npm run dev` diese URLs prüfen:
 
 Das Backend erwartet PostgreSQL lokal auf `localhost:5432`.
 
-- Beim ersten Start laufen automatisch **Migrations** (`Backend/db/migrations/`)
+- Beim ersten Start laufen automatisch **Migrations** (`backend/db/migrations/`)
 - Ein Default-Admin wird geseedet falls keine User existieren
-- DB-Name Standard: `oes_merged` (konfigurierbar in `Backend/.env`)
+- DB-Name Standard: `oes_merged` (konfigurierbar in `backend/.env`)
 
 ### PostgreSQL lokal einrichten (einmalig)
 
@@ -134,8 +134,8 @@ psql -U postgres -c "CREATE DATABASE oes_merged;"
 
 | Problem | Lösung |
 |---|---|
-| `ECONNREFUSED :5432` | PostgreSQL läuft nicht oder falscher Port in `Backend/.env` |
-| `password authentication failed` | `DB_PASSWORD` in `Backend/.env` stimmt nicht |
+| `ECONNREFUSED :5432` | PostgreSQL läuft nicht oder falscher Port in `backend/.env` |
+| `password authentication failed` | `DB_PASSWORD` in `backend/.env` stimmt nicht |
 | `EADDRINUSE :5055` | Anderer Prozess auf Port 5055 – `netstat -ano \| findstr :5055` |
 | Bot zeigt `Config load warning` | Normal ohne Azure-Credentials – Bot startet trotzdem |
 | Vite CJS deprecation warning | Kosmetisch, ignorierbar |

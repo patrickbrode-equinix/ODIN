@@ -9,7 +9,7 @@
 
 ```text
 ODIN_APP/
-├── Backend/                → Node.js + Express + PostgreSQL
+├── backend/                → Node.js + Express + PostgreSQL
 │   ├── config/index.js     ← single config source of truth
 │   ├── routes/
 │   ├── db.js
@@ -17,7 +17,7 @@ ODIN_APP/
 │   ├── Dockerfile
 │   └── db/migrations/
 │
-├── Frontend/               → React + Vite + Tailwind
+├── frontend/               → React + Vite + Tailwind
 │   ├── src/
 │   ├── vite.config.ts      ← proxy reads BACKEND_URL env var
 │   └── Dockerfile
@@ -59,10 +59,10 @@ ODIN_APP/
 
 ## 3. Environment Variables
 
-All backend config lives in **`Backend/.env`**.
+All backend config lives in **`backend/.env`**.
 
 ```bash
-cp Backend/.env.example Backend/.env
+cp backend/.env.example backend/.env
 # Edit: set DB_PASSWORD, JWT_SECRET, QUEUE_INGEST_KEY
 ```
 
@@ -125,7 +125,7 @@ npm run dev:full
 npm run dev:db:down
 ```
 
-`npm run dev` reuses an already running local Postgres instance. If nothing is listening on `localhost:5432`, it starts a Postgres container that is aligned with `Backend/.env`.
+`npm run dev` reuses an already running local Postgres instance. If nothing is listening on `localhost:5432`, it starts a Postgres container that is aligned with `backend/.env`.
 
 **Verify:**
 ```bash
@@ -142,7 +142,7 @@ This project is fully compatible with both Docker Compose and Podman Compose.
 
 ```bash
 # 1. Configure
-cp Backend/.env.example Backend/.env
+cp backend/.env.example backend/.env
 # Edit: set DB_PASSWORD, JWT_SECRET, QUEUE_INGEST_KEY
 
 # 2. Start all services
@@ -192,8 +192,8 @@ docker compose down -v        # stop + DELETE postgres volume (data loss!)
 git clone <repo-url> && cd Merged
 
 # 2. Configure production secrets
-cp Backend/.env.production.example Backend/.env
-nano Backend/.env
+cp backend/.env.production.example backend/.env
+nano backend/.env
 # Set: DB_PASSWORD (strong), JWT_SECRET (32-byte hex), QUEUE_INGEST_KEY, CORS_ORIGINS
 
 # 3. Start with production overrides (built images, no hot-reload)
@@ -213,7 +213,7 @@ Portainer-specific notes:
 - Enter environment variables from [`.env.example`](c:/Users/Admin/Desktop/ODIN_APP/.env.example) directly in the Portainer `Env` UI.
 - Do not override `VITE_API_BASE_URL` in the stack env for the normal setup. The frontend image is already built for same-origin `/api` routing.
 - Frontend is published on host port `8080`, backend on `8001`.
-- The build contexts are intentionally `./Backend` and `./Frontend` with uppercase initials because Oracle Linux is case-sensitive.
+- The build contexts must match the repository exactly: `./backend` and `./frontend`.
 
 **Verify login flow end-to-end:**
 ```bash
@@ -254,7 +254,7 @@ server {
 }
 ```
 
-> With nginx: set `CORS_ORIGINS=https://your-domain.com` in `Backend/.env`.
+> With nginx: set `CORS_ORIGINS=https://your-domain.com` in `backend/.env`.
 
 ---
 
