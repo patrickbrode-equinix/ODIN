@@ -35,6 +35,9 @@ export type TvShiftEmployee = {
   shift: string;
   time: string;
   weekplanRole?: string | null;
+  jarvisDisplayName?: string | null;
+  jarvisOwnerCode?: string | null;
+  jarvisInitials?: string | null;
   info: {
     color: string;
   };

@@ -434,9 +434,9 @@ async function loadColleaguePreferences(candidates) {
  * Select the best worker from eligible candidates deterministically.
  *
  * Tie-breaker order (per spec):
- *   1. Existing grouped system name (worker already has tickets for this system)
- *   2. Queue purity (worker's queue matches ticket type)
- *   3. Least active workload (fewest current tickets)
+ *   1. Least active workload (fewest current tickets)
+ *   2. Existing grouped system name (worker already has tickets for this system)
+ *   3. Queue purity (worker's queue matches ticket type)
  *   4. Preferred colleague bonus (soft — Wunschkollegen)
  *   5. Configured final tie-breaker: round-robin rotation, random, or stable worker ID
  *
@@ -531,16 +531,16 @@ export async function selectWorker(candidates, ticket, settings, workerTicketsMa
 
   // Sort the ranking table by the deterministic scoring dimensions.
   sortPool.sort((a, b) => {
-    // 1. Existing grouped system name (higher score = better)
-    if (a.groupingScore !== b.groupingScore) return b.groupingScore - a.groupingScore;
-
-    // 2. Queue purity (pure before impure)
-    if (a.purityPure !== b.purityPure) return a.purityPure ? -1 : 1;
-
-    // 3. Least active workload (fewer tickets = better)
+    // 1. Fair distribution within the already role/shift-filtered pool.
     if (runtimeRules.loadBalancing?.enabled !== false && runtimeRules.loadBalancing?.mode === 'least_workload' && a.workload !== b.workload) {
       return a.workload - b.workload;
     }
+
+    // 2. Existing grouped system name (higher score = better)
+    if (a.groupingScore !== b.groupingScore) return b.groupingScore - a.groupingScore;
+
+    // 3. Queue purity (pure before impure)
+    if (a.purityPure !== b.purityPure) return a.purityPure ? -1 : 1;
 
     // 4. Preferred colleague bonus (higher = better, soft tiebreaker)
     if (a.colleagueScore !== b.colleagueScore) return b.colleagueScore - a.colleagueScore;
@@ -549,23 +549,26 @@ export async function selectWorker(candidates, ticket, settings, workerTicketsMa
     return a.candidate.id - b.candidate.id;
   });
 
-  const topGroupingScore = Math.max(...sortPool.map(entry => entry.groupingScore));
-  let finalists = sortPool.filter(entry => entry.groupingScore === topGroupingScore);
+  let finalists = sortPool;
   let tieBreaker = null;
   let finalTieReason = null;
-
-  if (finalists.length > 1) {
-    const prefersPureQueue = finalists.some(entry => entry.purityPure);
-    finalists = finalists.filter(entry => entry.purityPure === prefersPureQueue);
-    if (finalists.length === 1) tieBreaker = 'queue-purity';
-  } else if (finalists.length === 1 && finalists[0].groupingGrouped && finalists[0].groupingScore > 0) {
-    tieBreaker = 'system-grouping';
-  }
 
   if (finalists.length > 1 && runtimeRules.loadBalancing?.enabled !== false && runtimeRules.loadBalancing?.mode === 'least_workload') {
     const minimumWorkload = Math.min(...finalists.map(entry => entry.workload));
     finalists = finalists.filter(entry => entry.workload === minimumWorkload);
     if (finalists.length === 1) tieBreaker = 'workload';
+  }
+
+  if (finalists.length > 1) {
+    const topGroupingScore = Math.max(...finalists.map(entry => entry.groupingScore));
+    finalists = finalists.filter(entry => entry.groupingScore === topGroupingScore);
+    if (finalists.length === 1) tieBreaker = 'system-grouping';
+  }
+
+  if (finalists.length > 1) {
+    const prefersPureQueue = finalists.some(entry => entry.purityPure);
+    finalists = finalists.filter(entry => entry.purityPure === prefersPureQueue);
+    if (finalists.length === 1) tieBreaker = 'queue-purity';
   }
 
   if (finalists.length > 1) {

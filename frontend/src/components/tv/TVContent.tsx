@@ -9,7 +9,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useShiftStore } from "../../store/shiftStore";
 import { TvLayout } from "./tv.layout";
-import { useHiddenEmployees } from "../../hooks/useHiddenEmployees";
 import { useEmployeeMetaStore } from "../../store/employeeMetaStore";
 import { computeCrawlerStaleness } from "../../hooks/useCrawlerStaleness";
 
@@ -96,9 +95,6 @@ export function TVContent({ isFullscreen = false }: TVContentProps) {
     [crawlerLastUpdate, now] // re-evaluate as clock ticks
   );
 
-  /* HIDDEN EMPLOYEES */
-  const { isHidden } = useHiddenEmployees();
-
   const { getCategory } = useEmployeeMetaStore();
 
   const { early, late, night } = useMemo(() => {
@@ -106,9 +102,9 @@ export function TVContent({ isFullscreen = false }: TVContentProps) {
     if (apiShifts?.dataFresh) {
       const mapEmp = (e: any) => ({ ...e, category: getCategory(e.name) });
       return {
-        early: apiShifts.early.filter((e) => !isHidden(e.name)).map(mapEmp),
-        late:  apiShifts.late.filter((e)  => !isHidden(e.name)).map(mapEmp),
-        night: apiShifts.night.filter((e) => !isHidden(e.name)).map(mapEmp),
+        early: apiShifts.early.map(mapEmp),
+        late:  apiShifts.late.map(mapEmp),
+        night: apiShifts.night.map(mapEmp),
       };
     }
 
@@ -118,14 +114,14 @@ export function TVContent({ isFullscreen = false }: TVContentProps) {
       const raw = getEmployeesForToday?.() ?? { early: [], late: [], night: [] };
       const mapEmp = (e: any) => ({ ...e, category: getCategory(e.name) });
       return {
-        early: raw.early.filter((e) => !isHidden(e.name)).map(mapEmp),
-        late:  raw.late.filter((e)  => !isHidden(e.name)).map(mapEmp),
-        night: raw.night.filter((e) => !isHidden(e.name)).map(mapEmp),
+        early: raw.early.map(mapEmp),
+        late:  raw.late.map(mapEmp),
+        night: raw.night.map(mapEmp),
       };
     } catch {
       return { early: [], late: [], night: [] };
     }
-  }, [apiShifts, hydrated, getEmployeesForToday, isHidden, getCategory]);
+  }, [apiShifts, hydrated, getEmployeesForToday, getCategory]);
 
   return (
     <TvLayout

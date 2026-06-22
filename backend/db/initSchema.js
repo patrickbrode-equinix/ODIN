@@ -726,7 +726,13 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
           ALTER TABLE shift_rotation_rules ADD COLUMN free_days_after_night INT NOT NULL DEFAULT 2;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'free_days_after_weekend') THEN
-          ALTER TABLE shift_rotation_rules ADD COLUMN free_days_after_weekend INT NOT NULL DEFAULT 1;
+          ALTER TABLE shift_rotation_rules ADD COLUMN free_days_after_weekend INT NOT NULL DEFAULT 2;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'night_next_workday') THEN
+          ALTER TABLE shift_rotation_rules ADD COLUMN night_next_workday SMALLINT NOT NULL DEFAULT 4;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'night_next_shift_code') THEN
+          ALTER TABLE shift_rotation_rules ADD COLUMN night_next_shift_code VARCHAR(20);
         END IF;
       END IF;
 

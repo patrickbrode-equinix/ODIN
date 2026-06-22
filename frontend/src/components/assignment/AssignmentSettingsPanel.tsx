@@ -243,15 +243,15 @@ function getSettingDefs(lang: Lang): SettingDef[] {
       tooltip: de ? (
         <>
           <p><strong>Bedeutung:</strong> Legt fest, wie viele Minuten vor Schichtende keine neuen Tickets mehr zugewiesen werden dürfen.</p>
-          <p><strong>Beispiel:</strong> Bei Wert 15 und Schichtende 16:00 werden ab 15:45 keine neuen Tickets mehr zugewiesen.</p>
+          <p><strong>Beispiel:</strong> Bei Wert 45 und Schichtende 16:00 werden ab 15:15 keine neuen Tickets mehr zugewiesen.</p>
           <p><strong>Zweck:</strong> Verhindert, dass Mitarbeiter kurz vor Feierabend noch neue Tickets erhalten, die sie nicht mehr sinnvoll bearbeiten können.</p>
           <p><strong>Wert 0:</strong> Deaktiviert den Schichtende-Cutoff — Tickets werden bis zum letzten Moment zugewiesen.</p>
-          <p><strong>Empfehlung:</strong> 10–20 Minuten, abhängig von der durchschnittlichen Bearbeitungszeit.</p>
+          <p><strong>Empfehlung:</strong> 45 Minuten als sichere Voreinstellung, bei Bedarf manuell anpassbar.</p>
         </>
       ) : (
         <>
           <p><strong>Purpose:</strong> Defines how many minutes before shift end no new tickets may be assigned.</p>
-          <p><strong>Example:</strong> With a value of 15 and shift end at 16:00, no new tickets are assigned after 15:45.</p>
+          <p><strong>Example:</strong> With a value of 45 and shift end at 16:00, no new tickets are assigned after 15:15.</p>
           <p><strong>Goal:</strong> Prevents workers from receiving new tickets shortly before their shift ends that they cannot meaningfully complete.</p>
           <p><strong>Value 0:</strong> Disables the shift-end cutoff — tickets are assigned until the last moment.</p>
           <p><strong>Recommendation:</strong> 10–20 minutes, depending on average handling time.</p>

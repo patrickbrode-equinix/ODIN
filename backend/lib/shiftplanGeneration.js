@@ -131,6 +131,65 @@ export function getShiftSeriesDays(definition) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
+const FIXED_SHIFT_SERIES_PATTERNS = {
+  E1SA: { series_days: 6, applicable_days: [1, 2, 3, 4, 5, 6] },
+  E1WE: { series_days: 7, applicable_days: [1, 2, 3, 4, 5, 6, 0] },
+  L1WE: { series_days: 7, applicable_days: [1, 2, 3, 4, 5, 6, 0] },
+};
+
+const MONDAY_ANCHORED_SHIFT_CODES = new Set(['E1SA', 'E1WE', 'L1WE', 'N', 'DBS']);
+
+export function applyFixedShiftSeriesPattern(definition) {
+  const code = String(definition?.code || '').trim().toUpperCase();
+  const pattern = FIXED_SHIFT_SERIES_PATTERNS[code];
+  return pattern ? { ...definition, ...pattern } : definition;
+}
+
+export function canStartShiftSeries({ day, dayOfWeek, definition } = {}) {
+  if (getShiftSeriesDays(definition) <= 1) return true;
+  const code = String(definition?.code || '').trim().toUpperCase();
+  if (!MONDAY_ANCHORED_SHIFT_CODES.has(code)) return true;
+  return Number(dayOfWeek) === 1;
+}
+
+export function getTargetHoursScore({ currentHours = 0, targetHours = 174 } = {}) {
+  const remaining = Number(targetHours) - Number(currentHours);
+  if (!Number.isFinite(remaining)) return 0;
+  if (remaining > 0) return 100_000 + remaining * 100;
+  return remaining * 12;
+}
+
+export function getPreferenceShiftCode(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (normalized === 'E1SA' || normalized === 'E1WE') return 'E1';
+  if (normalized === 'L1WE') return 'L1';
+  return normalized;
+}
+
+export function getShiftContinuityAdjustment({
+  previousCode,
+  previousType,
+  previousDay,
+  nextCode,
+  nextType,
+  day,
+} = {}) {
+  const gapDays = Number(day) - Number(previousDay);
+  if (!previousCode || !previousType || !Number.isFinite(gapDays) || gapDays < 1 || gapDays > 7) {
+    return { score: 0, reason: null };
+  }
+
+  if (String(previousCode).trim().toUpperCase() === String(nextCode || '').trim().toUpperCase()) {
+    return { score: 100, reason: `Schichtkontinuität: ${nextCode} aus dem letzten Block fortgeführt` };
+  }
+
+  if (normalizePlanningShiftTypeKey(previousType) === normalizePlanningShiftTypeKey(nextType)) {
+    return { score: 50, reason: `Schichtkontinuität: gleiche Schichtart ${nextType}` };
+  }
+
+  return { score: -50, reason: `Schichtwechsel gegenüber dem letzten Block (${previousType} -> ${nextType})` };
+}
+
 export function buildDailyShiftSlots({
   shiftDefinitions = [],
   staffingRules = {},
@@ -144,11 +203,6 @@ export function buildDailyShiftSlots({
 } = {}) {
   const baseSlots = buildShiftSlots(shiftDefinitions, staffingRules, dayOfWeek);
   const baselineTotalSlots = baseSlots.reduce((sum, definition) => sum + (definition.planned_slots || 0), 0);
-  const maxTotalSlots = baseSlots.reduce((sum, definition) => {
-    const maxStaff = Number.parseInt(String(definition?.max_staff ?? definition?.planned_slots ?? 0), 10);
-    return sum + (Number.isFinite(maxStaff) && maxStaff > 0 ? maxStaff : (definition.planned_slots || 0));
-  }, 0);
-
   const avgShiftHours = baseSlots.length > 0
     ? baseSlots.reduce((sum, definition) => sum + getShiftDurationHours(definition), 0) / baseSlots.length
     : 8;
@@ -157,18 +211,63 @@ export function buildDailyShiftSlots({
   const sanitizedTargetHours = Number.isFinite(targetHoursPerEmployee) && targetHoursPerEmployee >= 0
     ? targetHoursPerEmployee
     : 174;
-  const workedHours = activeEmployees.reduce((sum, employee) => sum + (employeeHours[employee] || 0), 0);
-  const targetHoursTotal = activeEmployees.reduce((sum, employee) => {
+  const targetHoursByEmployee = Object.fromEntries(activeEmployees.map((employee) => {
     const rawEmployeeTarget = Number.parseFloat(String(employeeTargetHours?.[employee] ?? ''));
     const employeeTarget = Number.isFinite(rawEmployeeTarget) && rawEmployeeTarget >= 0
       ? rawEmployeeTarget
       : sanitizedTargetHours;
-    return sum + employeeTarget;
+    return [employee, employeeTarget];
+  }));
+  const remainingHours = activeEmployees.reduce((sum, employee) => {
+    return sum + Math.max(targetHoursByEmployee[employee] - (employeeHours[employee] || 0), 0);
   }, 0);
-  const remainingHours = Math.max(targetHoursTotal - workedHours, 0);
   const remainingDays = Math.max(numDays - day + 1, 1);
-  const desiredTotalSlots = Math.ceil(remainingHours / remainingDays / avgShiftHours);
-  const clampedTargetSlots = Math.max(baselineTotalSlots, Math.min(maxTotalSlots, desiredTotalSlots));
+  const isBlockStart = Number(day) === 1 || Number(dayOfWeek) === 1;
+  let desiredTotalSlots = Math.ceil(remainingHours / remainingDays / avgShiftHours);
+
+  if (isBlockStart && baseSlots.some((definition) => getShiftSeriesDays(definition) > 1)) {
+    const futureBlockStartOffsets = [];
+    if (Number(day) === 1 && Number(dayOfWeek) !== 1) futureBlockStartOffsets.push(0);
+    for (let offset = 0; offset < remainingDays; offset++) {
+      if ((Number(dayOfWeek) + offset) % 7 === 1) futureBlockStartOffsets.push(offset);
+    }
+
+    const futureBlockCapacities = futureBlockStartOffsets.map((offset) => {
+      const startDay = day + offset;
+      const startDayOfWeek = (Number(dayOfWeek) + offset) % 7;
+      const definitionsForStart = shiftDefinitions.filter((definition) => isShiftDefinitionApplicable(definition, startDayOfWeek));
+      const definitionHours = definitionsForStart.map((definition) => {
+        const applicableDays = new Set(normalizeApplicableDays(definition?.applicable_days));
+        const maxSeriesDays = Math.min(getShiftSeriesDays(definition), numDays - startDay + 1);
+        let effectiveSeriesDays = 0;
+        for (let seriesOffset = 0; seriesOffset < maxSeriesDays; seriesOffset++) {
+          const seriesDayOfWeek = (startDayOfWeek + seriesOffset) % 7;
+          if (!applicableDays.has(seriesDayOfWeek)) break;
+          effectiveSeriesDays += 1;
+        }
+        return getShiftDurationHours(definition) * Math.max(effectiveSeriesDays, 1);
+      });
+      const averageHours = definitionHours.reduce((sum, hours) => sum + hours, 0) / Math.max(definitionHours.length, 1);
+      return {
+        averageHours: Math.max(averageHours, avgShiftHours),
+        maximumHours: Math.max(...definitionHours, avgShiftHours),
+      };
+    });
+    const futureBlockHourCapacity = futureBlockCapacities.reduce((sum, entry) => sum + entry.averageHours, 0);
+
+    desiredTotalSlots = Math.ceil(remainingHours / Math.max(futureBlockHourCapacity, avgShiftHours));
+
+    const maximumHoursAfterCurrentBlock = futureBlockCapacities
+      .slice(1)
+      .reduce((sum, entry) => sum + entry.maximumHours, 0);
+    const mandatoryStarts = activeEmployees.filter((employee) => {
+      const remainingEmployeeHours = Math.max(targetHoursByEmployee[employee] - (employeeHours[employee] || 0), 0);
+      return remainingEmployeeHours > maximumHoursAfterCurrentBlock;
+    }).length;
+    desiredTotalSlots = Math.max(desiredTotalSlots, mandatoryStarts);
+  }
+  const employeeCapacity = Math.max(activeEmployees.length, baselineTotalSlots);
+  const clampedTargetSlots = Math.max(baselineTotalSlots, Math.min(employeeCapacity, desiredTotalSlots));
   let remainingExtraSlots = Math.max(clampedTargetSlots - baselineTotalSlots, 0);
 
   const slotCounts = new Map(baseSlots.map((definition) => [definition.code, definition.planned_slots || 0]));
@@ -191,6 +290,22 @@ export function buildDailyShiftSlots({
     }
 
     if (!placedExtraSlot) break;
+  }
+
+  // max_staff is the preferred operational staffing level. Contracted hours
+  // can require additional people on a shift when the team is larger.
+  while (remainingExtraSlots > 0 && baseSlots.length > 0) {
+    const orderedDefinitions = [...baseSlots].sort((left, right) => {
+      const countDiff = (slotCounts.get(left.code) || 0) - (slotCounts.get(right.code) || 0);
+      if (countDiff !== 0) return countDiff;
+      return String(left.code || '').localeCompare(String(right.code || ''), 'de');
+    });
+
+    for (const definition of orderedDefinitions) {
+      if (remainingExtraSlots <= 0) break;
+      slotCounts.set(definition.code, (slotCounts.get(definition.code) || 0) + 1);
+      remainingExtraSlots -= 1;
+    }
   }
 
   return baseSlots.map((definition) => ({

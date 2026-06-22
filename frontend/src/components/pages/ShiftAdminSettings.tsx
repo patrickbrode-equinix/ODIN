@@ -86,6 +86,12 @@ interface RotationRules {
   weekend_rule: string;
   free_days_after_night: number;
   free_days_after_weekend: number;
+  night_next_workday: number;
+  night_next_shift_code: string | null;
+  stability_priority: number;
+  max_shift_type_changes_per_month: number;
+  min_free_weekends_per_month: number;
+  min_recovery_days_after_shift_change: number;
 }
 
 interface FairnessRules {
@@ -149,6 +155,7 @@ interface DbsConfig {
   shiftCode: string;
   requiredStaff: number;
   defaultMonthlyTarget: number;
+  freeDaysAfterBlock: number;
 }
 
 interface OvertimeConfig {
@@ -207,10 +214,11 @@ const DEFAULT_DBS_CONFIG: DbsConfig = {
   enabled: true,
   rhythmWeeks: 2,
   referenceDate: '',
-  weekdays: [1, 2, 3, 4, 5],
+  weekdays: [1, 2, 3, 4, 5, 6, 0],
   shiftCode: 'DBS',
   requiredStaff: 1,
   defaultMonthlyTarget: 4,
+  freeDaysAfterBlock: 2,
 };
 
 const DEFAULT_OVERTIME_CONFIG: OvertimeConfig = {
@@ -291,22 +299,15 @@ function extractAdvancedPlanningSettings(settings: Record<string, string>): Adva
 }
 
 function extractDbsConfig(settings: Record<string, string>): DbsConfig {
-  let weekdays = DEFAULT_DBS_CONFIG.weekdays;
-  const raw = settings['shiftplan.dbs_weekdays'];
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) weekdays = parsed.filter((d: number) => d >= 0 && d <= 6);
-    } catch { /* keep default */ }
-  }
   return {
     enabled: parseBooleanSetting(settings['shiftplan.dbs_enabled'], DEFAULT_DBS_CONFIG.enabled),
     rhythmWeeks: parseNumberSetting(settings['shiftplan.dbs_rhythm_weeks'], DEFAULT_DBS_CONFIG.rhythmWeeks),
     referenceDate: settings['shiftplan.dbs_reference_date'] ?? DEFAULT_DBS_CONFIG.referenceDate,
-    weekdays,
+    weekdays: [1, 2, 3, 4, 5, 6, 0],
     shiftCode: settings['shiftplan.dbs_shift_code'] || DEFAULT_DBS_CONFIG.shiftCode,
     requiredStaff: parseNumberSetting(settings['shiftplan.dbs_required_staff'], DEFAULT_DBS_CONFIG.requiredStaff),
     defaultMonthlyTarget: parseNumberSetting(settings['shiftplan.dbs_default_monthly_target'], DEFAULT_DBS_CONFIG.defaultMonthlyTarget),
+    freeDaysAfterBlock: parseNumberSetting(settings['shiftplan.dbs_free_days_after_block'], DEFAULT_DBS_CONFIG.freeDaysAfterBlock),
   };
 }
 
@@ -735,10 +736,11 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         'shiftplan.dbs_enabled': dbsConfig.enabled,
         'shiftplan.dbs_rhythm_weeks': dbsConfig.rhythmWeeks,
         'shiftplan.dbs_reference_date': dbsConfig.referenceDate,
-        'shiftplan.dbs_weekdays': JSON.stringify(dbsConfig.weekdays),
+        'shiftplan.dbs_weekdays': JSON.stringify([1, 2, 3, 4, 5, 6, 0]),
         'shiftplan.dbs_shift_code': dbsConfig.shiftCode,
         'shiftplan.dbs_required_staff': dbsConfig.requiredStaff,
         'shiftplan.dbs_default_monthly_target': dbsConfig.defaultMonthlyTarget,
+        'shiftplan.dbs_free_days_after_block': dbsConfig.freeDaysAfterBlock,
       });
       await loadAll();
       showToast(t("shiftAdmin.toastDbsConfigSaved"));
@@ -833,15 +835,6 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
         : [...currentDays, day];
       return { ...definition, applicable_days: normalizeApplicableDays(nextDays) };
     }));
-  };
-
-  const toggleDbsWeekday = (day: number) => {
-    setDbsConfig((current) => {
-      const nextDays = current.weekdays.includes(day)
-        ? current.weekdays.filter((d) => d !== day)
-        : [...current.weekdays, day];
-      return { ...current, weekdays: nextDays.length ? nextDays : current.weekdays };
-    });
   };
 
   const addDbsEmployee = () => {
@@ -1177,26 +1170,15 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
             </div>
           </div>
 
-          {/* Row 4: DBS weekdays */}
-          <div>
-            <div className="mb-2 flex items-center text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-              {t("shiftAdmin.dbsWeekdays")}
-              <HelpTooltip textKey="shiftAdmin.helpDbsWeekdays" t={t} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/5 px-4 py-3 text-sm text-slate-200">
+              <div className="font-medium">{isGerman ? 'Fester DBS-Block: Montag bis Sonntag' : 'Fixed DBS block: Monday through Sunday'}</div>
+              <div className="mt-1 text-xs text-slate-400">{isGerman ? 'DBS wird immer als zusammenhängende 7-Tage-Serie geplant.' : 'DBS is always planned as one continuous seven-day series.'}</div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {weekdayOptions.map((option) => {
-                const active = dbsConfig.weekdays.includes(option.value);
-                return (
-                  <button
-                    key={`dbs-wd-${option.value}`}
-                    type="button"
-                    onClick={() => toggleDbsWeekday(option.value)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${active ? 'bg-fuchsia-400/20 text-fuchsia-200 ring-1 ring-fuchsia-300/30' : 'bg-white/5 text-slate-400 ring-1 ring-white/10 hover:bg-white/10 hover:text-slate-200'}`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+            <div>
+              <label className="text-xs text-slate-400">{isGerman ? 'Freie Tage nach DBS' : 'Days off after DBS'}</label>
+              <input type="number" min="0" max="7" value={dbsConfig.freeDaysAfterBlock} onChange={(event) => setDbsConfig({ ...dbsConfig, freeDaysAfterBlock: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+              <p className="mt-1 text-xs text-slate-500">{isGerman ? 'Standard: zwei komplette Erholungstage nach jedem DBS-Block.' : 'Default: two full recovery days after each DBS block.'}</p>
             </div>
           </div>
 
@@ -1294,6 +1276,21 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
                 <label className="flex items-center text-xs text-slate-400">{t("shiftAdmin.rotFreeDaysAfterWeekend")} <HelpTooltip textKey="shiftAdmin.helpRotFreeDaysAfterWeekend" t={t} /></label>
                 <input type="number" min="0" max="7" value={rotation.free_days_after_weekend} onChange={(event) => setRotation({ ...rotation, free_days_after_weekend: Number.parseInt(event.target.value, 10) || 0 })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
               </div>
+              <div>
+                <label className="text-xs text-slate-400">{isGerman ? 'Erster Arbeitstag nach Nacht' : 'First workday after nights'}</label>
+                <select value={rotation.night_next_workday ?? 4} onChange={(event) => setRotation({ ...rotation, night_next_workday: Number.parseInt(event.target.value, 10) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                  {weekdayOptions.map((option) => <option key={`night-next-${option.value}`} value={option.value}>{option.label}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">{isGerman ? 'Standard Donnerstag: Montag bis Mittwoch bleiben frei.' : 'Default Thursday: Monday through Wednesday remain free.'}</p>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">{isGerman ? 'Feste Schicht nach Nacht' : 'Fixed shift after nights'}</label>
+                <select value={rotation.night_next_shift_code || ''} onChange={(event) => setRotation({ ...rotation, night_next_shift_code: event.target.value || null })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                  <option value="">{isGerman ? 'Keine feste Folgeschicht' : 'No fixed follow-up shift'}</option>
+                  {shiftCodeOptions.filter((option) => option.value !== 'N').map((option) => <option key={`night-shift-${option.value}`} value={option.value}>{option.label}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">{isGerman ? 'Verhindert eine zufällige Schichtart nach dem Nachtblock.' : 'Prevents a random shift type after a night block.'}</p>
+              </div>
             </div>
 
             <div className="grid gap-3 lg:grid-cols-2">
@@ -1308,6 +1305,39 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
             </div>
 
             {/* ── Overtime sub-section ── */}
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/90">
+                {isGerman ? 'Work-Life-Balance' : 'Work-life balance'}
+              </div>
+              <p className="mb-4 text-xs leading-relaxed text-slate-400">
+                {isGerman
+                  ? 'Diese Regeln reduzieren belastende Schichtwechsel und schützen zusammenhängende Freizeit. Die verpflichtende Sollzeit bleibt vorrangig; unvereinbare Ziele werden als Konflikt angezeigt.'
+                  : 'These rules reduce disruptive shift changes and protect coherent time off. Contracted target hours remain mandatory; incompatible goals are reported as conflicts.'}
+              </p>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-300">{isGerman ? 'Schichtstabilität' : 'Shift stability'}</label>
+                  <input type="range" min="0" max="100" value={rotation.stability_priority ?? 70} onChange={(event) => setRotation({ ...rotation, stability_priority: Number.parseInt(event.target.value, 10) || 0 })} className="mt-3 w-full" />
+                  <div className="mt-1 text-xs text-slate-500">{rotation.stability_priority ?? 70}% · {isGerman ? 'Bevorzugt dieselbe Schichtart in aufeinanderfolgenden Wochen.' : 'Prefers the same shift type in consecutive weeks.'}</div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-300">{isGerman ? 'Max. Schichtartwechsel / Monat' : 'Max shift-type changes / month'}</label>
+                  <input type="number" min="0" max="12" value={rotation.max_shift_type_changes_per_month ?? 4} onChange={(event) => setRotation({ ...rotation, max_shift_type_changes_per_month: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{isGerman ? '0 = unbegrenzt. Vermeidet häufiges Wechseln zwischen Früh, Spät und Nacht.' : '0 = unlimited. Avoids frequent switching between early, late and night.'}</div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-300">{isGerman ? 'Mindestens freie Wochenenden' : 'Minimum free weekends'}</label>
+                  <input type="number" min="0" max="5" value={rotation.min_free_weekends_per_month ?? 2} onChange={(event) => setRotation({ ...rotation, min_free_weekends_per_month: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{isGerman ? 'Schützt vollständige Wochenenden ohne Samstag- oder Sonntagsdienst.' : 'Protects complete weekends without Saturday or Sunday duty.'}</div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-300">{isGerman ? 'Freie Tage vor Schichtwechsel' : 'Days off before shift change'}</label>
+                  <input type="number" min="0" max="3" value={rotation.min_recovery_days_after_shift_change ?? 1} onChange={(event) => setRotation({ ...rotation, min_recovery_days_after_shift_change: Math.max(0, Number.parseInt(event.target.value, 10) || 0) })} className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100" />
+                  <div className="mt-1 text-xs text-slate-500">{isGerman ? 'Bevorzugte Erholung zwischen unterschiedlichen Schichtarten.' : 'Preferred recovery between different shift types.'}</div>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-2 rounded-2xl border border-amber-400/15 bg-amber-500/5 p-4">
               <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
                 <Timer className="h-4 w-4" />

@@ -18,6 +18,7 @@ import { useDashboardData } from "../../hooks/useDashboardData";
 import { useRealtimeUpdates } from "../../hooks/useRealtimeUpdates";
 import { LANGUAGE_TO_LOCALE, useLanguage } from "../../context/LanguageContext";
 import { getRemainingMs, formatRemainingTime } from "../../utils/ticketColors";
+import { findBestMatch, normalizeName } from "../../utils/fuzzyName";
 import type { EnrichedCommitTicket } from "../commit/commit.types";
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
@@ -138,6 +139,99 @@ function normName(s: string): string {
     .join(" ");
 }
 
+function normalizeOwnerKey(value: string): string {
+  return normalizeName(value).replace(/\s+/g, "").replace(/[0-9]+$/g, "");
+}
+
+function buildEmployeeOwnerKeys(name: string): string[] {
+  const tokens = normalizeName(name).split(" ").filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const keys = new Set<string>();
+  keys.add(tokens.join(""));
+  keys.add([...tokens].reverse().join(""));
+  if (tokens.length >= 2) {
+    const first = tokens[0];
+    const second = tokens[1];
+    const last = tokens[tokens.length - 1];
+    keys.add(`${first}${last}`);
+    keys.add(`${last}${first}`);
+    keys.add(`${first.charAt(0)}${last}`);
+    keys.add(`${last.charAt(0)}${first}`);
+    if (second) keys.add(`${second.charAt(0)}${first}`);
+  }
+  return [...keys].filter(Boolean);
+}
+
+function readTicketOwnerCandidates(ticket: EnrichedCommitTicket): string[] {
+  return [
+    (ticket as any)?.owner,
+    (ticket as any)?.Owner,
+    (ticket as any)?.current_owner,
+    (ticket as any)?.currentOwner,
+    (ticket as any)?.assigned_to,
+    (ticket as any)?.assignedTo,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+}
+
+function mapTicketsByEmployee(employees: EmployeeRow[], tickets: EnrichedCommitTicket[]) {
+  const map = new Map<string, EnrichedCommitTicket[]>();
+  const ownerLookup = new Map<string, string>();
+  const ownerAliases: string[] = [];
+  const employeeNames = employees.map((employee) => employee.name);
+
+  for (const employee of employees) {
+    for (const key of buildEmployeeOwnerKeys(employee.name)) {
+      if (!ownerLookup.has(key)) {
+        ownerLookup.set(key, employee.name);
+        ownerAliases.push(key);
+      }
+    }
+    const directKey = normalizeOwnerKey(employee.name);
+    if (directKey && !ownerLookup.has(directKey)) {
+      ownerLookup.set(directKey, employee.name);
+      ownerAliases.push(directKey);
+    }
+    map.set(employee.name, []);
+  }
+
+  for (const ticket of tickets) {
+    const ownerCandidates = readTicketOwnerCandidates(ticket);
+    if (ownerCandidates.length === 0) continue;
+
+    let employeeName: string | null = null;
+    for (const ownerValue of ownerCandidates) {
+      const ownerKey = normalizeOwnerKey(ownerValue);
+      const directMatch = ownerLookup.get(ownerKey);
+      const aliasMatch = directMatch ? null : findBestMatch(ownerKey, ownerAliases, 0.84)?.match;
+      const fuzzyNameMatch = directMatch || aliasMatch ? null : findBestMatch(ownerValue, employeeNames, 0.76)?.match;
+      employeeName = directMatch || (aliasMatch ? ownerLookup.get(aliasMatch) ?? null : null) || fuzzyNameMatch || null;
+      if (employeeName) break;
+    }
+
+    if (!employeeName) continue;
+    const current = map.get(employeeName) ?? [];
+    current.push(ticket);
+    map.set(employeeName, current);
+  }
+
+  for (const [employeeName, matches] of map.entries()) {
+    matches.sort((a, b) => {
+      const ah = getRemainingMs(a as unknown as Record<string, unknown>);
+      const bh = getRemainingMs(b as unknown as Record<string, unknown>);
+      if (ah === null && bh === null) return 0;
+      if (ah === null) return 1;
+      if (bh === null) return -1;
+      return ah - bh;
+    });
+    map.set(employeeName, matches);
+  }
+
+  return map;
+}
+
 function fmtMs(ms: number): string {
   const totalMin = Math.floor(Math.abs(ms) / 60_000);
   const h = Math.floor(totalMin / 60);
@@ -237,6 +331,7 @@ function TicketChip({ ticket, index }: { ticket: EnrichedCommitTicket; index: nu
 
   const chipBg = isOverdue ? "rgba(244,63,94,0.07)" : isCritical ? "rgba(245,158,11,0.07)" : "rgba(255,255,255,0.03)";
   const chipBorder = isOverdue ? "rgba(244,63,94,0.20)" : isCritical ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.06)";
+  const activity = String((ticket as any).activity ?? ticket.activityType ?? ticket.activitySubType ?? "—").trim();
 
   return (
     <motion.div
@@ -265,9 +360,12 @@ function TicketChip({ ticket, index }: { ticket: EnrichedCommitTicket; index: nu
         >
           {ticket.activityNumber || "—"}
         </span>
-        {ticket.systemName && (
-          <span className="min-w-0 flex-1 truncate text-[8px] font-medium text-slate-500">{ticket.systemName}</span>
-        )}
+        <div className="min-w-0 flex flex-1 items-center gap-1.5 text-[8px]">
+          {ticket.systemName && (
+            <span className="shrink-0 font-semibold text-slate-300">{ticket.systemName}</span>
+          )}
+          <span className="truncate font-medium text-slate-500">{activity}</span>
+        </div>
       </div>
       {timeStr && (
         <span
@@ -412,12 +510,7 @@ function SubGroupSection({
   const statusStr = getShiftStatusLabel(status, remainingMs, isGerman);
 
   const ticketsByEmployee = useMemo(() => {
-    const map = new Map<string, EnrichedCommitTicket[]>();
-    for (const emp of employees) {
-      const key = normName(emp.name);
-      map.set(emp.name, tickets.filter((t) => normName(t.owner ?? "") === key));
-    }
-    return map;
+    return mapTicketsByEmployee(employees, tickets);
   }, [employees, tickets]);
 
   if (employees.length === 0) return null;

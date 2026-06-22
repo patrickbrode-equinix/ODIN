@@ -12,7 +12,7 @@ ON CONFLICT (code) DO NOTHING;
 -- New assignment settings with sensible defaults
 INSERT INTO assignment_config (key, value, updated_by, updated_at)
 VALUES
-  ('assignment.cutoffMinutesBeforeShiftEnd', '15', 'system', NOW()),
+  ('assignment.cutoffMinutesBeforeShiftEnd', '45', 'system', NOW()),
   ('assignment.maxSameSystemSmartHands', '3', 'system', NOW()),
   ('assignment.maxSameSystemCrossConnect', '2', 'system', NOW())
 ON CONFLICT (key) DO NOTHING;

@@ -20,6 +20,19 @@ import {
   getCriticalWorkloadSnapshot,
 } from "../assignment/services/criticalWorkload.js";
 import { getVerificationStatusMap } from "../services/shiftVerification.js";
+import { resolveTvNightScheduleDate } from "../lib/tvSchedule.js";
+
+function normalizeTvEmployeeKey(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[,._-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 const router = express.Router();
 
@@ -150,6 +163,10 @@ router.get("/schedules/today", async (_req, res) => {
     const day   = today.getDate();
     const monthLabel = `${GERMAN_MONTHS[today.getMonth()]} ${today.getFullYear()}`;
     const todayKey = currentLocalDateKey(today);
+    const nightScheduleDate = resolveTvNightScheduleDate(today);
+    const nightDay = nightScheduleDate.getDate();
+    const nightMonthLabel = `${GERMAN_MONTHS[nightScheduleDate.getMonth()]} ${nightScheduleDate.getFullYear()}`;
+    const nightDateKey = currentLocalDateKey(nightScheduleDate);
 
     const result = await query(
       `SELECT employee_name, shift_code
@@ -158,6 +175,20 @@ router.get("/schedules/today", async (_req, res) => {
        ORDER BY employee_name ASC`,
       [monthLabel, day]
     );
+    let scheduleRows = result.rows || [];
+    if (nightDateKey !== todayKey) {
+      const previousNightResult = await query(
+        `SELECT employee_name, shift_code
+         FROM shifts
+         WHERE month = $1 AND day = $2 AND shift_code = 'N'
+         ORDER BY employee_name ASC`,
+        [nightMonthLabel, nightDay]
+      );
+      scheduleRows = [
+        ...scheduleRows.filter((row) => row.shift_code !== "N"),
+        ...(previousNightResult.rows || []),
+      ];
+    }
 
     const early = [];
     const late  = [];
@@ -165,16 +196,23 @@ router.get("/schedules/today", async (_req, res) => {
 
     // Load verification status map (non-blocking)
     let verifyMap = new Map();
+    let nightVerifyMap = new Map();
     try { verifyMap = await getVerificationStatusMap(today); } catch { /* non-fatal for TV */ }
+    if (nightDateKey !== todayKey) {
+      try { nightVerifyMap = await getVerificationStatusMap(nightScheduleDate); } catch { /* non-fatal for TV */ }
+    } else {
+      nightVerifyMap = verifyMap;
+    }
 
     // Load weekplan roles for today (non-blocking) so TV can mirror dashboard role badges.
     let roleMap = new Map();
+    let userMetaMap = new Map();
     try {
       const roleResult = await query(
-        `SELECT employee_name, role_key, comment
+        `SELECT employee_name, role_key, comment, date::text AS date_key
          FROM weekplan_roles
-         WHERE date = $1`,
-        [todayKey]
+         WHERE date = ANY($1::date[])`,
+        [[...new Set([todayKey, nightDateKey])]]
       );
 
       roleMap = new Map(
@@ -184,9 +222,10 @@ router.get("/schedules/today", async (_req, res) => {
             const rawName = String(row.employee_name).trim();
             const normalizedName = rawName.replace(",", "").trim();
             const value = row.comment ? `${row.role_key}|${row.comment}` : row.role_key;
+            const dateKey = String(row.date_key || todayKey);
             return [
-              [rawName, value],
-              [normalizedName, value],
+              [`${dateKey}|${rawName}`, value],
+              [`${dateKey}|${normalizedName}`, value],
             ];
           })
       );
@@ -194,16 +233,56 @@ router.get("/schedules/today", async (_req, res) => {
       roleMap = new Map();
     }
 
-    for (const row of result.rows) {
+    try {
+      const userResult = await query(
+        `SELECT first_name, last_name, email, jarvis_display_name, jarvis_owner_code, jarvis_initials
+         FROM users
+         WHERE approved = TRUE
+           AND is_root = FALSE`
+      );
+
+      userMetaMap = new Map(
+        (userResult.rows || []).flatMap((row) => {
+          const displayName = `${row.first_name || ""} ${row.last_name || ""}`.replace(/\s+/g, " ").trim();
+          const reverseDisplayName = `${row.last_name || ""} ${row.first_name || ""}`.replace(/\s+/g, " ").trim();
+          const keys = [displayName, reverseDisplayName, row.jarvis_display_name, row.email]
+            .map((value) => normalizeTvEmployeeKey(value))
+            .filter(Boolean);
+
+          return keys.map((key) => [key, {
+            jarvisDisplayName: row.jarvis_display_name || null,
+            jarvisOwnerCode: row.jarvis_owner_code || null,
+            jarvisInitials: row.jarvis_initials || null,
+          }]);
+        })
+      );
+    } catch {
+      userMetaMap = new Map();
+    }
+
+    for (const row of scheduleRows) {
       const code = row.shift_code;
       const info = TV_SHIFT_TYPES[code];
       if (!info) continue; // skip unknown / FS / ABW for shift panels
 
       // "Nachname, Vorname" → "Nachname Vorname"
       const name = String(row.employee_name ?? "").replace(",", "").trim();
-      const vStatus = verifyMap.get(row.employee_name)?.status || verifyMap.get(name)?.status || null;
-  const weekplanRole = roleMap.get(String(row.employee_name ?? "").trim()) || roleMap.get(name) || null;
-  const entry = { name, shift: code, time: info.time, info, verificationStatus: vStatus, weekplanRole };
+      const rowDateKey = code === "N" ? nightDateKey : todayKey;
+      const rowVerifyMap = code === "N" ? nightVerifyMap : verifyMap;
+      const vStatus = rowVerifyMap.get(row.employee_name)?.status || rowVerifyMap.get(name)?.status || null;
+      const weekplanRole = roleMap.get(`${rowDateKey}|${String(row.employee_name ?? "").trim()}`) || roleMap.get(`${rowDateKey}|${name}`) || null;
+      const userMeta = userMetaMap.get(normalizeTvEmployeeKey(name)) || null;
+      const entry = {
+        name,
+        shift: code,
+        time: info.time,
+        info,
+        verificationStatus: vStatus,
+        weekplanRole,
+        jarvisDisplayName: userMeta?.jarvisDisplayName || null,
+        jarvisOwnerCode: userMeta?.jarvisOwnerCode || null,
+        jarvisInitials: userMeta?.jarvisInitials || null,
+      };
 
       if (code === "E1" || code === "E2") early.push(entry);
       else if (code === "L1" || code === "L2") late.push(entry);

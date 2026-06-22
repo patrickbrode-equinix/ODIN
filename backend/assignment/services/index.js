@@ -71,7 +71,7 @@ export const assignmentSettingsService = {
       crawlerMaxAgeMinutes: map[SETTINGS_KEYS.CRAWLER_MAX_AGE] || '10',
       enableLiveMode: map[SETTINGS_KEYS.ENABLE_LIVE] || 'false',
       insufficientResources: map[SETTINGS_KEYS.INSUFFICIENT_RESOURCES] || 'false',
-      cutoffMinutesBeforeShiftEnd: map[SETTINGS_KEYS.CUTOFF_MINUTES_BEFORE_SHIFT_END] || '15',
+      cutoffMinutesBeforeShiftEnd: map[SETTINGS_KEYS.CUTOFF_MINUTES_BEFORE_SHIFT_END] || '45',
       maxSameSystemSmartHands: map[SETTINGS_KEYS.MAX_SAME_SYSTEM_SMART_HANDS] || '3',
       maxSameSystemCrossConnect: map[SETTINGS_KEYS.MAX_SAME_SYSTEM_CROSS_CONNECT] || '2',
     };

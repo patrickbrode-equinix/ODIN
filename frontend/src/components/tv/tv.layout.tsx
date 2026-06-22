@@ -79,6 +79,21 @@ function buildPersonOwnerKeys(name: string) {
   return [...keys].filter(Boolean);
 }
 
+function buildEmployeeOwnerKeys(employee: { name?: string; jarvisDisplayName?: string | null; jarvisOwnerCode?: string | null; jarvisInitials?: string | null }) {
+  const keys = new Set<string>();
+
+  for (const key of buildPersonOwnerKeys(employee.name || "")) {
+    keys.add(key);
+  }
+
+  for (const value of [employee.name, employee.jarvisDisplayName, employee.jarvisOwnerCode, employee.jarvisInitials]) {
+    const normalized = normalizeOwnerKey(String(value || ""));
+    if (normalized) keys.add(normalized);
+  }
+
+  return [...keys].filter(Boolean);
+}
+
 function readTicketOwnerCandidates(ticket: any) {
   return [
     ticket?.owner,
@@ -1084,7 +1099,7 @@ export function TvLayout({
     const ownerAliases: string[] = [];
 
     for (const employee of allEmployees) {
-      for (const ownerKey of buildPersonOwnerKeys(employee.name)) {
+      for (const ownerKey of buildEmployeeOwnerKeys(employee)) {
         if (!ownerLookup.has(ownerKey)) {
           ownerLookup.set(ownerKey, employee.name);
           ownerAliases.push(ownerKey);
@@ -1132,11 +1147,6 @@ export function TvLayout({
 
     return map;
   }, [allTickets, early, late, night]);
-
-  const visibleShiftKinds = useMemo(() => getActiveShiftKinds(clock), [clock]);
-  const visibleEarly = visibleShiftKinds.has("early") ? early : [];
-  const visibleLate = visibleShiftKinds.has("late") ? late : [];
-  const visibleNight = visibleShiftKinds.has("night") ? night : [];
 
   /* goToSlide – uses slidesCountRef for stale-closure safety */
   const activeSlidesRef = useRef<typeof ALL_SLIDES[number][]>([]);
@@ -1193,7 +1203,7 @@ export function TvLayout({
 
   const currentSlideId = activeSlides[currentSlide]?.id ?? "shifts";
   const currentSlideContent = currentSlideId === "shifts"
-    ? <div className="relative h-full overflow-auto p-4"><TvShiftplan early={visibleEarly} late={visibleLate} night={visibleNight} ticketsByOwner={ticketsByOwner} crawlerStale={crawlerStale} /></div>
+    ? <div className="relative h-full overflow-auto p-4"><TvShiftplan early={early} late={late} night={night} ticketsByOwner={ticketsByOwner} crawlerStale={crawlerStale} /></div>
     : currentSlideId === "info"
       ? <InfoAnweisungenSlide entries={infoEntries} />
       : currentSlideId === "72h"

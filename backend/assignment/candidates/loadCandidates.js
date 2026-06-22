@@ -6,6 +6,8 @@ import pool from '../../db.js';
 import { getVerificationStatusMap, getVerificationSettings } from '../../services/shiftVerification.js';
 import { findBestMatch, normalizeName } from '../../lib/nameNorm.js';
 import { SUPPORTED_QUEUE_ITEM_TYPES } from '../constants.js';
+import { buildWorkerOwnerKeys, normalizeOwnerKey } from '../lib/ownerIdentity.js';
+import { ROLE_ALIASES } from '../config.js';
 
 /**
  * Weekplan role ↔ engine role mapping.
@@ -64,7 +66,10 @@ export function resolveEffectiveWorkerRole(weekplanRole, assignmentRole) {
     return WEEKPLAN_TO_ENGINE_ROLE[normalizedWeekplanRole] || 'normal';
   }
 
-  return 'normal';
+  const normalizedAssignmentRole = String(assignmentRole || '').trim().toLowerCase();
+  return ROLE_ALIASES[normalizedAssignmentRole]
+    || ROLE_ALIASES[normalizedAssignmentRole.replace(/\s+/g, '_')]
+    || 'normal';
 }
 
 function pad2(value) {
@@ -300,7 +305,10 @@ export async function loadCandidateWorkers(settings = {}) {
         COALESCE(u.auto_assignable, true) AS auto_assignable,
         COALESCE(u.blocked, false) AS blocked,
         COALESCE(u.on_break, false) AS on_break,
-        COALESCE(u.absent, false) AS absent
+        COALESCE(u.absent, false) AS absent,
+        u.jarvis_display_name,
+        u.jarvis_owner_code,
+        u.jarvis_initials
       FROM users u
       WHERE u.approved = true
         AND u.is_root = false
@@ -383,6 +391,9 @@ export async function loadCandidateWorkers(settings = {}) {
       userMapped: !!matchedUser,
       planningSource: 'weekly_plan',
       plannedEmployeeName,
+      jarvisDisplayName: matchedUser?.jarvis_display_name || null,
+      jarvisOwnerCode: matchedUser?.jarvis_owner_code || null,
+      jarvisInitials: matchedUser?.jarvis_initials || null,
       verificationStatus: verificationMap.get(shiftRow.employee_name)?.status || verificationMap.get(plannedEmployeeName)?.status || null,
     };
   });
@@ -413,13 +424,9 @@ export async function loadWorkerCurrentTickets(candidates) {
   // Build lookup of worker names
   const nameToId = new Map();
   for (const c of candidates) {
-    const normalizedName = normalizeName(c.name);
-    const normalizedPlannedName = normalizeName(c.plannedEmployeeName);
-    const normalizedEmail = normalizeName(c.email);
-
-    if (normalizedName) nameToId.set(normalizedName, c.id);
-    if (normalizedPlannedName) nameToId.set(normalizedPlannedName, c.id);
-    if (normalizedEmail) nameToId.set(normalizedEmail, c.id);
+    for (const key of buildWorkerOwnerKeys(c)) {
+      if (!nameToId.has(key)) nameToId.set(key, c.id);
+    }
   }
 
   try {
@@ -449,7 +456,7 @@ export async function loadWorkerCurrentTickets(candidates) {
     `, [SUPPORTED_QUEUE_ITEM_TYPES]);
 
     for (const row of rows) {
-      const ownerKey = normalizeName(row.owner);
+      const ownerKey = normalizeOwnerKey(row.owner);
       const workerId = map.has(row.assigned_worker_id)
         ? row.assigned_worker_id
         : nameToId.get(ownerKey);

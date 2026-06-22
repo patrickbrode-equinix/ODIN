@@ -193,10 +193,10 @@ router.get('/rotation-rules', async (_req, res) => {
 
 router.put('/rotation-rules', requirePageAccess('shiftplan_control', 'write'), async (req, res) => {
   try {
-    const { max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend } = req.body;
+    const { max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend, stability_priority, max_shift_type_changes_per_month, min_free_weekends_per_month, min_recovery_days_after_shift_change, night_next_workday, night_next_shift_code } = req.body;
     const { rows } = await pool.query(
-      `UPDATE shift_rotation_rules SET max_consecutive_same=$1, max_consecutive_workdays=$2, min_free_after_streak=$3, night_to_early_forbidden=$4, late_to_early_forbidden=$5, min_hours_between_shifts=$6, max_nights_per_month=$7, max_weekends_per_month=$8, weekend_rule=$9, free_days_after_night=$10, free_days_after_weekend=$11, updated_at=NOW() WHERE id=1 RETURNING *`,
-      [max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend]
+      `UPDATE shift_rotation_rules SET max_consecutive_same=$1, max_consecutive_workdays=$2, min_free_after_streak=$3, night_to_early_forbidden=$4, late_to_early_forbidden=$5, min_hours_between_shifts=$6, max_nights_per_month=$7, max_weekends_per_month=$8, weekend_rule=$9, free_days_after_night=$10, free_days_after_weekend=$11, stability_priority=$12, max_shift_type_changes_per_month=$13, min_free_weekends_per_month=$14, min_recovery_days_after_shift_change=$15, night_next_workday=$16, night_next_shift_code=$17, updated_at=NOW() WHERE id=1 RETURNING *`,
+      [max_consecutive_same, max_consecutive_workdays, min_free_after_streak, night_to_early_forbidden, late_to_early_forbidden, min_hours_between_shifts, max_nights_per_month, max_weekends_per_month, weekend_rule, free_days_after_night, free_days_after_weekend, stability_priority, max_shift_type_changes_per_month, min_free_weekends_per_month, min_recovery_days_after_shift_change, Math.max(0, Math.min(6, Number.parseInt(night_next_workday, 10) || 0)), night_next_shift_code || null]
     );
     res.json({ ok: true, rules: rows[0] });
   } catch (err) {

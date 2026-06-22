@@ -13,6 +13,7 @@ import { checkExclusionList } from '../rules/exclusionList.js';
 import { routeHandover } from '../rules/handoverRouter.js';
 import { analyticsTracker } from '../analytics/tracker.js';
 import { notifyDispatcherManualReview } from '../../services/teamsMessaging.js';
+import { readTicketOwnerCandidates, resolveActiveExistingOwner } from '../lib/ownerIdentity.js';
 
 function isExplicitlyEnabled(value) {
   return value === true || String(value || '').trim().toLowerCase() === 'true';
@@ -283,6 +284,31 @@ export async function processTicket(ticket, candidatePool, settings, runId, work
 
     // 6. Candidates
     const initialCandidates = [...candidatePool];
+
+    const activeExistingOwner = resolveActiveExistingOwner(ticket, initialCandidates);
+    if (activeExistingOwner) {
+      const existingOwnerCandidates = readTicketOwnerCandidates(ticket);
+      const existingOwnerLabel = existingOwnerCandidates[0] || activeExistingOwner.name;
+      const log = buildDecisionLog({
+        ticket,
+        result: 'blocked',
+        assignedWorker: null,
+        selectionReason: `Ticket hat bereits einen aktiven Owner (${existingOwnerLabel} → ${activeExistingOwner.name}) in der laufenden Schicht`,
+        rulePath: ['relevance', 'override-check', 'exclusion-list', 'handover-routing', 'type-check', 'existing-owner-active'],
+        initialCandidates,
+        excludedCandidates: [],
+        remainingCandidates: [],
+        decisionTraceInput: createDecisionTraceInput(traceContext, settings, {
+          existingOwner: {
+            rawOwner: existingOwnerLabel,
+            matchedWorkerId: activeExistingOwner.id,
+            matchedWorkerName: activeExistingOwner.name,
+          },
+        }),
+      });
+      await persistTicketDecision(runId, log);
+      return log;
+    }
 
     const emptyPoolReason = buildNoCandidateReason(ticket, initialCandidates, []);
     if (initialCandidates.length === 0) {

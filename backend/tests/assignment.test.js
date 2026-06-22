@@ -53,6 +53,7 @@ import {
   resolveTicketIdentity,
 } from '../assignment/lib/ticketIdentity.js';
 import { mapLegacyDecisionTypeToResult } from '../assignment/lib/reportCompatibility.js';
+import { resolveActiveExistingOwner } from '../assignment/lib/ownerIdentity.js';
 
 /* ================================================ */
 /* mapType                                          */
@@ -553,8 +554,9 @@ describe('Weekly Plan Role Resolution', () => {
     assert.equal(resolveEffectiveWorkerRole('dispatcher', 'support'), 'dispatcher');
   });
 
-  it('falls back to normal when no weekplan role exists for today', () => {
-    assert.equal(resolveEffectiveWorkerRole(null, 'project'), 'normal');
+  it('falls back to the defined user role when no weekplan role exists for today', () => {
+    assert.equal(resolveEffectiveWorkerRole(null, 'project'), 'project');
+    assert.equal(resolveEffectiveWorkerRole(null, 'cross connect'), 'cross_connect');
   });
 
   it('treats unknown weekplan role keys as normal', () => {
@@ -681,6 +683,27 @@ describe('selectWorker', () => {
       workerTicketsMap
     );
     assert.equal(r.worker.id, 2); // fewer tickets
+  });
+
+  it('keeps successive assignments evenly distributed among eligible workers', async () => {
+    const candidates = [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ];
+    const workerTicketsMap = new Map(candidates.map((worker) => [worker.id, []]));
+
+    for (let index = 0; index < 9; index++) {
+      const result = await selectWorker(
+        candidates,
+        { id: `T-${index}`, type: 'TroubleTicket', systemName: 'SAME-SYSTEM' },
+        {},
+        workerTicketsMap,
+      );
+      workerTicketsMap.get(result.worker.id).push({ type: 'TroubleTicket', systemName: 'SAME-SYSTEM' });
+    }
+
+    assert.deepEqual(candidates.map((worker) => workerTicketsMap.get(worker.id).length), [3, 3, 3]);
   });
 
   it('returns structured ranking details for the audit trace', async () => {
@@ -1509,7 +1532,7 @@ describe('Eligibility — V2 Role + Purity', () => {
 describe('V2 Worker Selection', () => {
   const NOW = new Date('2026-03-08T12:00:00Z').getTime();
 
-  it('prefers worker with existing system name grouping', async () => {
+  it('prefers lower workload over existing system name grouping', async () => {
     const candidates = [
       { id: 1, name: 'Worker A' },
       { id: 2, name: 'Worker B' },
@@ -1519,7 +1542,8 @@ describe('V2 Worker Selection', () => {
       [2, [{ systemName: 'SYS-A', type: 'SmartHands' }]],
     ]);
     const r = await selectWorker(candidates, { type: 'SmartHands', systemName: 'SYS-A', dueAt: '2026-03-08T16:00:00Z' }, {}, wMap, false, NOW);
-    assert.equal(r.worker.id, 2);
+    assert.equal(r.worker.id, 1);
+    assert.equal(r.tieBreaker, 'workload');
   });
 
   it('prefers queue purity when no grouping difference', async () => {
@@ -1620,7 +1644,7 @@ describe('V2 Worker Selection', () => {
     assert.equal(r.ranking[1].queuePure, false);
   });
 
-  it('still prefers queue-pure candidates over impure ones', async () => {
+  it('prefers the empty worker before queue purity needs to break a tie', async () => {
     const candidates = [
       { id: 5, name: 'Worker A' },
       { id: 7, name: 'Worker B' },
@@ -1632,7 +1656,7 @@ describe('V2 Worker Selection', () => {
 
     const r = await selectWorker(candidates, { type: 'TroubleTicket', systemName: 'SYS-TT', priority: 'high' }, {}, wMap, false, NOW);
     assert.equal(r.worker.id, 7);
-    assert.equal(r.tieBreaker, 'queue-purity');
+    assert.equal(r.tieBreaker, 'workload');
     assert.equal(r.ranking[0].employeeId, 7);
     assert.equal(r.ranking[1].employeeId, 5);
   });
@@ -1646,5 +1670,52 @@ describe('V2 Worker Selection', () => {
   it('returns null for no candidates', async () => {
     const r = await selectWorker([], { type: 'SmartHands' }, {}, new Map(), false, NOW);
     assert.equal(r.worker, null);
+  });
+});
+
+describe('Existing owner resolution', () => {
+  it('matches an active in-shift worker by Jarvis owner code', () => {
+    const ticket = { raw: { owner: 'MMUST' } };
+    const candidates = [
+      {
+        id: 1,
+        name: 'Max Mustermann',
+        plannedEmployeeName: 'Mustermann Max',
+        jarvisOwnerCode: 'MMUST',
+        jarvisDisplayName: 'Mustermann, Max',
+        shiftActive: true,
+      },
+      {
+        id: 2,
+        name: 'Erika Musterfrau',
+        jarvisOwnerCode: 'EMUST',
+        shiftActive: true,
+      },
+    ];
+
+    const result = resolveActiveExistingOwner(ticket, candidates);
+    assert.equal(result?.id, 1);
+    assert.equal(result?.name, 'Max Mustermann');
+  });
+
+  it('ignores matching owners who are not active in the current shift', () => {
+    const ticket = { raw: { owner: 'MMUST' } };
+    const candidates = [
+      {
+        id: 1,
+        name: 'Max Mustermann',
+        jarvisOwnerCode: 'MMUST',
+        shiftActive: false,
+      },
+      {
+        id: 2,
+        name: 'Erika Musterfrau',
+        jarvisOwnerCode: 'EMUST',
+        shiftActive: true,
+      },
+    ];
+
+    const result = resolveActiveExistingOwner(ticket, candidates);
+    assert.equal(result, null);
   });
 });

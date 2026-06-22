@@ -142,6 +142,8 @@ export default function ShiftplanControlCenter() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingYear, setGeneratingYear] = useState(false);
+  const [planningMode, setPlanningMode] = useState<'month' | 'year'>('month');
+  const [selectedPlanningYear, setSelectedPlanningYear] = useState(2027);
   const [yearResult, setYearResult] = useState<{ year: number; generated: any[]; errors: any[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmActivate, setConfirmActivate] = useState(false);
@@ -154,7 +156,7 @@ export default function ShiftplanControlCenter() {
   const [showManualEmployeesOnly, setShowManualEmployeesOnly] = useState(false);
 
   // Year derived from selected month
-  const selectedYear = parseInt(selectedMonth.split('-')[0]);
+  const selectedMonthYear = parseInt(selectedMonth.split('-')[0]);
 
   // Generate month options (full year: current month -2 to +13 → ~15 months)
   const monthOptions = (() => {
@@ -167,11 +169,12 @@ export default function ShiftplanControlCenter() {
     return opts;
   })();
 
-  // Available years for year-generation
+  // Full-year planning intentionally starts in 2027 because 2026 is already underway.
   const yearOptions = (() => {
     const now = new Date();
     const years: number[] = [];
-    for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 2; y++) {
+    const lastYear = Math.max(2032, now.getFullYear() + 6);
+    for (let y = 2027; y <= lastYear; y++) {
       years.push(y);
     }
     return years;
@@ -198,6 +201,12 @@ export default function ShiftplanControlCenter() {
     }
   }, []);
 
+  const openYearMonth = useCallback(async (entry: any) => {
+    setSelectedMonth(entry.month);
+    await loadDraft(entry.draftId);
+    setTab('draft');
+  }, [loadDraft]);
+
   const loadBasis = useCallback(async () => {
     setBasisLoading(true);
     try {
@@ -221,7 +230,7 @@ export default function ShiftplanControlCenter() {
 
   const loadManualEmployeeSummary = useCallback(async () => {
     try {
-      const res = await api.get(`/shiftplan-control/manual-employees/summary?year=${selectedYear}`);
+      const res = await api.get(`/shiftplan-control/manual-employees/summary?year=${selectedMonthYear}`);
       const months = Array.isArray(res.data?.months) ? res.data.months : [];
       setManualEmployeeSummaryByMonth(
         Object.fromEntries(
@@ -233,7 +242,7 @@ export default function ShiftplanControlCenter() {
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message);
     }
-  }, [selectedYear]);
+  }, [selectedMonthYear]);
 
   useEffect(() => { loadDrafts(); }, [loadDrafts]);
   useEffect(() => {
@@ -244,14 +253,20 @@ export default function ShiftplanControlCenter() {
   useEffect(() => {
     loadManualEmployeeSummary();
   }, [loadManualEmployeeSummary]);
+  useEffect(() => {
+    if (planningMode !== 'year') return;
+    api.get(`/shiftplan-control/drafts/year/${selectedPlanningYear}`)
+      .then((res) => setYearResult(res.data))
+      .catch((e: any) => setError(e?.response?.data?.error || e.message));
+  }, [planningMode, selectedPlanningYear]);
 
   const selectedMonthManualSummary = manualEmployeeSummaryByMonth[selectedMonth] || null;
   const manualSummaryMonths = useMemo(() => {
     return Array.from({ length: 12 }, (_, index) => {
-      const month = `${selectedYear}-${String(index + 1).padStart(2, '0')}`;
+      const month = `${selectedMonthYear}-${String(index + 1).padStart(2, '0')}`;
       return manualEmployeeSummaryByMonth[month] || { month, count: 0, employee_names: [] };
     });
-  }, [manualEmployeeSummaryByMonth, selectedYear]);
+  }, [manualEmployeeSummaryByMonth, selectedMonthYear]);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -269,14 +284,15 @@ export default function ShiftplanControlCenter() {
   };
 
   const handleGenerateYear = async () => {
-    if (!confirm(isGerman ? `Schichtpläne für alle 12 Monate des Jahres ${selectedYear} generieren? Dies erstellt für jeden Monat einen neuen Draft.` : `Generate shift plans for all 12 months of ${selectedYear}? This creates a new draft for each month.`)) return;
+    if (!confirm(isGerman ? `Schichtpläne für alle 12 Monate des Jahres ${selectedPlanningYear} generieren? Dies erstellt für jeden Monat einen neuen Draft.` : `Generate shift plans for all 12 months of ${selectedPlanningYear}? This creates a new draft for each month.`)) return;
     setGeneratingYear(true);
     setError(null);
     setYearResult(null);
     try {
-      const res = await api.post('/shiftplan-control/drafts/generate-year', { year: selectedYear });
+      const res = await api.post('/shiftplan-control/drafts/generate-year', { year: selectedPlanningYear });
       setYearResult(res.data);
-      await loadDrafts();
+      const firstMonth = res.data.generated?.[0];
+      if (firstMonth) await openYearMonth(firstMonth);
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message);
     } finally {
@@ -406,22 +422,40 @@ export default function ShiftplanControlCenter() {
         subtitle={t('sc.subtitle')}
         rightContent={
           <div className="flex items-center gap-3">
+            <select
+              value={planningMode}
+              onChange={(event) => setPlanningMode(event.target.value as 'month' | 'year')}
+              className="px-3 py-2 text-sm rounded-lg border border-indigo-500/30 bg-background/80 text-foreground focus:outline-none focus:border-indigo-500/50"
+              aria-label={isGerman ? 'Planungszeitraum' : 'Planning period'}
+            >
+              <option value="month">{isGerman ? 'Monatlich' : 'Monthly'}</option>
+              <option value="year">{isGerman ? 'Jährlich' : 'Yearly'}</option>
+            </select>
+
             {/* Month Selector */}
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-blue-500/30 bg-background/80 text-foreground focus:outline-none focus:border-blue-500/50"
+              className={`${planningMode === 'month' ? '' : 'hidden'} px-3 py-2 text-sm rounded-lg border border-blue-500/30 bg-background/80 text-foreground focus:outline-none focus:border-blue-500/50`}
             >
               {monthOptions.map(m => (
                 <option key={m} value={m}>{monthLabel(m, locale)}</option>
               ))}
             </select>
 
+            <select
+              value={selectedPlanningYear}
+              onChange={(event) => setSelectedPlanningYear(Number.parseInt(event.target.value, 10))}
+              className={`${planningMode === 'year' ? '' : 'hidden'} px-3 py-2 text-sm rounded-lg border border-emerald-500/30 bg-background/80 text-foreground focus:outline-none focus:border-emerald-500/50`}
+            >
+              {yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+
             {/* Generate Month Button */}
             <button
               onClick={handleGenerate}
-              disabled={generating || generatingYear}
-              className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50 font-medium"
+              disabled={planningMode !== 'month' || generating || generatingYear}
+              className={`${planningMode === 'month' ? '' : 'hidden'} flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition disabled:opacity-50 font-medium`}
             >
               <Play className="w-3.5 h-3.5" />
               {generating ? t('sc.generating') : t('sc.generateDraft')}
@@ -433,12 +467,12 @@ export default function ShiftplanControlCenter() {
             {/* Generate Full Year Button */}
             <button
               onClick={handleGenerateYear}
-              disabled={generating || generatingYear}
-              className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 font-medium"
-              title={isGerman ? `Schichtpläne für alle 12 Monate von ${selectedYear} generieren` : `Generate shift plans for all 12 months of ${selectedYear}`}
+              disabled={planningMode !== 'year' || generating || generatingYear}
+              className={`${planningMode === 'year' ? '' : 'hidden'} flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 font-medium`}
+              title={isGerman ? `Schichtpläne für alle 12 Monate von ${selectedPlanningYear} generieren` : `Generate shift plans for all 12 months of ${selectedPlanningYear}`}
             >
               <Calendar className="w-3.5 h-3.5" />
-              {generatingYear ? (isGerman ? `${selectedYear} wird generiert...` : `${selectedYear} is being generated...`) : (isGerman ? `Ganzes Jahr ${selectedYear}` : `Full year ${selectedYear}`)}
+              {generatingYear ? (isGerman ? `${selectedPlanningYear} wird generiert...` : `${selectedPlanningYear} is being generated...`) : (isGerman ? `Jahresplanung ${selectedPlanningYear}` : `Full year ${selectedPlanningYear}`)}
             </button>
           </div>
         }
@@ -447,12 +481,14 @@ export default function ShiftplanControlCenter() {
       <EnterpriseFeatureHero
         tone="indigo"
         eyebrow={t('sc.subtitle')}
-        title={monthLabel(selectedMonth, locale)}
-        description={isGerman ? `Der Monatsgenerator ist auf ${selectedYear} fokussiert und stellt Drafts sowie Volljahreslaeufe zentral bereit.` : `The generator is focused on ${selectedYear} and centralizes draft creation as well as full-year runs.`}
+        title={planningMode === 'month' ? monthLabel(selectedMonth, locale) : `${isGerman ? 'Jahresplanung' : 'Year plan'} ${selectedPlanningYear}`}
+        description={planningMode === 'month'
+          ? (isGerman ? 'Erstellt einen Monats-Draft mit vollständiger Stunden- und Serienprüfung.' : 'Creates one monthly draft with complete hours and series validation.')
+          : (isGerman ? 'Erstellt alle zwölf Monats-Drafts. Jahresplanungen sind ab 2027 verfügbar.' : 'Creates all twelve monthly drafts. Full-year planning is available from 2027 onward.')}
         metrics={[
-          { label: isGerman ? 'Monat' : 'Month', value: monthLabel(selectedMonth, locale) },
-          { label: isGerman ? 'Jahr' : 'Year', value: selectedYear },
-          { label: isGerman ? 'Modus' : 'Mode', value: generatingYear ? 'Year run' : generating ? 'Draft run' : 'Ready' },
+          { label: isGerman ? 'Zeitraum' : 'Period', value: planningMode === 'month' ? monthLabel(selectedMonth, locale) : selectedPlanningYear },
+          { label: isGerman ? 'Modus' : 'Mode', value: planningMode === 'month' ? (isGerman ? 'Monatlich' : 'Monthly') : (isGerman ? 'Jährlich' : 'Yearly') },
+          { label: 'Status', value: generatingYear || generating ? (isGerman ? 'Wird erstellt' : 'Generating') : (isGerman ? 'Bereit' : 'Ready') },
         ]}
       />
 
@@ -477,15 +513,15 @@ export default function ShiftplanControlCenter() {
           </div>
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
             {yearResult.generated.map((g: any) => (
-              <div key={g.month} className="text-xs rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1">
+              <button type="button" onClick={() => openYearMonth(g)} key={g.month} className={`text-left text-xs rounded-md border px-2 py-1 transition hover:bg-emerald-500/15 ${activeDraft?.id === g.draftId ? 'border-emerald-300 bg-emerald-500/20 ring-1 ring-emerald-300/30' : 'border-emerald-500/20 bg-emerald-500/5'}`}>
                 <span className="font-medium text-foreground">{monthLabel(g.month, locale)}</span>
                 <span className="text-muted-foreground ml-1">v{g.version}</span>
-                <span className="text-emerald-400 ml-1">{g.shifts} {t('sc.shifts')}</span>
+                {typeof g.shifts === 'number' && <span className="text-emerald-400 ml-1">{g.shifts} {t('sc.shifts')}</span>}
                 {g.conflicts > 0 && <span className="text-amber-400 ml-1">{g.conflicts} {t('sc.conflicts')}</span>}
                 {(manualEmployeeSummaryByMonth[g.month]?.count || 0) > 0 && (
                   <span className="ml-1 text-amber-300">{manualEmployeeSummaryByMonth[g.month].count} {isGerman ? 'manuell' : 'manual'}</span>
                 )}
-              </div>
+              </button>
             ))}
           </div>
           {yearResult.errors?.length > 0 && (
@@ -687,7 +723,7 @@ export default function ShiftplanControlCenter() {
                       {isGerman ? 'Manuelle Quellen im Jahr' : 'Manual sources across the year'}
                     </div>
                     <div className="text-sm font-semibold text-foreground">
-                      {isGerman ? `Übersicht für ${selectedYear}` : `Overview for ${selectedYear}`}
+                      {isGerman ? `Übersicht für ${selectedMonthYear}` : `Overview for ${selectedMonthYear}`}
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">

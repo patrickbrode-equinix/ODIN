@@ -191,8 +191,8 @@ const EmployeeCard = memo(function EmployeeCard({
   verificationStatus?: string | null;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
-  const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 3);
-  const extra = crawlerStale ? 0 : (tickets?.length ?? 0) - 3;
+  const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 2);
+  const extra = crawlerStale ? 0 : Math.max(0, (tickets?.length ?? 0) - 2);
   const shiftRemaining = getShiftRemainingLabel(shift);
 
   let parsedRoleKey = weekplanRole;
@@ -310,20 +310,18 @@ const EmployeeCard = memo(function EmployeeCard({
         </div>
 
       {/* TICKETS */}
-      {displayedTickets.length > 0 && (
+      {displayedTickets.length > 0 ? (
         <div className="flex flex-col gap-1.5 px-2.5 py-2.5">
           {displayedTickets.map((t, idx) => {
             const ms = getRemainingMs(t);
             const tier = getColorTier(ms);
-            const rem = ms !== null ? formatRemainingTime(ms) : "";
+            const rem = String(t.remaining_time_text ?? "").trim() || (ms !== null ? formatRemainingTime(ms) : "Nicht angegeben");
             const id = String(t.external_id ?? t.ticketNumber ?? t.id ?? "").trim();
-            const activity = String(t.activity ?? t.title ?? t.subtype ?? "–").trim();
-            const system = String(t.systemName ?? t.component_name ?? t.system_name ?? t.db_name ?? t.Area ?? "").trim();
-            const gruppe = String(t.assignment_group ?? t.assignmentGroup ?? t.group ?? "").trim();
-            const status = String(t.status ?? t.state ?? t.Status ?? "").trim();
+            const customer = String(t.account_name ?? t.customer_name ?? t.customerName ?? "Nicht angegeben").trim();
+            const isOdinAssigned = t.assignment_source === "odin" || t.assigned_worker_id != null;
 
-            const isOverdue = tier === "overdue";
-            const isCritical = tier === "critical";
+            const isOverdue = ms !== null && ms < 0;
+            const isCritical = tier === "red";
             const chipBg = isOverdue ? "rgba(244,63,94,0.07)" : isCritical ? "rgba(245,158,11,0.07)" : "rgba(255,255,255,0.03)";
             const chipBorder = isOverdue ? "rgba(244,63,94,0.20)" : isCritical ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.06)";
             const accentColor = isOverdue ? "#f43f5e" : isCritical ? "#f59e0b" : "rgba(255,255,255,0.15)";
@@ -337,14 +335,19 @@ const EmployeeCard = memo(function EmployeeCard({
                     background: `linear-gradient(180deg, ${accentColor}, ${accentColor}80)`,
                     boxShadow: (isOverdue || isCritical) ? `0 0 12px ${accentColor}, 0 0 22px ${accentColor}80` : "none",
                   }} />
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 flex-1 text-[12px] leading-snug min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 text-[11px] leading-snug min-w-0">
                   <span className="font-mono font-black text-[12px] tracking-wider"
-                    style={{ color: (isOverdue || isCritical) ? accentColor : "rgba(255,255,255,0.9)", textShadow: (isOverdue || isCritical) ? `0 0 10px ${accentColor}70` : "none" }}>{id}</span>
+                    style={{ color: (isOverdue || isCritical) ? accentColor : "rgba(255,255,255,0.9)", textShadow: (isOverdue || isCritical) ? `0 0 10px ${accentColor}70` : "none" }}>Activity {id}</span>
                   <span className="text-white/20">·</span>
-                  <span className="font-semibold text-white/84 truncate">{activity}</span>
-                  {system && <><span className="text-white/20">·</span><span className="text-white/50 text-[11px]">{system}</span></>}
-                  {gruppe && <><span className="text-white/20">·</span><span className="text-white/50 text-[11px]">{gruppe}</span></>}
-                  {status && <><span className="text-white/20">·</span><span className="text-white/50 text-[11px]">{status}</span></>}
+                  <span className="font-semibold text-white/74 truncate">Kunde: {customer}</span>
+                  <span
+                    className="rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em]"
+                    style={isOdinAssigned
+                      ? { background: "rgba(56,189,248,0.12)", borderColor: "rgba(56,189,248,0.3)", color: "#7dd3fc" }
+                      : { background: "rgba(16,185,129,0.12)", borderColor: "rgba(16,185,129,0.3)", color: "#6ee7b7" }}
+                  >
+                    {isOdinAssigned ? "ODIN Auto" : "Selbst zugewiesen"}
+                  </span>
                 </div>
                 {rem && (
                   <span className="font-mono font-black rounded-lg px-2 py-1 text-[10px] shrink-0"
@@ -352,16 +355,20 @@ const EmployeeCard = memo(function EmployeeCard({
                       background: `${accentColor}14`,
                       color: (isOverdue || isCritical) ? accentColor : "rgba(255,255,255,0.5)",
                       textShadow: (isOverdue || isCritical) ? `0 0 8px ${accentColor}70` : "none",
-                    }}>{rem}</span>
+                    }}>Restzeit: {rem}</span>
                 )}
               </div>
             );
           })}
           {extra > 0 && (
             <div className="text-[11px] font-semibold italic text-center py-1" style={{ color: "rgba(255,255,255,0.25)" }}>
-              + {extra} weitere {extra === 1 ? "Ticket" : "Tickets"}
+              +{extra} weitere
             </div>
           )}
+        </div>
+      ) : (
+        <div className="px-3 py-3 text-[11px] font-semibold text-white/30">
+          {crawlerStale ? "Ticketdaten werden aktualisiert" : "Keine Tickets als Owner"}
         </div>
       )}
       </div>

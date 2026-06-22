@@ -2,9 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  applyFixedShiftSeriesPattern,
   buildDailyShiftSlots,
   buildShiftSlots,
   buildStaffingRulesByShiftType,
+  canStartShiftSeries,
+  getShiftContinuityAdjustment,
+  getPreferenceShiftCode,
+  getTargetHoursScore,
   normalizePlanningShiftTypeKey,
 } from '../lib/shiftplanGeneration.js';
 
@@ -74,6 +79,49 @@ describe('shiftplanGeneration helpers', () => {
       [
         { code: 'E1', planned_slots: 1 },
       ]
+    );
+  });
+
+  it('keeps a stable shift block preferable without overpowering employee wishes', () => {
+    assert.deepEqual(
+      getShiftContinuityAdjustment({
+        previousCode: 'E1', previousType: 'early', previousDay: 5,
+        nextCode: 'E1', nextType: 'early', day: 8,
+      }),
+      { score: 100, reason: 'Schichtkontinuität: E1 aus dem letzten Block fortgeführt' }
+    );
+    assert.equal(getShiftContinuityAdjustment({
+      previousCode: 'E1', previousType: 'early', previousDay: 5,
+      nextCode: 'L1', nextType: 'late', day: 8,
+    }).score, -50);
+    assert.equal(getShiftContinuityAdjustment({
+      previousCode: 'E1', previousType: 'early', previousDay: 1,
+      nextCode: 'L1', nextType: 'late', day: 10,
+    }).score, 0);
+  });
+
+  it('maps weekend variants to the shift codes employees can select as wishes', () => {
+    assert.equal(getPreferenceShiftCode('E1SA'), 'E1');
+    assert.equal(getPreferenceShiftCode('E1WE'), 'E1');
+    assert.equal(getPreferenceShiftCode('L1WE'), 'L1');
+    assert.equal(getPreferenceShiftCode('N'), 'N');
+  });
+
+  it('enforces the fixed Monday-to-weekend series patterns', () => {
+    assert.deepEqual(applyFixedShiftSeriesPattern({ code: 'E1SA', series_days: 1 }).applicable_days, [1, 2, 3, 4, 5, 6]);
+    assert.equal(applyFixedShiftSeriesPattern({ code: 'E1SA', series_days: 1 }).series_days, 6);
+    assert.equal(applyFixedShiftSeriesPattern({ code: 'E1WE', series_days: 1 }).series_days, 7);
+    assert.equal(applyFixedShiftSeriesPattern({ code: 'L1WE', series_days: 1 }).series_days, 7);
+    assert.equal(canStartShiftSeries({ day: 3, dayOfWeek: 1, definition: { code: 'E1WE', series_days: 7 } }), true);
+    assert.equal(canStartShiftSeries({ day: 4, dayOfWeek: 2, definition: { code: 'E1WE', series_days: 7 } }), false);
+    assert.equal(canStartShiftSeries({ day: 1, dayOfWeek: 6, definition: { code: 'N', series_days: 7 } }), false);
+    assert.equal(canStartShiftSeries({ day: 4, dayOfWeek: 2, definition: { code: 'E1', series_days: 5 } }), true);
+  });
+
+  it('gives every employee below target priority over employees already at target', () => {
+    assert.ok(
+      getTargetHoursScore({ currentHours: 168, targetHours: 174 })
+      > getTargetHoursScore({ currentHours: 176, targetHours: 174 })
     );
   });
 });
