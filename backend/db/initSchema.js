@@ -734,6 +734,9 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'night_next_shift_code') THEN
           ALTER TABLE shift_rotation_rules ADD COLUMN night_next_shift_code VARCHAR(20);
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shift_rotation_rules' AND column_name = 'late_before_night_required') THEN
+          ALTER TABLE shift_rotation_rules ADD COLUMN late_before_night_required BOOLEAN NOT NULL DEFAULT FALSE;
+        END IF;
       END IF;
 
       IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'shift_planning_config') THEN

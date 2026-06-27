@@ -32,6 +32,24 @@ export interface AssignmentSettings {
   'assignment.cutoffMinutesBeforeShiftEnd': string;
   'assignment.maxSameSystemSmartHands': string;
   'assignment.maxSameSystemCrossConnect': string;
+  'writeback.enabled': string;
+  'writeback.mode': string;
+  'writeback.killSwitch': string;
+  'writeback.allowOverwriteExistingAssignee': string;
+  'writeback.allowAutoUnassign': string;
+  'writeback.allowAutoReassign': string;
+  'writeback.maxExecutionRetries': string;
+  'writeback.requireFreshCrawlerData': string;
+  'writeback.maxSnapshotAgeMinutes': string;
+  'writeback.queueEnabled.smartHands': string;
+  'writeback.queueEnabled.crossConnect': string;
+  'writeback.queueEnabled.trouble': string;
+  'writeback.queueEnabled.deinstall': string;
+  'writeback.allowOtherTeamsAssignment': string;
+  'writeback.requireManualApprovalForUnassign': string;
+  'writeback.requireManualApprovalForReassign': string;
+  'writeback.pilot.enabled': string;
+  'writeback.pilot.employeeSelector': string;
   [key: string]: string;
 }
 

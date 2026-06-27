@@ -24,6 +24,8 @@ const WRITEBACK_DEFAULTS = {
   'writeback.allowOtherTeamsAssignment':        'false',
   'writeback.requireManualApprovalForUnassign': 'true',
   'writeback.requireManualApprovalForReassign': 'true',
+  'writeback.pilot.enabled':                    'false',
+  'writeback.pilot.employeeSelector':           '',
 };
 
 export const WRITEBACK_SETTING_KEYS = Object.keys(WRITEBACK_DEFAULTS);
@@ -61,7 +63,55 @@ export async function loadWritebackSettings() {
     allowOtherTeamsAssignment:        map['writeback.allowOtherTeamsAssignment'] === 'true',
     requireManualApprovalForUnassign: map['writeback.requireManualApprovalForUnassign'] === 'true',
     requireManualApprovalForReassign: map['writeback.requireManualApprovalForReassign'] === 'true',
+    pilot: {
+      enabled: map['writeback.pilot.enabled'] === 'true',
+      employeeSelector: String(map['writeback.pilot.employeeSelector'] || '').trim(),
+    },
     raw: map,
+  };
+}
+
+function normalizePilotSelector(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+/**
+ * Limit writeback execution to a single pilot employee while rollout is being tested.
+ */
+export function checkWritebackPilotEmployee(settings, action, employee = null) {
+  if (!settings?.pilot?.enabled) {
+    return { allowed: true, reason: 'Writeback pilot mode disabled' };
+  }
+
+  const selector = normalizePilotSelector(settings.pilot.employeeSelector);
+  if (!selector) {
+    return {
+      allowed: false,
+      reason: 'Writeback pilot mode is enabled but no pilot employee is configured',
+    };
+  }
+
+  const candidateValues = [
+    action?.selected_employee_id,
+    action?.selected_employee_name,
+    action?.selected_employee_email,
+    action?.selected_employee_jarvis_display_name,
+    action?.selected_employee_jarvis_owner_code,
+    employee?.id,
+    employee?.name,
+    employee?.email,
+    employee?.jarvis_display_name,
+    employee?.jarvis_owner_code,
+    employee?.jarvis_initials,
+  ].map(normalizePilotSelector).filter(Boolean);
+
+  if (candidateValues.includes(selector)) {
+    return { allowed: true, reason: `Writeback pilot matched ${settings.pilot.employeeSelector}` };
+  }
+
+  return {
+    allowed: false,
+    reason: `Writeback pilot mode allows only "${settings.pilot.employeeSelector}"`,
   };
 }
 

@@ -722,6 +722,7 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
     min_hours_between_shifts: 11, max_nights_per_month: 7, max_weekends_per_month: 2, weekend_rule: 'balanced',
     free_days_after_night: 2, free_days_after_weekend: 2,
     night_next_workday: 4, night_next_shift_code: null,
+    late_before_night_required: false,
     stability_priority: 70, max_shift_type_changes_per_month: 4,
     min_free_weekends_per_month: 2, min_recovery_days_after_shift_change: 1,
   };
@@ -1176,6 +1177,19 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
             reasons.push('Regelverstoß: Spät→Früh verboten');
           }
 
+          if (shiftDef.shift_type === 'night' && rotation.late_before_night_required) {
+            const previousCode = empDayAssignment[employee]?.[day - 1];
+            const previousDefinition = shiftDefs.find((definition) => definition.code === previousCode);
+            const previousType = normalizePlanningShiftTypeKey(previousDefinition?.shift_type);
+            if (day > 1 && previousType !== 'late') {
+              hardBlocked = true;
+              reasons.push('Regelverstoss: Vor Nachtschicht ist Spaetschicht vorgeschrieben');
+            } else if (previousType === 'late') {
+              score += 250_000;
+              reasons.push('Nachtschicht-Transit: Vortag war Spaetschicht');
+            }
+          }
+
           const effectiveWorkdayLimit = Math.max(rotation.max_consecutive_workdays, seriesDays);
           if (empConsecutiveWork[employee] >= effectiveWorkdayLimit) {
             hardBlocked = true;
@@ -1484,6 +1498,101 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
       && !['E1SA', 'E1WE', 'L1WE'].includes(code)
       && getShiftSeriesDays(definition) <= 5;
   });
+  const targetCatchupSeriesDefinitions = shiftDefs.filter((definition) => {
+    const code = String(definition.code || '').trim().toUpperCase();
+    return ['E1SA', 'E1WE', 'L1WE'].includes(code) && getShiftSeriesDays(definition) > 1;
+  });
+  const shiftDefinitionByCode = new Map(shiftDefs.map((definition) => [String(definition.code || '').trim().toUpperCase(), definition]));
+  const getAssignedShiftDefinition = (employee, day) => {
+    const assignedCode = String(empDayAssignment[employee]?.[day] || '').trim().toUpperCase();
+    return shiftDefinitionByCode.get(assignedCode) || null;
+  };
+  const getAssignedShiftType = (employee, day) => {
+    const assignedDefinition = getAssignedShiftDefinition(employee, day);
+    return normalizePlanningShiftTypeKey(assignedDefinition?.shift_type);
+  };
+  const isRecoveryProtectedDay = (employee, day) => {
+    const reasons = explanations[`${employee}_${day}`]?.reasons || [];
+    return reasons.some((reason) => String(reason).includes('Erholungstag'));
+  };
+  const wouldViolateAdjacentTransition = (employee, day, shiftDef) => {
+    const currentType = normalizePlanningShiftTypeKey(shiftDef?.shift_type);
+    const previousType = getAssignedShiftType(employee, day - 1);
+    const nextType = getAssignedShiftType(employee, day + 1);
+
+    if (previousType === 'night' && currentType === 'early' && rotation.night_to_early_forbidden) return true;
+    if (currentType === 'night' && nextType === 'early' && rotation.night_to_early_forbidden) return true;
+    if (previousType === 'late' && currentType === 'early' && rotation.late_to_early_forbidden) return true;
+    if (currentType === 'late' && nextType === 'early' && rotation.late_to_early_forbidden) return true;
+
+    return false;
+  };
+  const violatesWeekendRecoveryAfterBlock = (employee, workedDays) => {
+    const requiredFreeDays = Math.max(Number.parseInt(String(rotation.free_days_after_weekend ?? 0), 10) || 0, 0);
+    if (requiredFreeDays <= 0) return false;
+
+    const projectedDays = new Set(workedDays);
+    const weekendDays = workedDays.filter((day) => isWeekend(year, mon, day));
+    if (weekendDays.length === 0) return false;
+
+    const lastWeekendDay = Math.max(...weekendDays);
+    for (let offset = 1; offset <= requiredFreeDays; offset++) {
+      const recoveryDay = lastWeekendDay + offset;
+      if (recoveryDay > numDays) break;
+      if (projectedDays.has(recoveryDay)) continue;
+      if (empDayAssignment[employee][recoveryDay]) return true;
+    }
+    return false;
+  };
+  const changeEmployeeShiftCode = (employee, day, newCode, reasons) => {
+    const normalizedNewCode = String(newCode || '').trim().toUpperCase();
+    const shift = shifts.find((entry) => entry.employee_name === employee && entry.day === day);
+    const oldCode = String(shift?.shift_code || empDayAssignment[employee]?.[day] || '').trim().toUpperCase();
+    if (shift) shift.shift_code = normalizedNewCode;
+    empDayAssignment[employee][day] = normalizedNewCode;
+
+    if (oldCode && oldCode !== normalizedNewCode) {
+      empStats[employee].specialShiftCounts[oldCode] = Math.max(Number(empStats[employee].specialShiftCounts[oldCode] || 0) - 1, 0);
+      empStats[employee].specialShiftCounts[normalizedNewCode] = Number(empStats[employee].specialShiftCounts[normalizedNewCode] || 0) + 1;
+    }
+
+    explanations[`${employee}_${day}`] = {
+      employee,
+      day,
+      code: normalizedNewCode,
+      reasons,
+    };
+  };
+  const addEmployeeTargetCatchupShift = (employee, day, shiftDef, reasons) => {
+    const normalizedCode = String(shiftDef.code || '').trim().toUpperCase();
+    const weekend = isWeekend(year, mon, day);
+    shifts.push({ employee_name: employee, day, shift_code: normalizedCode });
+    empDayAssignment[employee][day] = normalizedCode;
+    empLastWorkedShiftCode[employee] = normalizedCode;
+    empLastWorkedShiftType[employee] = shiftDef.shift_type;
+    empLastWorkedDay[employee] = day;
+
+    const shiftHours = getShiftDurationHours(shiftDef);
+    if (shiftDef.shift_type === 'night') empStats[employee].nights++;
+    if (weekend) {
+      empStats[employee].weekends++;
+      empStats[employee].workedWeekendBlocks.add(getWeekendBlockKey(year, mon, day));
+    }
+    if (shiftDef.shift_type === 'early') empStats[employee].earlyCount++;
+    if (shiftDef.shift_type === 'late') empStats[employee].lateCount++;
+    empStats[employee].total++;
+    empStats[employee].specialShiftCounts[normalizedCode] = Number(empStats[employee].specialShiftCounts[normalizedCode] || 0) + 1;
+    empHours[employee] += shiftHours;
+    empStats[employee].actualHours = Number(empHours[employee].toFixed(2));
+    planReport.totalShiftsPlanned++;
+
+    explanations[`${employee}_${day}`] = {
+      employee,
+      day,
+      code: normalizedCode,
+      reasons,
+    };
+  };
 
   for (const employee of activeEmployees) {
     const fixedShiftType = fixedShiftTypeByEmployee.get(employee);
@@ -1509,6 +1618,8 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
         if (empDayAssignment[employee][day]) continue;
         const dateStr = `${month}-${String(day).padStart(2, '0')}`;
         if (isEmployeeAbsentOnDate(employee, dateStr)) continue;
+        if (isRecoveryProtectedDay(employee, day)) continue;
+        if (wouldViolateAdjacentTransition(employee, day, catchupDefinition)) continue;
         const dow = dayOfWeek(year, mon, day);
         if (!normalizeWeekdaySetting(catchupDefinition.applicable_days, [1, 2, 3, 4, 5]).includes(dow)) continue;
 
@@ -1558,6 +1669,8 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
             .every((day) => empDayAssignment[employee][day] === 'E1SA');
           const sundayDate = `${month}-${String(sunday).padStart(2, '0')}`;
           if (!hasCompleteSaturdayBlock || empDayAssignment[employee][sunday] || isEmployeeAbsentOnDate(employee, sundayDate)) continue;
+          if (isRecoveryProtectedDay(employee, sunday)) continue;
+          if (violatesWeekendRecoveryAfterBlock(employee, Array.from({ length: 7 }, (_, offset) => monday + offset))) continue;
 
           for (let day = monday; day <= saturday; day++) {
             const shift = shifts.find((entry) => entry.employee_name === employee && entry.day === day);
@@ -1587,6 +1700,86 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
               'E1SA wurde regelkonform zu E1WE Montag bis Sonntag erweitert',
             ],
           };
+        }
+      }
+    }
+
+    while (empHours[employee] < employeeTargetHours[employee]) {
+      const missingHours = employeeTargetHours[employee] - empHours[employee];
+      const blockCandidates = [];
+
+      for (const blockDefinition of targetCatchupSeriesDefinitions) {
+        const blockCode = String(blockDefinition.code || '').trim().toUpperCase();
+        const blockType = normalizePlanningShiftTypeKey(blockDefinition.shift_type);
+        const seriesDays = getShiftSeriesDays(blockDefinition);
+        if (fixedShiftType && fixedShiftType !== blockType) continue;
+
+        const applicableDays = new Set(normalizeWeekdaySetting(blockDefinition.applicable_days, [1, 2, 3, 4, 5, 6, 0]));
+        for (let monday = 1; monday <= numDays - seriesDays + 1; monday++) {
+          if (dayOfWeek(year, mon, monday) !== 1) continue;
+
+          const blockDays = [];
+          let validSeries = true;
+          for (let offset = 0; offset < seriesDays; offset++) {
+            const day = monday + offset;
+            if (!applicableDays.has(dayOfWeek(year, mon, day))) {
+              validSeries = false;
+              break;
+            }
+            blockDays.push(day);
+          }
+          if (!validSeries) continue;
+
+          const weekdayBaseDays = blockDays.filter((day) => {
+            const dow = dayOfWeek(year, mon, day);
+            return dow >= 1 && dow <= 5;
+          });
+          if (weekdayBaseDays.length < 5) continue;
+          if (!weekdayBaseDays.every((day) => empDayAssignment[employee][day] && getAssignedShiftType(employee, day) === blockType)) continue;
+
+          const additionalDays = blockDays.filter((day) => !empDayAssignment[employee][day]);
+          if (additionalDays.length === 0) continue;
+          if (additionalDays.some((day) => isEmployeeAbsentOnDate(employee, `${month}-${String(day).padStart(2, '0')}`))) continue;
+          if (additionalDays.some((day) => isRecoveryProtectedDay(employee, day))) continue;
+          if (additionalDays.some((day) => wouldViolateAdjacentTransition(employee, day, blockDefinition))) continue;
+          if (violatesWeekendRecoveryAfterBlock(employee, blockDays)) continue;
+
+          const blockedByOtherShift = blockDays.some((day) => {
+            const assignedCode = empDayAssignment[employee][day];
+            if (!assignedCode) return false;
+            return getAssignedShiftType(employee, day) !== blockType;
+          });
+          if (blockedByOtherShift) continue;
+
+          const addedHours = additionalDays.reduce((sum) => sum + getShiftDurationHours(blockDefinition), 0);
+          blockCandidates.push({
+            blockDefinition,
+            blockCode,
+            blockDays,
+            additionalDays,
+            addedHours,
+            score: Math.abs(addedHours - missingHours) + additionalDays.length * 0.01,
+          });
+        }
+      }
+
+      if (blockCandidates.length === 0) break;
+      blockCandidates.sort((left, right) => left.score - right.score || left.blockDays[0] - right.blockDays[0] || left.blockCode.localeCompare(right.blockCode, 'de'));
+      const selected = blockCandidates[0];
+      const reason = `Verbindlicher Sollzeitausgleich auf mindestens ${employeeTargetHours[employee]} Stunden`;
+
+      for (const day of selected.blockDays) {
+        if (empDayAssignment[employee][day]) {
+          changeEmployeeShiftCode(employee, day, selected.blockCode, [
+            reason,
+            `Blockregel: ${selected.blockCode} vollständig von Montag bis ${selected.blockDays.length === 6 ? 'Samstag' : 'Sonntag'}`,
+          ]);
+        } else {
+          addEmployeeTargetCatchupShift(employee, day, selected.blockDefinition, [
+            reason,
+            `Blockregel: ${selected.blockCode} vollständig von Montag bis ${selected.blockDays.length === 6 ? 'Samstag' : 'Sonntag'}`,
+            `Nicht abwesend am ${month}-${String(day).padStart(2, '0')}`,
+          ]);
         }
       }
     }

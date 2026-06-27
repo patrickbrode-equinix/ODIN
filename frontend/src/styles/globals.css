@@ -1134,6 +1134,118 @@ h3,
 .tv-mode .rounded-xl { border-radius: 16px !important; }
 .tv-mode .rounded-2xl { border-radius: 20px !important; }
 
+/* Shift-plan slide gets its own density scaling so every shift remains visible. */
+.tv-mode .tv-shift-fit[data-density="balanced"] {
+  padding: 14px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"],
+.tv-mode .tv-shift-fit[data-density="dense"] {
+  padding: 10px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[9px]"],
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[10px]"],
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[11px]"] {
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[12px]"],
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[13px]"] {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[15px]"],
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[17px]"],
+.tv-mode .tv-shift-fit[data-density="compact"] [class~="text-[18px]"] {
+  font-size: 14px !important;
+  line-height: 1.15 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[9px]"],
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[10px]"],
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[11px]"] {
+  font-size: 9px !important;
+  line-height: 1.1 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[12px]"],
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[13px]"] {
+  font-size: 10px !important;
+  line-height: 1.12 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[15px]"],
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[17px]"],
+.tv-mode .tv-shift-fit[data-density="dense"] [class~="text-[18px]"] {
+  font-size: 12px !important;
+  line-height: 1.12 !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="px-2"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="px-2.5"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="px-3"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="px-3.5"] {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="px-1.5"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="px-2"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="px-2.5"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="px-3"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="px-3.5"] {
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="py-0.5"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="py-1"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="py-2"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="py-2.5"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="py-3"] {
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="py-0.5"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="py-1"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="py-2"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="py-2.5"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="py-3"] {
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="gap-2.5"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="gap-2"] {
+  gap: 7px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="gap-2.5"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="gap-2"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="gap-1.5"] {
+  gap: 5px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="h-9"],
+.tv-mode .tv-shift-fit[data-density="compact"] .tv-employee-card [class~="w-9"] {
+  width: 27px !important;
+  height: 27px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="h-9"],
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card [class~="w-9"] {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.tv-mode .tv-shift-fit[data-density="dense"] .tv-employee-card {
+  border-radius: 12px !important;
+}
+
 /* ---------------------------------------------------------------- */
 /* TV-MODE: red/critical ticket glow pulse (2.5 s, subtle)          */
 /* ---------------------------------------------------------------- */

@@ -164,6 +164,29 @@ const VERIFICATION_BADGES: Record<string, { label: string; className: string }> 
   failed:      { label: "Fehler",          className: "text-gray-400 bg-gray-500/15 border-gray-500/30" },
 };
 
+type TvShiftDensity = "roomy" | "balanced" | "compact" | "dense";
+
+function resolveShiftDensity(totalEmployees: number, maxShiftEmployees: number): TvShiftDensity {
+  if (totalEmployees >= 34 || maxShiftEmployees >= 16) return "dense";
+  if (totalEmployees >= 25 || maxShiftEmployees >= 12) return "compact";
+  if (totalEmployees >= 16 || maxShiftEmployees >= 8) return "balanced";
+  return "roomy";
+}
+
+function getShiftGridMinWidth(density: TvShiftDensity, employeeCount: number): string {
+  if (density === "dense" || employeeCount >= 16) return "172px";
+  if (density === "compact" || employeeCount >= 12) return "205px";
+  if (density === "balanced" || employeeCount >= 8) return "245px";
+  return "285px";
+}
+
+function getShiftBlockFlex(employeeCount: number, totalEmployees: number): string {
+  if (employeeCount <= 0) return "0.45 1 0";
+  const share = employeeCount / Math.max(1, totalEmployees);
+  const grow = Math.max(0.85, Math.min(1.65, 0.65 + share * 2.1));
+  return `${grow.toFixed(2)} 1 0`;
+}
+
 /* ------------------------------------------------ */
 /* EMPLOYEE CARD — matches MyTicketsPanel item style */
 /* ------------------------------------------------ */
@@ -178,6 +201,7 @@ const EmployeeCard = memo(function EmployeeCard({
   shiftKind,
   crawlerStale,
   verificationStatus,
+  density,
 }: {
   shift: string;
   name: string;
@@ -189,6 +213,7 @@ const EmployeeCard = memo(function EmployeeCard({
   shiftKind: "early" | "late" | "night";
   crawlerStale?: boolean;
   verificationStatus?: string | null;
+  density: TvShiftDensity;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
   const displayedTickets = crawlerStale ? [] : (tickets ?? []).slice(0, 2);
@@ -210,7 +235,7 @@ const EmployeeCard = memo(function EmployeeCard({
   return (
     <motion.div
       whileHover={{ scale: 1.028, y: -2 }}
-      className="relative flex overflow-hidden rounded-2xl cursor-default"
+      className={`tv-employee-card tv-employee-card--${density} relative flex overflow-hidden rounded-2xl cursor-default`}
       style={{
         background: `linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 14%, rgba(8,15,31,0.92) 48%, rgba(4,9,21,0.98) 100%)`,
         border: "1px solid rgba(255,255,255,0.11)",
@@ -386,6 +411,8 @@ const ShiftBlock = memo(function ShiftBlock({
   ticketsByOwner,
   crawlerStale,
   delay,
+  density,
+  totalEmployees,
 }: {
   title: string;
   list: TvShiftEmployee[];
@@ -393,18 +420,22 @@ const ShiftBlock = memo(function ShiftBlock({
   ticketsByOwner?: Map<string, any[]>;
   crawlerStale?: boolean;
   delay?: number;
+  density: TvShiftDensity;
+  totalEmployees: number;
 }) {
   const colors = SHIFT_COLORS[shiftKind];
   const hex = colors.hex;
   const sortedList = useMemo(() => [...list].sort(compareEmployeesByShift), [list]);
+  const gridMinWidth = getShiftGridMinWidth(density, list.length);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: delay ?? 0, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-2xl"
+      className="relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
       style={{
+        flex: getShiftBlockFlex(list.length, totalEmployees),
         background: list.length > 0
           ? `linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012) 18%, transparent 26%), radial-gradient(ellipse 80% 60% at 50% 0%, ${colors.bgRadial}, rgba(3,9,24,0.98) 65%)`
           : "rgba(4,10,26,0.96)",
@@ -443,7 +474,7 @@ const ShiftBlock = memo(function ShiftBlock({
         />
       )}
 
-      <div className="px-4 pt-4 pb-4">
+      <div className="relative flex min-h-0 flex-1 flex-col px-4 pt-4 pb-4">
         {/* Section header */}
         <div className="mb-3 flex items-center gap-2.5">
           <div className="h-6 w-6 rounded-md flex items-center justify-center"
@@ -467,7 +498,13 @@ const ShiftBlock = memo(function ShiftBlock({
             Keine Mitarbeiter in dieser Schicht
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+          <div
+            className="tv-shift-grid grid min-h-0 flex-1 content-start overflow-hidden"
+            style={{
+              gap: density === "dense" ? "7px" : density === "compact" ? "9px" : "12px",
+              gridTemplateColumns: `repeat(auto-fit, minmax(${gridMinWidth}, 1fr))`,
+            }}
+          >
           {sortedList.map((e) => (
             <EmployeeCard
               key={`${e.shift}-${e.name}`}
@@ -481,6 +518,7 @@ const ShiftBlock = memo(function ShiftBlock({
               shiftKind={shiftKind}
               crawlerStale={crawlerStale}
               verificationStatus={(e as any).verificationStatus}
+              density={density}
             />
           ))}
         </div>
@@ -502,6 +540,8 @@ export const TvShiftplan = memo(function TvShiftplan({
   crawlerStale,
 }: TvShiftplanProps) {
   const totalEmployees = early.length + late.length + night.length;
+  const maxShiftEmployees = Math.max(early.length, late.length, night.length);
+  const density = resolveShiftDensity(totalEmployees, maxShiftEmployees);
   const shiftHeaderInfo = useMemo(() => ([
     { key: "early" as const, label: "Früh", count: early.length, ...getShiftStatus(SHIFT_KIND_WINDOWS.early), timeLabel: SHIFT_KIND_WINDOWS.early.timeLabel, hex: SHIFT_COLORS.early.hex },
     { key: "late" as const, label: "Spät", count: late.length, ...getShiftStatus(SHIFT_KIND_WINDOWS.late), timeLabel: SHIFT_KIND_WINDOWS.late.timeLabel, hex: SHIFT_COLORS.late.hex },
@@ -519,7 +559,8 @@ export const TvShiftplan = memo(function TvShiftplan({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
-      className="relative flex h-full min-h-0 flex-col overflow-hidden p-5"
+      className="tv-shift-fit relative flex h-full min-h-0 flex-col overflow-hidden p-5"
+      data-density={density}
     >
       <div className="pointer-events-none absolute inset-0">
         <div
@@ -635,8 +676,8 @@ export const TvShiftplan = memo(function TvShiftplan({
         })}
       </div>
 
-      {/* CONTENT — scrollable shift sections */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-7 pr-1">
+      {/* CONTENT - all shift sections fit into the TV viewport without scrolling */}
+      <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden">
         <ShiftBlock
           title="Frühschicht"
           list={early}
@@ -644,6 +685,8 @@ export const TvShiftplan = memo(function TvShiftplan({
           ticketsByOwner={ticketsByOwner}
           crawlerStale={crawlerStale}
           delay={0.08}
+          density={density}
+          totalEmployees={totalEmployees}
         />
         <ShiftBlock
           title="Spätschicht"
@@ -652,6 +695,8 @@ export const TvShiftplan = memo(function TvShiftplan({
           ticketsByOwner={ticketsByOwner}
           crawlerStale={crawlerStale}
           delay={0.14}
+          density={density}
+          totalEmployees={totalEmployees}
         />
         <ShiftBlock
           title="Nachtschicht"
@@ -660,6 +705,8 @@ export const TvShiftplan = memo(function TvShiftplan({
           ticketsByOwner={ticketsByOwner}
           crawlerStale={crawlerStale}
           delay={0.20}
+          density={density}
+          totalEmployees={totalEmployees}
         />
       </div>
     </motion.div>

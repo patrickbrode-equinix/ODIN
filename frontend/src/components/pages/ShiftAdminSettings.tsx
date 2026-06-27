@@ -88,6 +88,7 @@ interface RotationRules {
   free_days_after_weekend: number;
   night_next_workday: number;
   night_next_shift_code: string | null;
+  late_before_night_required: boolean;
   stability_priority: number;
   max_shift_type_changes_per_month: number;
   min_free_weekends_per_month: number;
@@ -1293,7 +1294,7 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
               </div>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-3">
               <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
                 <input type="checkbox" checked={rotation.night_to_early_forbidden} onChange={(event) => setRotation({ ...rotation, night_to_early_forbidden: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
                 <span className="flex items-center">{t("shiftAdmin.rotNightToEarlyForbidden")} <HelpTooltip textKey="shiftAdmin.helpRotNightToEarlyForbidden" t={t} /></span>
@@ -1305,6 +1306,18 @@ export function ShiftPlanningSettingsPanel({ embedded = false }: { embedded?: bo
             </div>
 
             {/* ── Overtime sub-section ── */}
+            <div className="grid gap-3 lg:grid-cols-3">
+              <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/55 px-4 py-3 text-sm text-slate-200">
+                <input type="checkbox" checked={rotation.late_before_night_required ?? false} onChange={(event) => setRotation({ ...rotation, late_before_night_required: event.target.checked })} className="rounded border-white/20 bg-slate-950" />
+                <span>{isGerman ? 'Spaetschicht vor Nachtschicht erzwingen' : 'Require late shift before night shift'}</span>
+              </label>
+            </div>
+            <p className="text-xs text-slate-500">
+              {isGerman
+                ? 'Wenn aktiv, startet die Engine einen Nachtblock nur bei Mitarbeitern, die am Vortag eine Spaetschicht hatten. Das macht den Wechsel in die Nacht planbarer.'
+                : 'When enabled, the engine starts a night block only for employees who worked a late shift on the previous day. This makes the transition into nights more predictable.'}
+            </p>
+
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-4">
               <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/90">
                 {isGerman ? 'Work-Life-Balance' : 'Work-life balance'}

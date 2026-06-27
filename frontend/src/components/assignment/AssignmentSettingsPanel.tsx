@@ -343,12 +343,208 @@ function getSettingDefs(lang: Lang): SettingDef[] {
   ];
 }
 
+function getWritebackSettingDefs(lang: Lang): SettingDef[] {
+  const de = lang === 'de';
+  return [
+    {
+      key: 'writeback.enabled',
+      label: de ? 'Jarvis-Writeback aktivieren' : 'Enable Jarvis writeback',
+      type: 'boolean',
+      tooltip: de ? (
+        <>
+          <p><strong>Bedeutung:</strong> Aktiviert die Funktion, mit der ODIN nach einer Entscheidung den Jarvis-Owner am Ticket setzen darf.</p>
+          <p><strong>Wichtig:</strong> Dies ist keine reine Crawler-Option. Der Crawler liefert nur den Snapshot, ODIN erzeugt daraus eine geprüfte Writeback-Aktion.</p>
+          <p><strong>Empfehlung:</strong> Erst mit <em>Shadow only</em> testen, danach <em>Manual Confirm</em> nutzen, bevor automatische Ausführung erlaubt wird.</p>
+        </>
+      ) : (
+        <>
+          <p><strong>Purpose:</strong> Allows ODIN to set the Jarvis ticket owner after an assignment decision.</p>
+          <p><strong>Important:</strong> This is not only a crawler option. The crawler provides the snapshot, ODIN creates an audited writeback action.</p>
+          <p><strong>Recommendation:</strong> Validate with <em>Shadow only</em> first, then use <em>Manual confirm</em> before allowing automatic execution.</p>
+        </>
+      ),
+    },
+    {
+      key: 'writeback.mode',
+      label: de ? 'Writeback-Modus' : 'Writeback mode',
+      type: 'select',
+      options: ['shadow_only', 'manual_confirm', 'assisted_auto', 'full_auto'],
+      tooltip: de ? (
+        <>
+          <p><strong>shadow_only:</strong> ODIN prüft und protokolliert, schreibt aber keinen Owner in Jarvis.</p>
+          <p><strong>manual_confirm:</strong> Jede Aktion muss im ODIN-Panel manuell bestätigt werden.</p>
+          <p><strong>assisted_auto:</strong> ODIN darf geprüfte Aktionen ausführen, das Team bleibt informiert.</p>
+          <p><strong>full_auto:</strong> Vollautomatische Ausführung. Nur verwenden, wenn Shadow- und Manual-Confirm-Phase stabil waren.</p>
+        </>
+      ) : (
+        <>
+          <p><strong>shadow_only:</strong> ODIN validates and logs only, without changing Jarvis.</p>
+          <p><strong>manual_confirm:</strong> Every action must be confirmed in ODIN.</p>
+          <p><strong>assisted_auto:</strong> ODIN may execute validated actions while keeping the team informed.</p>
+          <p><strong>full_auto:</strong> Fully automatic execution. Use only after stable shadow and manual-confirm phases.</p>
+        </>
+      ),
+    },
+    {
+      key: 'writeback.pilot.enabled',
+      label: de ? 'Nur Pilot-Mitarbeiter testen' : 'Test pilot employee only',
+      type: 'boolean',
+      tooltip: de ? (
+        <>
+          <p><strong>Bedeutung:</strong> Beschränkt Jarvis-Writeback auf genau einen Mitarbeiter.</p>
+          <p>Alle anderen Writeback-Aktionen werden bei Validierung und Ausführung blockiert. Das ist die sichere Testphase, bevor du Writeback für alle freigibst.</p>
+        </>
+      ) : (
+        <>
+          <p><strong>Purpose:</strong> Limits Jarvis writeback to exactly one employee.</p>
+          <p>All other writeback actions are blocked during validation and execution. This is the safe rollout phase before enabling writeback for everyone.</p>
+        </>
+      ),
+    },
+    {
+      key: 'writeback.pilot.employeeSelector',
+      label: de ? 'Pilot-Mitarbeiter' : 'Pilot employee',
+      type: 'text',
+      tooltip: de ? (
+        <>
+          <p><strong>Was eintragen?</strong> ODIN-ID, Name, E-Mail, Jarvis Display Name, Initialen oder Jarvis Owner-Code des Mitarbeiters.</p>
+          <p><strong>Beispiel:</strong> <code>Patrick Brode</code>, <code>patrick@example.com</code> oder ein Owner-Code wie <code>PBROD</code>.</p>
+          <p>Wenn Pilotmodus aktiv ist und dieses Feld leer bleibt, blockiert ODIN aus Sicherheitsgründen alle Writeback-Aktionen.</p>
+        </>
+      ) : (
+        <>
+          <p><strong>What to enter?</strong> ODIN id, name, email, Jarvis display name, initials, or Jarvis owner code.</p>
+          <p><strong>Example:</strong> <code>Patrick Brode</code>, <code>patrick@example.com</code>, or an owner code such as <code>PBROD</code>.</p>
+          <p>If pilot mode is active and this field is empty, ODIN blocks all writeback actions for safety.</p>
+        </>
+      ),
+    },
+    {
+      key: 'writeback.killSwitch',
+      label: de ? 'Notfallstopp' : 'Emergency kill switch',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Blockiert sofort alle Writeback-Ausführungen, auch wenn Writeback grundsätzlich aktiviert ist.</p>
+      ) : (
+        <p>Immediately blocks all writeback execution, even when writeback is generally enabled.</p>
+      ),
+    },
+    {
+      key: 'writeback.allowOverwriteExistingAssignee',
+      label: de ? 'Bestehenden Owner überschreiben' : 'Overwrite existing owner',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Erlaubt ODIN, Tickets zu überschreiben, die in Jarvis bereits einen Owner haben. Für den Start besser deaktiviert lassen.</p>
+      ) : (
+        <p>Allows ODIN to overwrite tickets that already have an owner in Jarvis. Keep disabled for initial rollout.</p>
+      ),
+    },
+    {
+      key: 'writeback.requireFreshCrawlerData',
+      label: de ? 'Frische Crawler-Daten erzwingen' : 'Require fresh crawler data',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Verhindert Writeback, wenn der Crawler-Snapshot zu alt ist. Das schützt vor Zuweisungen auf veraltete Ticketstände.</p>
+      ) : (
+        <p>Blocks writeback when the crawler snapshot is too old. This protects against assignments based on stale ticket state.</p>
+      ),
+    },
+    {
+      key: 'writeback.maxSnapshotAgeMinutes',
+      label: de ? 'Max. Snapshot-Alter (Min.)' : 'Max snapshot age (min)',
+      type: 'number',
+      tooltip: de ? (
+        <p>Maximales Alter der Crawler-Daten, bevor ODIN keine Jarvis-Owner mehr schreiben darf.</p>
+      ) : (
+        <p>Maximum crawler snapshot age before ODIN is no longer allowed to write Jarvis owners.</p>
+      ),
+    },
+    {
+      key: 'writeback.maxExecutionRetries',
+      label: de ? 'Max. Ausführungsversuche' : 'Max execution retries',
+      type: 'number',
+      tooltip: de ? (
+        <p>Wie oft eine fehlgeschlagene Writeback-Aktion erneut versucht werden darf, bevor sie als fehlgeschlagen stehen bleibt.</p>
+      ) : (
+        <p>How often a failed writeback action may be retried before it remains failed.</p>
+      ),
+    },
+    {
+      key: 'writeback.queueEnabled.smartHands',
+      label: de ? 'Queue Smart Hands' : 'Queue Smart Hands',
+      type: 'boolean',
+      tooltip: de ? <p>Erlaubt Owner-Writeback für Smart-Hands-Tickets.</p> : <p>Allows owner writeback for Smart Hands tickets.</p>,
+    },
+    {
+      key: 'writeback.queueEnabled.crossConnect',
+      label: de ? 'Queue Cross Connect' : 'Queue Cross Connect',
+      type: 'boolean',
+      tooltip: de ? <p>Erlaubt Owner-Writeback für Cross-Connect-Tickets.</p> : <p>Allows owner writeback for Cross Connect tickets.</p>,
+    },
+    {
+      key: 'writeback.queueEnabled.trouble',
+      label: de ? 'Queue Trouble Tickets' : 'Queue Trouble Tickets',
+      type: 'boolean',
+      tooltip: de ? <p>Erlaubt Owner-Writeback für Trouble-Tickets.</p> : <p>Allows owner writeback for Trouble Tickets.</p>,
+    },
+    {
+      key: 'writeback.queueEnabled.deinstall',
+      label: de ? 'Queue Deinstall' : 'Queue Deinstall',
+      type: 'boolean',
+      tooltip: de ? <p>Erlaubt Owner-Writeback für Deinstall-Tickets.</p> : <p>Allows owner writeback for Deinstall tickets.</p>,
+    },
+    {
+      key: 'writeback.allowAutoUnassign',
+      label: de ? 'Automatische Abweisung erlauben' : 'Allow auto-unassign',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Erlaubt ODIN, einen bestehenden Owner automatisch zu entfernen, wenn ein harter Grund vorliegt, zum Beispiel krank oder nicht zuweisbar.</p>
+      ) : (
+        <p>Allows ODIN to remove an existing owner automatically when there is a hard reason, for example sick or not assignable.</p>
+      ),
+    },
+    {
+      key: 'writeback.allowAutoReassign',
+      label: de ? 'Automatische Neuzuweisung erlauben' : 'Allow auto-reassign',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Erlaubt ODIN, einen bestehenden Owner automatisch durch einen anderen zu ersetzen. Für den Start besser nur mit manueller Freigabe nutzen.</p>
+      ) : (
+        <p>Allows ODIN to replace an existing owner automatically. For rollout, use with manual approval first.</p>
+      ),
+    },
+    {
+      key: 'writeback.requireManualApprovalForUnassign',
+      label: de ? 'Freigabe für Abweisung' : 'Approval for unassign',
+      type: 'boolean',
+      tooltip: de ? <p>Abweisungen müssen vor der Ausführung manuell bestätigt werden.</p> : <p>Unassignments must be manually approved before execution.</p>,
+    },
+    {
+      key: 'writeback.requireManualApprovalForReassign',
+      label: de ? 'Freigabe für Neuzuweisung' : 'Approval for reassign',
+      type: 'boolean',
+      tooltip: de ? <p>Neuzuweisungen müssen vor der Ausführung manuell bestätigt werden.</p> : <p>Reassignments must be manually approved before execution.</p>,
+    },
+    {
+      key: 'writeback.allowOtherTeamsAssignment',
+      label: de ? 'Andere Teams erlauben' : 'Allow other teams',
+      type: 'boolean',
+      tooltip: de ? (
+        <p>Erlaubt Writeback auch für Zuweisungen außerhalb des primären Teams. Nur aktivieren, wenn dieser Jarvis-Dialog fachlich gewollt ist.</p>
+      ) : (
+        <p>Allows writeback for assignments outside the primary team. Enable only if this Jarvis flow is intended.</p>
+      ),
+    },
+  ];
+}
+
 export function AssignmentSettingsPanel() {
   const { settings, loading, settingsSaving, updateSettings, fetchSettings } = useAssignmentStore();
   const { language } = useLanguage();
   const de = language === 'de';
   const [local, setLocal] = useState<Record<string, string>>({});
   const settingDefs = getSettingDefs(language);
+  const writebackSettingDefs = getWritebackSettingDefs(language);
 
   const ticketTypeOptions = ['TroubleTicket', 'SmartHands', 'CrossConnect', 'Scheduled', 'Other'];
 
@@ -359,6 +555,8 @@ export function AssignmentSettingsPanel() {
     'assignment.cutoffMinutesBeforeShiftEnd': { min: 0, max: 60, step: 5 },
     'assignment.maxSameSystemSmartHands': { min: 1, max: 10, step: 1 },
     'assignment.maxSameSystemCrossConnect': { min: 1, max: 10, step: 1 },
+    'writeback.maxExecutionRetries': { min: 0, max: 10, step: 1 },
+    'writeback.maxSnapshotAgeMinutes': { min: 1, max: 30, step: 1 },
   };
 
   useEffect(() => {
@@ -496,6 +694,35 @@ export function AssignmentSettingsPanel() {
       );
     }
 
+    if (def.key === 'writeback.mode') {
+      const options = [
+        { value: 'shadow_only', label: de ? 'Shadow only' : 'Shadow only' },
+        { value: 'manual_confirm', label: de ? 'Manuell bestätigen' : 'Manual confirm' },
+        { value: 'assisted_auto', label: de ? 'Assistiert automatisch' : 'Assisted auto' },
+        { value: 'full_auto', label: de ? 'Vollautomatisch' : 'Full auto' },
+      ];
+      return (
+        <div className="grid gap-2 rounded-xl border border-border/40 bg-background/40 p-3">
+          {options.map((option) => {
+            const active = (local[def.key] || 'shadow_only') === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleChange(def.key, option.value)}
+                className={`rounded-lg border px-3 py-2 text-sm text-left transition ${active
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/40 bg-background/50 text-foreground hover:border-primary/40'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
     if (def.key === 'assignment.supportedTicketTypes') {
       const selected = new Set(getTicketTypes());
       return (
@@ -614,6 +841,33 @@ export function AssignmentSettingsPanel() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
         {settingDefs.map((def) => (
+          <div key={def.key} className="flex flex-col gap-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {def.label}
+              <InfoTooltip title={def.label} side="right" align="start">{def.tooltip}</InfoTooltip>
+            </label>
+            {renderField(def)}
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-border/30 px-4 py-3">
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4">
+          <div className="flex flex-col gap-1">
+            <h4 className="text-sm font-semibold text-amber-200">
+              {de ? 'Jarvis-Writeback: Namen automatisch an Tickets schreiben' : 'Jarvis writeback: write names to tickets automatically'}
+            </h4>
+            <p className="text-xs leading-relaxed text-amber-100/75">
+              {de
+                ? 'Diese Optionen steuern, ob ODIN nach einer Zuweisungsentscheidung den Owner im Jarvis-Ticket setzen darf. Standard ist sicher deaktiviert: erst Shadow prüfen, dann manuelle Freigabe, danach optional automatisieren.'
+                : 'These options control whether ODIN may set the owner on the Jarvis ticket after an assignment decision. The safe default is disabled: validate in shadow, then use manual approval, then optionally automate.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4">
+        {writebackSettingDefs.map((def) => (
           <div key={def.key} className="flex flex-col gap-1">
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {def.label}

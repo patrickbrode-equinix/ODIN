@@ -11,6 +11,7 @@ import {
   loadWritebackSettings,
   checkWritebackGlobalGuards,
   checkQueueWritebackEnabled,
+  checkWritebackPilotEmployee,
 } from './writebackSettings.js';
 import {
   loadEmployeeWithJarvisFields,
@@ -108,6 +109,14 @@ export async function validateAssignmentAction(actionId) {
     if (!employee) {
       errors.push(`Selected employee (id=${action.selected_employee_id}) not found in ODIN`);
     } else {
+      const pilotGuard = checkWritebackPilotEmployee(settings, action, employee);
+      if (!pilotGuard.allowed) {
+        errors.push(pilotGuard.reason);
+        await audit(action, AUDIT_EVENTS.MANUAL_REVIEW_REQUIRED, pilotGuard.reason, {
+          validationJson: { pilotMode: true, selector: settings.pilot?.employeeSelector || null },
+        });
+      }
+
       const mappingResult = validateEmployeeJarvisMapping(employee);
       if (!mappingResult.valid) {
         errors.push(...mappingResult.errors);
@@ -129,6 +138,14 @@ export async function validateAssignmentAction(actionId) {
       if (!employee.assignment_eligible || employee.blocked || !employee.auto_assignable) {
         errors.push(`Employee ${employee.name} is not eligible for assignment at validation time`);
       }
+    }
+  } else {
+    const pilotGuard = checkWritebackPilotEmployee(settings, action, null);
+    if (!pilotGuard.allowed) {
+      errors.push(pilotGuard.reason);
+      await audit(action, AUDIT_EVENTS.MANUAL_REVIEW_REQUIRED, pilotGuard.reason, {
+        validationJson: { pilotMode: true, selector: settings.pilot?.employeeSelector || null },
+      });
     }
   }
 
@@ -246,6 +263,22 @@ export async function executeAssignmentAction(actionId, adapter) {
       'Shadow mode active: ODIN would apply this assignment, but Jarvis will not be changed');
     return { success: false, status: EXECUTION_STATUSES.SHADOW_VALIDATED,
       reason: 'Shadow mode active: ODIN would apply this assignment, but Jarvis will not be changed' };
+  }
+
+  // Pilot mode is re-checked at execution time so old approvals cannot bypass a later restriction.
+  let selectedEmployee = null;
+  if (action.selected_employee_id) {
+    selectedEmployee = await loadEmployeeWithJarvisFields(action.selected_employee_id);
+  }
+  const pilotGuard = checkWritebackPilotEmployee(settings, action, selectedEmployee);
+  if (!pilotGuard.allowed) {
+    await assignmentActionRepository.updateStatus(action.id, EXECUTION_STATUSES.MANUAL_REVIEW_REQUIRED, {
+      failure_reason: pilotGuard.reason,
+    });
+    await audit(action, AUDIT_EVENTS.MANUAL_REVIEW_REQUIRED, pilotGuard.reason, {
+      validationJson: { pilotMode: true, selector: settings.pilot?.employeeSelector || null },
+    });
+    return { success: false, status: EXECUTION_STATUSES.MANUAL_REVIEW_REQUIRED, reason: pilotGuard.reason };
   }
 
   // Must be approved

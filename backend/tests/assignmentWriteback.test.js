@@ -28,6 +28,7 @@ import {
 
 import {
   WRITEBACK_SETTING_KEYS,
+  checkWritebackPilotEmployee,
 } from '../assignment/writeback/writebackSettings.js';
 
 /* Inline safe defaults matching the module — used for assertion only */
@@ -41,6 +42,8 @@ const WRITEBACK_DEFAULTS_FOR_TEST = {
   'writeback.queueEnabled.crossConnect':        'false',
   'writeback.queueEnabled.trouble':             'false',
   'writeback.queueEnabled.deinstall':           'false',
+  'writeback.pilot.enabled':                    'false',
+  'writeback.pilot.employeeSelector':           '',
 };
 
 import {
@@ -533,11 +536,65 @@ describe('Kill switch defaults', () => {
     assert.equal(WRITEBACK_DEFAULTS_FOR_TEST['writeback.queueEnabled.trouble'], 'false');
     assert.equal(WRITEBACK_DEFAULTS_FOR_TEST['writeback.queueEnabled.deinstall'], 'false');
   });
+
+  it('pilot mode defaults to disabled with no employee selector', () => {
+    assert.equal(WRITEBACK_DEFAULTS_FOR_TEST['writeback.pilot.enabled'], 'false');
+    assert.equal(WRITEBACK_DEFAULTS_FOR_TEST['writeback.pilot.employeeSelector'], '');
+  });
 });
 
 /* ─────────────────────────────────────────────────
    15. Unassign flow — MockAdapter call order
 ───────────────────────────────────────────────── */
+describe('Writeback pilot employee guard', () => {
+  it('allows all employees when pilot mode is disabled', () => {
+    const result = checkWritebackPilotEmployee(
+      { pilot: { enabled: false, employeeSelector: 'PBROD' } },
+      { selected_employee_name: 'Someone Else', selected_employee_jarvis_owner_code: 'OTHER' },
+      null
+    );
+    assert.equal(result.allowed, true);
+  });
+
+  it('blocks all writeback when pilot mode is enabled without a selector', () => {
+    const result = checkWritebackPilotEmployee(
+      { pilot: { enabled: true, employeeSelector: '' } },
+      { selected_employee_name: 'Patrick Brode', selected_employee_jarvis_owner_code: 'PBROD' },
+      null
+    );
+    assert.equal(result.allowed, false);
+    assert.match(result.reason, /no pilot employee/i);
+  });
+
+  it('allows the configured pilot by Jarvis owner code', () => {
+    const result = checkWritebackPilotEmployee(
+      { pilot: { enabled: true, employeeSelector: 'PBROD' } },
+      { selected_employee_name: 'Patrick Brode', selected_employee_jarvis_owner_code: 'PBROD' },
+      null
+    );
+    assert.equal(result.allowed, true);
+  });
+
+  it('allows the configured pilot by ODIN employee id', () => {
+    const result = checkWritebackPilotEmployee(
+      { pilot: { enabled: true, employeeSelector: '42' } },
+      { selected_employee_id: 42, selected_employee_name: 'Patrick Brode' },
+      null
+    );
+    assert.equal(result.allowed, true);
+  });
+
+  it('blocks non-pilot employees', () => {
+    const result = checkWritebackPilotEmployee(
+      { pilot: { enabled: true, employeeSelector: 'PBROD' } },
+      { selected_employee_name: 'Other Person', selected_employee_jarvis_owner_code: 'OTHER' },
+      { id: 7, name: 'Other Person', email: 'other@example.com', jarvis_owner_code: 'OTHER' }
+    );
+    assert.equal(result.allowed, false);
+    assert.match(result.reason, /PBROD/);
+  });
+});
+
 describe('MockJarvisUiAdapter — unassign flow', () => {
   it('calls verifyQueueOwnerEmpty after clickUnAssign', async () => {
     // Test the call ORDER invariant using MockAdapter directly (no DB needed)
@@ -638,6 +695,8 @@ describe('WRITEBACK_SETTING_KEYS', () => {
       'writeback.queueEnabled.deinstall',
       'writeback.requireManualApprovalForUnassign',
       'writeback.requireManualApprovalForReassign',
+      'writeback.pilot.enabled',
+      'writeback.pilot.employeeSelector',
     ];
     for (const key of expectedKeySubstrings) {
       assert.ok(
