@@ -19,6 +19,7 @@ const LEGACY_ODIN_BASE_URLS = new Set([
 const DEFAULT_JARVIS_URL = "https://jarvis-emea.equinix.com/";
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 5;
 let KEEP_AWAKE_ACTIVE = false;
+let WRITEBACK_ACTIVE = false;
 
 function resolveOdinBaseUrl(rawUrl) {
   const normalized = String(rawUrl || "").trim().replace(/\/$/, "");
@@ -198,6 +199,104 @@ async function maybeRunScheduledRefresh(reason) {
   await refreshPreferredJarvisTab(`interval:${reason}`);
 }
 
+async function postCrawlerApi(path, body = null) {
+  const stored = await chrome.storage.local.get(["odin_base_url", "odin_ingest_key"]);
+  const rawBase = resolveOdinBaseUrl(stored?.odin_base_url);
+  const ingestKey = (stored?.odin_ingest_key || "CHANGE_ME").trim();
+  const url = new URL(path, rawBase).toString();
+
+  const res = await fetch(url, {
+    method: body == null ? "GET" : "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-OES-INGEST-KEY": ingestKey,
+    },
+    body: body == null ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text().catch(() => "");
+  let json = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    throw new Error(`Crawler API ${path} failed: ${res.status} ${res.statusText} ${text}`);
+  }
+  return json;
+}
+
+async function reportWritebackResult(jobId, result) {
+  return postCrawlerApi(`/api/queue/writeback/${jobId}/result`, result);
+}
+
+async function maybeRunWritebackJob(reason) {
+  if (WRITEBACK_ACTIVE) return;
+
+  const stored = await chrome.storage.local.get([STORAGE_KEY_STATUS]);
+  const status = stored?.[STORAGE_KEY_STATUS] || {};
+  if (status.runActive) {
+    log(`Skipping writeback polling while scrape is active (${reason})`);
+    return;
+  }
+
+  WRITEBACK_ACTIVE = true;
+  let activeJobId = null;
+  try {
+    const next = await postCrawlerApi("/api/queue/writeback/next");
+    const job = next?.job;
+    if (!job) return;
+    activeJobId = job.id;
+
+    await updateCrawlerStatus({
+      writebackActive: true,
+      lastWritebackJobId: job.id,
+      lastWritebackStartedAt: new Date().toISOString(),
+      lastWritebackReason: reason,
+    });
+
+    const tabs = await syncKeepAwakeWithTabs(`writeback:${reason}`);
+    const tab = selectPreferredTab(tabs);
+    if (!tab?.id) {
+      throw new Error("No Jarvis tab available for writeback");
+    }
+
+    const result = await chrome.tabs.sendMessage(tab.id, { type: "OES_EXECUTE_WRITEBACK", job, reason });
+    const normalizedResult = result?.ok
+      ? { success: true, ...result }
+      : { success: false, reason: result?.error || "Content script writeback failed", details: result || null };
+
+    await reportWritebackResult(job.id, normalizedResult);
+    await updateCrawlerStatus({
+      writebackActive: false,
+      lastWritebackFinishedAt: new Date().toISOString(),
+      lastWritebackStatus: normalizedResult.success ? "success" : "failed",
+      lastWritebackError: normalizedResult.success ? null : normalizedResult.reason,
+    });
+  } catch (e) {
+    err("[Writeback] failed:", e?.message || e);
+    if (activeJobId) {
+      try {
+        await reportWritebackResult(activeJobId, {
+          success: false,
+          reason: String(e?.message || e),
+          error: String(e?.stack || e?.message || e),
+        });
+      } catch (reportErr) {
+        err("[Writeback] failed to report result:", reportErr?.message || reportErr);
+      }
+    }
+    await updateCrawlerStatus({
+      writebackActive: false,
+      lastWritebackStatus: "error",
+      lastWritebackError: String(e?.message || e),
+      lastWritebackFinishedAt: new Date().toISOString(),
+    });
+  } finally {
+    WRITEBACK_ACTIVE = false;
+  }
+}
+
 async function ensureCrawlerRunning(reason) {
   let tabs = await syncKeepAwakeWithTabs(reason);
 
@@ -248,6 +347,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     await ensureCrawlerRunning("recovery_alarm");
     await maybeRunScheduledRefresh("recovery_alarm");
+    await maybeRunWritebackJob("recovery_alarm");
   } catch (e) {
     err("Recovery alarm failed:", e);
     await updateCrawlerStatus({ lastError: String(e?.message || e), lastErrorAt: new Date().toISOString() });

@@ -429,6 +429,51 @@ describe('Eligibility Rules', () => {
     assert.equal(result.eligible, true);
   });
 
+  it('treats E1WE as early shift and rejects tickets starting in late shift', () => {
+    const window = getShiftWindowForPlanEntry('E1WE', '2026-03-08');
+    assert.equal(window.start.toISOString(), new Date('2026-03-08T06:30:00').toISOString());
+    assert.equal(window.end.toISOString(), new Date('2026-03-08T15:30:00').toISOString());
+
+    const now = new Date('2026-03-08T08:00:00');
+    const result = isShiftActive(
+      {
+        ...baseWorker,
+        shiftCode: 'E1WE',
+        shiftActive: true,
+        shiftPlanningDate: '2026-03-08',
+        shiftStart: new Date('2026-03-08T06:30:00').toISOString(),
+        shiftEnd: new Date('2026-03-08T15:30:00').toISOString(),
+      },
+      { ...baseTicket, type: 'SmartHands', scheduledStart: '2026-03-08T16:30:00' },
+      now,
+    );
+
+    assert.equal(result.eligible, false);
+    assert.match(result.reason, /Ticket-Starts/);
+  });
+
+  it('treats L1WE as late shift and allows tickets starting during late shift', () => {
+    const window = getShiftWindowForPlanEntry('L1WE', '2026-03-08');
+    assert.equal(window.start.toISOString(), new Date('2026-03-08T13:00:00').toISOString());
+    assert.equal(window.end.toISOString(), new Date('2026-03-08T22:00:00').toISOString());
+
+    const now = new Date('2026-03-08T13:30:00');
+    const result = isShiftActive(
+      {
+        ...baseWorker,
+        shiftCode: 'L1WE',
+        shiftActive: true,
+        shiftPlanningDate: '2026-03-08',
+        shiftStart: new Date('2026-03-08T13:00:00').toISOString(),
+        shiftEnd: new Date('2026-03-08T22:00:00').toISOString(),
+      },
+      { ...baseTicket, type: 'SmartHands', scheduledStart: '2026-03-08T16:30:00' },
+      now,
+    );
+
+    assert.equal(result.eligible, true);
+  });
+
   it('allows a future scheduled ticket for a planned future shift when current-shift-only is disabled', () => {
     const now = new Date('2026-03-08T08:00:00');
     const result = isShiftActive(

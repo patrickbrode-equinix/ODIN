@@ -27,6 +27,21 @@ export interface QueueStats {
     total: number;
 }
 
+export interface TicketWritebackResult {
+    ok: boolean;
+    action?: Record<string, any> | null;
+    validation?: { valid: boolean; errors: string[] } | null;
+    execution?: { attempted: boolean; reason?: string };
+    message?: string;
+}
+
+export interface TicketResetAllResult extends TicketWritebackResult {
+    resetCount: number;
+    actionCount?: number;
+    validationFailedCount?: number;
+    actions?: Record<string, any>[];
+}
+
 export interface GroupSummary {
     group: string;
     count: number;
@@ -65,6 +80,21 @@ export const QueueApi = {
     getHealth: async () => {
         // /health is at the root of /api, not under /queue
         const res = await api.get("/health");
+        return res.data;
+    },
+
+    triggerTicketWriteback: async (ticketId: number | string): Promise<TicketWritebackResult> => {
+        const res = await api.post(`/assignment-actions/tickets/${ticketId}/writeback`);
+        return res.data;
+    },
+
+    resetTicketAssignment: async (ticketId: number | string): Promise<TicketWritebackResult> => {
+        const res = await api.post(`/assignment-actions/tickets/${ticketId}/reset`);
+        return res.data;
+    },
+
+    resetAllTicketAssignments: async (): Promise<TicketResetAllResult> => {
+        const res = await api.post("/assignment-actions/tickets/reset-all");
         return res.data;
     },
 };

@@ -428,12 +428,25 @@ export function classifyCriticalTicket(ticket, now = new Date(), shiftContext = 
 }
 
 export function compareCriticalTickets(left, right) {
-  if (left.classification.priorityBucket !== right.classification.priorityBucket) {
-    return left.classification.priorityBucket - right.classification.priorityBucket;
+  const leftSortTime = Number.isFinite(left.classification.sortTime)
+    ? left.classification.sortTime
+    : Number.MAX_SAFE_INTEGER;
+  const rightSortTime = Number.isFinite(right.classification.sortTime)
+    ? right.classification.sortTime
+    : Number.MAX_SAFE_INTEGER;
+
+  if (leftSortTime !== rightSortTime) {
+    return leftSortTime - rightSortTime;
   }
 
-  if (left.classification.sortTime !== right.classification.sortTime) {
-    return left.classification.sortTime - right.classification.sortTime;
+  if (left.classification.priorityBucket !== right.classification.priorityBucket) {
+    const leftBucket = Number.isFinite(left.classification.priorityBucket)
+      ? left.classification.priorityBucket
+      : Number.MAX_SAFE_INTEGER;
+    const rightBucket = Number.isFinite(right.classification.priorityBucket)
+      ? right.classification.priorityBucket
+      : Number.MAX_SAFE_INTEGER;
+    return leftBucket - rightBucket;
   }
 
   const leftId = getTextValue(left.ticket, 'external_id', 'ticketNumber', 'activity_no', 'id') || '';

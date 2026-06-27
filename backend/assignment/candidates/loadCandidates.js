@@ -51,6 +51,15 @@ const SHIFT_WINDOWS = {
   N: { startHour: 21, startMinute: 15, endHour: 6, endMinute: 45 },
 };
 
+function resolveShiftWindowDefinition(shiftCode) {
+  const code = String(shiftCode || '').trim().toUpperCase();
+  if (!code) return null;
+  if (SHIFT_WINDOWS[code]) return SHIFT_WINDOWS[code];
+
+  const prefix = code.match(/^(E1|E2|L1|L2|N)(?:[^A-Z0-9].*|[A-Z0-9]+)?$/)?.[1];
+  return prefix ? SHIFT_WINDOWS[prefix] : null;
+}
+
 const LATEST_OVERNIGHT_END_MINUTES = Object.values(SHIFT_WINDOWS).reduce((max, window) => {
   const start = window.startHour * 60 + window.startMinute;
   const end = window.endHour * 60 + window.endMinute;
@@ -191,7 +200,7 @@ export function isShiftCodeActiveNow(shiftCode, now = new Date()) {
   const code = String(shiftCode || '').trim().toUpperCase();
   if (!code || !isWorkingShiftCode(code)) return false;
 
-  const window = SHIFT_WINDOWS[code];
+  const window = resolveShiftWindowDefinition(code);
   if (!window) return true;
 
   const minutesNow = now.getHours() * 60 + now.getMinutes();
@@ -219,7 +228,7 @@ export function getShiftWindowForPlanEntry(shiftCode, planningDate) {
     };
   }
 
-  const window = SHIFT_WINDOWS[code];
+  const window = resolveShiftWindowDefinition(code);
   const start = new Date(baseDate);
   const end = new Date(baseDate);
 

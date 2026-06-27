@@ -11,7 +11,7 @@ import {
 } from '../assignment/services/criticalWorkload.js';
 
 describe('critical workload classification', () => {
-  it('orders TT high ahead of TT medium, expedite, shift-scheduled, and <24h tickets', () => {
+  it('orders critical tickets by the earliest due or scheduled time first', () => {
     const now = new Date('2026-04-26T08:00:00Z');
     const shiftContext = getShiftContext(now);
 
@@ -21,12 +21,14 @@ describe('critical workload classification', () => {
         external_id: 'TT-HIGH',
         queue_type: 'Trouble Ticket',
         severity: 'high',
+        revised_commit_date: '2026-04-27T12:00:00Z',
       },
       {
         id: 2,
         external_id: 'TT-MED',
         queue_type: 'Trouble Ticket',
         severity: 'medium',
+        revised_commit_date: '2026-04-26T10:00:00Z',
       },
       {
         id: 3,
@@ -56,7 +58,7 @@ describe('critical workload classification', () => {
 
     assert.deepEqual(
       sorted.map((entry) => entry.ticket.external_id),
-      ['TT-HIGH', 'TT-MED', 'EXPEDITE', 'SHIFT', 'LT24']
+      ['TT-MED', 'LT24', 'SHIFT', 'TT-HIGH', 'EXPEDITE']
     );
   });
 

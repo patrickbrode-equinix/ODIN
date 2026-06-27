@@ -9,7 +9,7 @@ import { useDashboardData } from "../../hooks/useDashboardData";
 import { useHealthStatus } from "../../hooks/useHealthStatus";
 import { useRealtimeUpdates } from "../../hooks/useRealtimeUpdates";
 import type { AssignmentDecision } from "../../types/assignment";
-import type { CriticalWorkloadSnapshot } from "../../types/criticalWorkload";
+import type { CriticalWorkloadSnapshot, CriticalWorkloadTicket } from "../../types/criticalWorkload";
 import { formatDateTimeForLocale, formatTimeForLocale } from "../../utils/dateFormat";
 import { findBestMatch, normalizeName } from "../../utils/fuzzyName";
 import { getRemainingMs } from "../../utils/ticketColors";
@@ -339,6 +339,25 @@ function getTicketTimeLabel(ticket: TicketRecord, locale: string) {
   const value = ticket.revised_commit_date ?? ticket.commit_date ?? ticket.sched_start ?? ticket.Start_Date ?? null;
   const label = formatDateTimeForLocale(value as string | null | undefined, locale, { year: undefined });
   return label || "-";
+}
+
+function parseTicketTimeMs(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function getCriticalTicketDeadlineMs(ticket: CriticalWorkloadTicket) {
+  const revisedCommitMs = parseTicketTimeMs(ticket.revisedCommitDate);
+  if (Number.isFinite(revisedCommitMs)) return revisedCommitMs;
+
+  if (ticket.scheduledWindow?.includes(" - ")) {
+    const [, end] = ticket.scheduledWindow.split(" - ");
+    const endMs = parseTicketTimeMs(end);
+    if (Number.isFinite(endMs)) return endMs;
+  }
+
+  return parseTicketTimeMs(ticket.scheduledWindow || null);
 }
 
 function formatPriorityLabel(tone: MyTicketPriorityTone, language: LanguageCode) {
@@ -785,9 +804,10 @@ export default function Dashboard() {
 
     return [...criticalSnapshot.tickets]
       .sort((left, right) => {
-        const leftMinutes = left.remainingTimeMinutes == null ? Number.POSITIVE_INFINITY : left.remainingTimeMinutes;
-        const rightMinutes = right.remainingTimeMinutes == null ? Number.POSITIVE_INFINITY : right.remainingTimeMinutes;
-        return leftMinutes - rightMinutes;
+        const leftTime = getCriticalTicketDeadlineMs(left);
+        const rightTime = getCriticalTicketDeadlineMs(right);
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return (left.ticketNumber || left.activityId || left.ticketId).localeCompare(right.ticketNumber || right.activityId || right.ticketId);
       })
       .slice(0, 8)
       .map((ticket) => ({

@@ -7,7 +7,9 @@ import {
   ArrowUp,
   Layers3,
   RefreshCw,
+  RotateCcw,
   Search,
+  Send,
   Sparkles,
   Ticket as TicketIcon,
 } from "lucide-react";
@@ -67,6 +69,10 @@ type DisplayTicket = {
   remainingLabel: string;
   badges: Array<{ label: string; className: string }>;
   handoverTicket: Ticket;
+  queueItemId: number | null;
+  odinAssignedWorkerId: number | null;
+  canWriteback: boolean;
+  canResetAssignment: boolean;
 };
 
 const SCOPE_DEFINITIONS: QueueScopeDefinition[] = [
@@ -143,6 +149,15 @@ const PAGE_COPY: Record<LanguageCode, {
   sourceCritical: string;
   sourceQueue: string;
   criticalSummary: string;
+  writeback: string;
+  resetAssignment: string;
+  resetAllAssignments: string;
+  resetAllConfirm: string;
+  resetAllRunning: string;
+  writebackSuccess: string;
+  resetSuccess: string;
+  resetAllSuccess: string;
+  actionUnavailable: string;
 }> = {
   de: {
     title: "Tickets",
@@ -175,6 +190,15 @@ const PAGE_COPY: Record<LanguageCode, {
     sourceCritical: "Kritische Sicht",
     sourceQueue: "Queue-Sicht",
     criticalSummary: "Direkt priorisierte Tickets aus dem ODIN-Kritikfenster.",
+    writeback: "Writeback anstoßen",
+    resetAssignment: "ODIN-Zuweisung zurücknehmen",
+    resetAllAssignments: "Alle ODIN-Zuweisungen zurücknehmen",
+    resetAllConfirm: "Alle von ODIN gesetzten Ticket-Zuweisungen zurücknehmen?",
+    resetAllRunning: "Reset läuft...",
+    writebackSuccess: "Writeback-Action wurde erstellt und validiert.",
+    resetSuccess: "ODIN-Zuweisung wurde zurückgenommen.",
+    resetAllSuccess: "ODIN-Zuweisungen wurden zurückgenommen.",
+    actionUnavailable: "Nur für ODIN-zugewiesene Queue-Tickets verfügbar.",
   },
   en: {
     title: "Tickets",
@@ -207,6 +231,15 @@ const PAGE_COPY: Record<LanguageCode, {
     sourceCritical: "Critical view",
     sourceQueue: "Queue view",
     criticalSummary: "Directly prioritized tickets from the ODIN critical window.",
+    writeback: "Trigger writeback",
+    resetAssignment: "Reset ODIN assignment",
+    resetAllAssignments: "Reset all ODIN assignments",
+    resetAllConfirm: "Reset all ticket assignments set by ODIN?",
+    resetAllRunning: "Reset running...",
+    writebackSuccess: "Writeback action was created and validated.",
+    resetSuccess: "ODIN assignment was reset.",
+    resetAllSuccess: "ODIN assignments were reset.",
+    actionUnavailable: "Only available for ODIN-assigned queue tickets.",
   },
 };
 
@@ -232,6 +265,31 @@ function formatTicketWindowLabel(value: string | null | undefined, locale: strin
     .filter((part) => part !== "-");
 
   return parts.length > 0 ? parts.join(" -> ") : "-";
+}
+
+function parseTicketTimeMs(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function getCriticalTicketDeadlineMs(ticket: CriticalWorkloadTicket) {
+  const revisedCommitMs = parseTicketTimeMs(ticket.revisedCommitDate);
+  if (Number.isFinite(revisedCommitMs)) return revisedCommitMs;
+
+  if (ticket.scheduledWindow?.includes(" - ")) {
+    const [, end] = ticket.scheduledWindow.split(" - ");
+    const endMs = parseTicketTimeMs(end);
+    if (Number.isFinite(endMs)) return endMs;
+  }
+
+  return parseTicketTimeMs(ticket.scheduledWindow || null);
+}
+
+function getCriticalTicketRemainingMs(ticket: CriticalWorkloadTicket) {
+  if (ticket.remainingTimeMinutes != null) return ticket.remainingTimeMinutes * 60_000;
+  const deadlineMs = getCriticalTicketDeadlineMs(ticket);
+  return Number.isFinite(deadlineMs) ? deadlineMs - Date.now() : null;
 }
 
 function toSearchBlob(parts: Array<string | null | undefined>) {
@@ -298,10 +356,15 @@ function normalizeQueueTicket(ticket: Ticket, language: LanguageCode, locale: st
     remainingLabel: formatRemainingTime(remainingMs),
     badges,
     handoverTicket: ticket,
+    queueItemId: Number.isFinite(Number(ticket.id)) ? Number(ticket.id) : null,
+    odinAssignedWorkerId: Number.isFinite(Number(ticket.assigned_worker_id)) ? Number(ticket.assigned_worker_id) : null,
+    canWriteback: Number.isFinite(Number(ticket.id)) && Number.isFinite(Number(ticket.assigned_worker_id)),
+    canResetAssignment: Number.isFinite(Number(ticket.id)) && Number.isFinite(Number(ticket.assigned_worker_id)),
   };
 }
 
 function normalizeCriticalTicket(ticket: CriticalWorkloadTicket, language: LanguageCode, locale: string): DisplayTicket {
+  const remainingMs = getCriticalTicketRemainingMs(ticket);
   const badges: DisplayTicket["badges"] = [
     { label: formatBucket(ticket.priorityBucket, language), className: getCriticalityTone(ticket.criticalityLevel, ticket.isTroubleTicket) },
     { label: ticket.odinStatus, className: getOdinStatusTone(ticket.odinStatus) },
@@ -327,10 +390,16 @@ function normalizeCriticalTicket(ticket: CriticalWorkloadTicket, language: Langu
     subtype: ticket.severity || ticket.priority || ticket.criticalityReason || "-",
     commitLabel: ticket.revisedCommitDate ? formatCriticalDateTime(ticket.revisedCommitDate, locale) : "-",
     scheduleLabel: ticket.scheduledWindow ? formatTicketWindowLabel(ticket.scheduledWindow, locale) : "-",
-    remainingMs: ticket.remainingTimeMinutes == null ? null : ticket.remainingTimeMinutes * 60_000,
-    remainingLabel: formatRemainingTimeMinutes(ticket.remainingTimeMinutes, language),
+    remainingMs,
+    remainingLabel: ticket.remainingTimeMinutes == null
+      ? formatRemainingTime(remainingMs)
+      : formatRemainingTimeMinutes(ticket.remainingTimeMinutes, language),
     badges,
     handoverTicket: normalizeCriticalToHandoverTicket(ticket, language),
+    queueItemId: null,
+    odinAssignedWorkerId: null,
+    canWriteback: false,
+    canResetAssignment: false,
   };
 }
 
@@ -421,11 +490,17 @@ function TicketRow({
   language,
   copy,
   onHandover,
+  onWriteback,
+  onResetAssignment,
+  busyAction,
 }: {
   ticket: DisplayTicket;
   language: LanguageCode;
   copy: typeof PAGE_COPY[LanguageCode];
   onHandover: (ticket: Ticket, type: HandoverType) => void;
+  onWriteback: (ticket: DisplayTicket) => void;
+  onResetAssignment: (ticket: DisplayTicket) => void;
+  busyAction: "writeback" | "reset" | null;
 }) {
   const remainingTone = ticket.remainingMs == null
     ? "text-slate-400"
@@ -491,6 +566,41 @@ function TicketRow({
               {HANDOVER_LABELS[type][language] || HANDOVER_LABELS[type].en || type}
             </ContextMenu.Item>
           ))}
+          <ContextMenu.Separator className="my-1 h-px bg-white/10" />
+          <ContextMenu.Label className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+            ODIN
+          </ContextMenu.Label>
+          <ContextMenu.Item
+            disabled={!ticket.canWriteback || busyAction != null}
+            className="relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-white/10 focus:text-white data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45"
+            onSelect={(event) => {
+              if (!ticket.canWriteback || busyAction != null) {
+                event.preventDefault();
+                return;
+              }
+              onWriteback(ticket);
+            }}
+          >
+            <Send className="h-3.5 w-3.5 text-cyan-300" />
+            {busyAction === "writeback" ? `${copy.writeback}...` : copy.writeback}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            disabled={!ticket.canResetAssignment || busyAction != null}
+            className="relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-white/10 focus:text-white data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45"
+            onSelect={(event) => {
+              if (!ticket.canResetAssignment || busyAction != null) {
+                event.preventDefault();
+                return;
+              }
+              onResetAssignment(ticket);
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-amber-200" />
+            {busyAction === "reset" ? `${copy.resetAssignment}...` : copy.resetAssignment}
+          </ContextMenu.Item>
+          {!ticket.canWriteback ? (
+            <div className="px-2 py-1.5 text-[11px] text-slate-400">{copy.actionUnavailable}</div>
+          ) : null}
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
@@ -515,6 +625,9 @@ const Tickets: React.FC = () => {
   const [handoverTicket, setHandoverTicket] = useState<Ticket | null>(null);
   const [handoverType, setHandoverType] = useState<HandoverType>("Workload");
   const [isHandoverOpen, setIsHandoverOpen] = useState(false);
+  const [ticketActionBusy, setTicketActionBusy] = useState<string | null>(null);
+  const [ticketActionMessage, setTicketActionMessage] = useState<string | null>(null);
+  const [ticketActionError, setTicketActionError] = useState<string | null>(null);
 
   const activeScope: TicketScope = useMemo(() => {
     const type = searchParams.get("type");
@@ -567,6 +680,71 @@ const Tickets: React.FC = () => {
       setRefreshing(false);
     }
   }, [copy.error]);
+
+  const describeApiError = useCallback((err: unknown) => {
+    const maybe = err as { response?: { data?: { error?: string; detail?: string } }; message?: string };
+    return maybe.response?.data?.detail || maybe.response?.data?.error || maybe.message || copy.error;
+  }, [copy.error]);
+
+  const handleTicketWriteback = useCallback(async (ticket: DisplayTicket) => {
+    if (!ticket.queueItemId) return;
+    const busyKey = `${ticket.source}-${ticket.id}-writeback`;
+    setTicketActionBusy(busyKey);
+    setTicketActionMessage(null);
+    setTicketActionError(null);
+    try {
+      const result = await QueueApi.triggerTicketWriteback(ticket.queueItemId);
+      const validationSuffix = result.validation && !result.validation.valid
+        ? ` (${result.validation.errors.join("; ")})`
+        : "";
+      setTicketActionMessage(`${copy.writebackSuccess}${validationSuffix}`);
+      await load(true);
+    } catch (err) {
+      setTicketActionError(describeApiError(err));
+    } finally {
+      setTicketActionBusy(null);
+    }
+  }, [copy.writebackSuccess, describeApiError, load]);
+
+  const handleResetAssignment = useCallback(async (ticket: DisplayTicket) => {
+    if (!ticket.queueItemId) return;
+    const busyKey = `${ticket.source}-${ticket.id}-reset`;
+    setTicketActionBusy(busyKey);
+    setTicketActionMessage(null);
+    setTicketActionError(null);
+    try {
+      const result = await QueueApi.resetTicketAssignment(ticket.queueItemId);
+      const validationSuffix = result.validation && !result.validation.valid
+        ? ` (${result.validation.errors.join("; ")})`
+        : "";
+      setTicketActionMessage(`${result.message || copy.resetSuccess}${validationSuffix}`);
+      await load(true);
+    } catch (err) {
+      setTicketActionError(describeApiError(err));
+    } finally {
+      setTicketActionBusy(null);
+    }
+  }, [copy.resetSuccess, describeApiError, load]);
+
+  const handleResetAllAssignments = useCallback(async () => {
+    if (!window.confirm(copy.resetAllConfirm)) return;
+    setTicketActionBusy("reset-all");
+    setTicketActionMessage(null);
+    setTicketActionError(null);
+    try {
+      const result = await QueueApi.resetAllTicketAssignments();
+      const countSuffix = typeof result.resetCount === "number" ? ` (${result.resetCount})` : "";
+      const validationSuffix = result.validationFailedCount && result.validationFailedCount > 0
+        ? ` (${result.validationFailedCount} validation failed)`
+        : "";
+      setTicketActionMessage(`${result.message || copy.resetAllSuccess}${countSuffix}${validationSuffix}`);
+      await load(true);
+    } catch (err) {
+      setTicketActionError(describeApiError(err));
+    } finally {
+      setTicketActionBusy(null);
+    }
+  }, [copy.resetAllConfirm, copy.resetAllSuccess, describeApiError, load]);
 
   useEffect(() => {
     void load();
@@ -631,11 +809,13 @@ const Tickets: React.FC = () => {
           ticket.subtype,
         ]).includes(normalizedSearch));
 
+    const effectiveSortDirection = activeScope === "critical" ? "asc" : sortDirection;
+
     return [...searched].sort((left, right) => {
-      const leftValue = left.remainingMs == null ? (sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : left.remainingMs;
-      const rightValue = right.remainingMs == null ? (sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : right.remainingMs;
+      const leftValue = left.remainingMs == null ? (effectiveSortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : left.remainingMs;
+      const rightValue = right.remainingMs == null ? (effectiveSortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : right.remainingMs;
       if (leftValue !== rightValue) {
-        return sortDirection === "asc" ? leftValue - rightValue : rightValue - leftValue;
+        return effectiveSortDirection === "asc" ? leftValue - rightValue : rightValue - leftValue;
       }
       return left.primaryId.localeCompare(right.primaryId);
     });
@@ -798,6 +978,16 @@ const Tickets: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => void handleResetAllAssignments()}
+          disabled={ticketActionBusy != null}
+          className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/16 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RotateCcw className={`h-4 w-4 text-amber-200 ${ticketActionBusy === "reset-all" ? "animate-spin" : ""}`} />
+          {ticketActionBusy === "reset-all" ? copy.resetAllRunning : copy.resetAllAssignments}
+        </button>
+
+        <button
+          type="button"
           onClick={() => setSortDirection((current) => current === "asc" ? "desc" : "asc")}
           className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
         >
@@ -805,6 +995,12 @@ const Tickets: React.FC = () => {
           {sortDirection === "asc" ? copy.sortAsc : copy.sortDesc}
         </button>
       </div>
+
+      {ticketActionMessage || ticketActionError ? (
+        <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${ticketActionError ? "border-rose-400/25 bg-rose-500/10 text-rose-100" : "border-cyan-300/25 bg-cyan-400/10 text-cyan-100"}`}>
+          {ticketActionError || ticketActionMessage}
+        </div>
+      ) : null}
 
       <div className="mt-5 overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.96))] shadow-[0_24px_70px_rgba(2,6,23,0.4)]">
         <div className="grid grid-cols-[1.45fr_1fr_1fr_0.9fr_0.95fr_1.1fr_130px] gap-3 border-b border-white/10 bg-slate-950/80 px-4 py-3 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400 backdrop-blur">
@@ -829,7 +1025,16 @@ const Tickets: React.FC = () => {
           {!loading && error ? <div className="px-4 py-8 text-center text-sm text-rose-200">{error}</div> : null}
           {!loading && !error && filteredTickets.length === 0 ? <div className="px-4 py-8 text-center text-sm text-slate-400">{copy.empty}</div> : null}
           {!loading && !error && filteredTickets.map((ticket) => (
-            <TicketRow key={`${ticket.source}-${ticket.id}`} ticket={ticket} language={language} copy={copy} onHandover={openHandover} />
+            <TicketRow
+              key={`${ticket.source}-${ticket.id}`}
+              ticket={ticket}
+              language={language}
+              copy={copy}
+              onHandover={openHandover}
+              onWriteback={handleTicketWriteback}
+              onResetAssignment={handleResetAssignment}
+              busyAction={ticketActionBusy === `${ticket.source}-${ticket.id}-writeback` ? "writeback" : ticketActionBusy === `${ticket.source}-${ticket.id}-reset` ? "reset" : null}
+            />
           ))}
         </div>
       </div>

@@ -957,6 +957,225 @@ async function openQueueByCardTitle(title) {
   log(`[Nav] Queue "${title}" ready.`);
 }
 
+function normalizeWritebackText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function queueTitleForWriteback(queueType) {
+  const value = normalizeWritebackText(queueType);
+  if (value.includes("trouble")) return "Trouble Tickets";
+  if (value.includes("cc") || value.includes("cross")) return "CC Installs";
+  if (value.includes("deinstall")) return "Deinstalls";
+  return "Smart Hands";
+}
+
+function readVisibleRowEntries(root) {
+  const centerRows = Array.from(root.querySelectorAll(".ag-center-cols-container .ag-row"));
+  const leftRows = Array.from(root.querySelectorAll(".ag-pinned-left-cols-container .ag-row"));
+  const rightRows = Array.from(root.querySelectorAll(".ag-pinned-right-cols-container .ag-row"));
+  const byRow = new Map();
+
+  const addRows = (rows, role) => {
+    for (const row of rows) {
+      const key = getRowKey(row);
+      const existing = byRow.get(key) || { data: {}, rowEl: null };
+      byRow.set(key, {
+        data: { ...existing.data, ...readRowCells(row) },
+        rowEl: existing.rowEl || (role === "center" ? row : null) || row,
+      });
+    }
+  };
+
+  addRows(centerRows, "center");
+  addRows(leftRows, "left");
+  addRows(rightRows, "right");
+  return Array.from(byRow.values());
+}
+
+function rowMatchesWritebackJob(rowData, job) {
+  const needles = [
+    job.activityNumber,
+    job.salesOrderNumber,
+    job.ticketId,
+  ].map(normalizeWritebackText).filter(Boolean);
+  if (needles.length === 0) return false;
+
+  const haystack = Object.values(rowData).map(normalizeWritebackText).join(" | ");
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+async function findAndOpenWritebackTicket(job) {
+  const root = await getAgGridRootAsync();
+  const viewport = getGridViewport(root);
+  viewport.scrollTop = 0;
+  await waitForDomStable(200, 3, 6000);
+
+  const started = Date.now();
+  let sameScroll = 0;
+  let lastTop = -1;
+  while (Date.now() - started < 90000) {
+    await dismissObstructivePopups("writeback_find_ticket", { maxPasses: 1 });
+    const entries = readVisibleRowEntries(root);
+    const hit = entries.find((entry) => rowMatchesWritebackJob(entry.data, job));
+    if (hit?.rowEl) {
+      hit.rowEl.scrollIntoView({ block: "center", inline: "nearest" });
+      await sleep(200);
+      hit.rowEl.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, view: window }));
+      hit.rowEl.click();
+      await sleep(1200);
+      return { found: true, rowData: hit.data };
+    }
+
+    lastTop = viewport.scrollTop;
+    viewport.scrollTop += viewport.clientHeight * 0.9;
+    await sleep(450);
+    if (viewport.scrollTop === lastTop) sameScroll++;
+    else sameScroll = 0;
+    if (sameScroll >= 4) break;
+  }
+
+  return { found: false };
+}
+
+function visibleClickableElements() {
+  return Array.from(document.querySelectorAll("button, [role='button'], a, input, textarea, [contenteditable='true']"))
+    .filter(isElementVisible);
+}
+
+function clickVisibleText(patterns, { exclude = [] } = {}) {
+  const elements = visibleClickableElements();
+  for (const element of elements) {
+    const text = normalizeWritebackText([
+      element.innerText,
+      element.textContent,
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.value,
+      element.placeholder,
+    ].filter(Boolean).join(" "));
+    if (!text) continue;
+    if (exclude.some((pattern) => pattern.test(text))) continue;
+    if (patterns.some((pattern) => pattern.test(text))) {
+      element.click();
+      return true;
+    }
+  }
+  return false;
+}
+
+async function openAssignDialogForWriteback() {
+  await dismissObstructivePopups("before_assign_dialog", { maxPasses: 1 });
+  const clicked = clickVisibleText([
+    /assign activity/,
+    /^assign$/,
+    /zuweisen/,
+  ], { exclude: [/unassign/, /remove/] });
+  if (!clicked) {
+    throw new Error("Assign Activity button not found");
+  }
+  await sleep(1000);
+  await dismissObstructivePopups("after_assign_dialog", { maxPasses: 1 });
+}
+
+function setNativeInputValue(input, value) {
+  input.focus();
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function searchStaffForWriteback(displayName) {
+  const input = Array.from(document.querySelectorAll("input, textarea"))
+    .filter(isElementVisible)
+    .find((element) => {
+      const meta = normalizeWritebackText(`${element.placeholder || ""} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`);
+      return /search|staff|employee|name|mitarbeiter|user|assignee/.test(meta) || element.type === "search" || element.type === "text";
+    });
+  if (!input) throw new Error("Staff search input not found in Assign Activity dialog");
+
+  setNativeInputValue(input, displayName);
+  await sleep(1200);
+
+  const expected = normalizeWritebackText(displayName);
+  const candidates = Array.from(document.querySelectorAll("tr, li, [role='row'], [role='option'], .ag-row, div"))
+    .filter(isElementVisible)
+    .filter((element) => normalizeWritebackText(element.innerText || element.textContent).includes(expected));
+  if (candidates.length === 0) throw new Error(`Staff "${displayName}" not found in Assign Activity dialog`);
+  candidates[0].click();
+  await sleep(500);
+}
+
+async function clickAssignConfirmForWriteback() {
+  const clicked = clickVisibleText([
+    /^assign$/,
+    /assign selected/,
+    /zuweisen/,
+  ], { exclude: [/assign activity/, /unassign/] });
+  if (!clicked) throw new Error("Final Assign button not found");
+  await sleep(1200);
+}
+
+async function clickUnassignForWriteback() {
+  const clicked = clickVisibleText([
+    /unassign/,
+    /remove assignee/,
+    /zuweisung entfernen/,
+  ]);
+  if (!clicked) throw new Error("UnAssign button not found");
+  await sleep(1200);
+}
+
+async function closeWritebackDialogIfOpen() {
+  clickVisibleText([/^close$/, /^ok$/, /schlie/]);
+  await sleep(400);
+}
+
+async function executeWritebackJob(job) {
+  if (!isJarvisHost()) throw new Error("Writeback can only run on Jarvis host");
+  if (!job?.id) throw new Error("Missing writeback job id");
+
+  const steps = [];
+  const queueTitle = queueTitleForWriteback(job.queueType);
+  steps.push(`open_queue:${queueTitle}`);
+  await openQueueByCardTitle(queueTitle);
+
+  steps.push(`find_ticket:${job.activityNumber || job.ticketId}`);
+  const ticket = await findAndOpenWritebackTicket(job);
+  if (!ticket.found) throw new Error(`Ticket row not found for ${job.activityNumber || job.ticketId}`);
+
+  steps.push("open_assign_dialog");
+  await openAssignDialogForWriteback();
+
+  if (job.actionType === "unassign") {
+    steps.push("click_unassign");
+    await clickUnassignForWriteback();
+    await closeWritebackDialogIfOpen();
+    return {
+      ok: true,
+      success: true,
+      steps,
+      previousExternalAssignee: job.expectedPreviousOwnerCode || job.currentJarvisOwnerCode || null,
+      actualOwnerCode: null,
+    };
+  }
+
+  const displayName = job.selectedEmployeeJarvisDisplayName || job.selectedEmployeeName;
+  if (!displayName) throw new Error("Writeback job has no selected Jarvis display name");
+  steps.push(`search_staff:${displayName}`);
+  await searchStaffForWriteback(displayName);
+
+  steps.push("click_assign");
+  await clickAssignConfirmForWriteback();
+  await closeWritebackDialogIfOpen();
+
+  return {
+    ok: true,
+    success: true,
+    steps,
+    actualOwnerCode: job.selectedEmployeeJarvisOwnerCode || null,
+  };
+}
+
 /**
  * Read expected ticket count from the queue card text.
  * Assumes the card contains the queue title plus a number that represents the total tickets.
@@ -1663,7 +1882,20 @@ async function scrapeAllQueuesAndUpload() {
 }
 
 // Trigger listener from background.js (alarm/timer)
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "OES_EXECUTE_WRITEBACK") {
+    (async () => {
+      try {
+        const result = await executeWritebackJob(msg.job);
+        sendResponse(result);
+      } catch (e) {
+        err("[Writeback] content execution failed:", e?.message || e);
+        sendResponse({ ok: false, success: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "OES_START_CONTINUOUS_SCRAPE" || msg?.type === "OES_SCRAPE_ALL_QUEUES") {
     log("Trigger received in content.js");
     try {
