@@ -747,6 +747,30 @@ CREATE TABLE IF NOT EXISTS dashboard_info_entries (
           ALTER TABLE shift_planning_config ADD COLUMN annual_target_hours NUMERIC(7,2) NOT NULL DEFAULT 2088;
         END IF;
       END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'jarvis_display_name') THEN
+          ALTER TABLE users ADD COLUMN jarvis_display_name VARCHAR(120);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'jarvis_display_name_aliases') THEN
+          ALTER TABLE users ADD COLUMN jarvis_display_name_aliases JSONB NOT NULL DEFAULT '[]'::jsonb;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'jarvis_initials') THEN
+          ALTER TABLE users ADD COLUMN jarvis_initials VARCHAR(10);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'jarvis_owner_code') THEN
+          ALTER TABLE users ADD COLUMN jarvis_owner_code VARCHAR(40);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'queue_eligibility') THEN
+          ALTER TABLE users ADD COLUMN queue_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_sick') THEN
+          ALTER TABLE users ADD COLUMN is_sick BOOLEAN NOT NULL DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'assignment_eligible') THEN
+          ALTER TABLE users ADD COLUMN assignment_eligible BOOLEAN NOT NULL DEFAULT true;
+        END IF;
+      END IF;
     END $$;
   `);
 

@@ -1539,7 +1539,7 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
     for (let offset = 1; offset <= requiredFreeDays; offset++) {
       const recoveryDay = lastWeekendDay + offset;
       if (recoveryDay > numDays) break;
-      if (projectedDays.has(recoveryDay)) continue;
+      if (projectedDays.has(recoveryDay)) return true;
       if (empDayAssignment[employee][recoveryDay]) return true;
     }
     return false;
@@ -1782,6 +1782,59 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
           ]);
         }
       }
+    }
+
+    while (empHours[employee] < employeeTargetHours[employee]) {
+      const missingHours = employeeTargetHours[employee] - empHours[employee];
+      const mandatoryCandidates = [];
+
+      for (const definition of candidateDefinitions) {
+        const applicableDays = new Set(normalizeWeekdaySetting(definition.applicable_days, [1, 2, 3, 4, 5]));
+        for (let day = 1; day <= numDays; day++) {
+          if (empDayAssignment[employee][day]) continue;
+          const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+          if (isEmployeeAbsentOnDate(employee, dateStr)) continue;
+          if (isRecoveryProtectedDay(employee, day)) continue;
+          if (!applicableDays.has(dayOfWeek(year, mon, day))) continue;
+          if (wouldViolateAdjacentTransition(employee, day, definition)) continue;
+
+          const workedDays = Object.keys(empDayAssignment[employee])
+            .map((entry) => Number.parseInt(entry, 10))
+            .filter((entry) => Number.isInteger(entry));
+          if (violatesWeekendRecoveryAfterBlock(employee, [...workedDays, day])) continue;
+
+          let previousStreak = 0;
+          for (let previous = day - 1; previous >= 1 && empDayAssignment[employee][previous]; previous--) previousStreak++;
+          let nextStreak = 0;
+          for (let next = day + 1; next <= numDays && empDayAssignment[employee][next]; next++) nextStreak++;
+          const projectedStreak = previousStreak + 1 + nextStreak;
+          if (projectedStreak > Math.max(rotation.max_consecutive_workdays || 6, 5)) continue;
+
+          const shiftHours = getShiftDurationHours(definition);
+          const sameCodeNeighbor = empDayAssignment[employee][day - 1] === definition.code
+            || empDayAssignment[employee][day + 1] === definition.code;
+          const weekdayBonus = isWeekend(year, mon, day) ? 0 : 20;
+
+          mandatoryCandidates.push({
+            day,
+            definition,
+            addedHours: shiftHours,
+            score: Math.abs(missingHours - shiftHours)
+              - (sameCodeNeighbor ? 10 : 0)
+              - weekdayBonus
+              + projectedStreak,
+          });
+        }
+      }
+
+      if (mandatoryCandidates.length === 0) break;
+      mandatoryCandidates.sort((left, right) => left.score - right.score || left.day - right.day || String(left.definition.code).localeCompare(String(right.definition.code), 'de'));
+      const selected = mandatoryCandidates[0];
+      addEmployeeTargetCatchupShift(employee, selected.day, selected.definition, [
+        `Verbindlicher letzter Sollzeitausgleich auf mindestens ${employeeTargetHours[employee]} Stunden`,
+        `Zusatzdienst ${selected.definition.code} wurde gewählt, weil noch ${missingHours.toFixed(1)}h fehlen`,
+        'Harte Abwesenheits-, Erholungs- und Übergangsregeln geprüft',
+      ]);
     }
   }
 

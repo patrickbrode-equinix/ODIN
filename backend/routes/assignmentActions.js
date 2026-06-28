@@ -117,7 +117,7 @@ async function validateCreatedAction(action) {
 async function loadOdinAssignedTickets() {
   const { rows } = await pool.query(
     `SELECT qi.*,
-            u.name AS employee_name,
+            NULLIF(trim(concat_ws(' ', u.first_name, u.last_name)), '') AS employee_name,
             u.email AS employee_email,
             u.first_name AS employee_first_name,
             u.last_name AS employee_last_name,

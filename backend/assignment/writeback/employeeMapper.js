@@ -23,7 +23,9 @@ export async function loadEmployeeWithJarvisFields(employeeId) {
   const { rows } = await pool.query(
     `SELECT
        id,
-       name,
+       NULLIF(trim(concat_ws(' ', first_name, last_name)), '') AS name,
+       first_name,
+       last_name,
        email,
        assignment_role,
        shift_active,
@@ -75,7 +77,7 @@ export async function checkJarvisDuplicates(employeeId) {
   // Check duplicate owner code
   if (employee.jarvis_owner_code) {
     const { rows: ownerDups } = await pool.query(
-      `SELECT id, name, jarvis_owner_code FROM users
+      `SELECT id, NULLIF(trim(concat_ws(' ', first_name, last_name)), '') AS name, jarvis_owner_code FROM users
        WHERE jarvis_owner_code = $1 AND id != $2`,
       [employee.jarvis_owner_code, employeeId]
     );
@@ -91,7 +93,7 @@ export async function checkJarvisDuplicates(employeeId) {
   // Check duplicate display name (case-insensitive)
   if (employee.jarvis_display_name) {
     const { rows: nameDups } = await pool.query(
-      `SELECT id, name, jarvis_display_name FROM users
+      `SELECT id, NULLIF(trim(concat_ws(' ', first_name, last_name)), '') AS name, jarvis_display_name FROM users
        WHERE LOWER(jarvis_display_name) = LOWER($1) AND id != $2`,
       [employee.jarvis_display_name, employeeId]
     );
@@ -171,7 +173,8 @@ export function resolveHardUnassignReason(employee, queueType = null) {
 export async function resolveEmployeeByOwnerCode(ownerCode) {
   if (!ownerCode) return null;
   const { rows } = await pool.query(
-    `SELECT id, name, email, assignment_role, shift_active, is_sick, absent,
+    `SELECT id, NULLIF(trim(concat_ws(' ', first_name, last_name)), '') AS name, first_name, last_name,
+            email, assignment_role, shift_active, is_sick, absent,
             auto_assignable, assignment_eligible, jarvis_display_name,
             jarvis_initials, jarvis_owner_code, blocked
      FROM users WHERE LOWER(jarvis_owner_code) = LOWER($1)`,
