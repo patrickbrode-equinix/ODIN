@@ -973,14 +973,16 @@ function readVisibleRowEntries(root) {
   const centerRows = Array.from(root.querySelectorAll(".ag-center-cols-container .ag-row"));
   const leftRows = Array.from(root.querySelectorAll(".ag-pinned-left-cols-container .ag-row"));
   const rightRows = Array.from(root.querySelectorAll(".ag-pinned-right-cols-container .ag-row"));
+  const headerMap = readHeaderMap(root);
   const byRow = new Map();
 
   const addRows = (rows, role) => {
     for (const row of rows) {
       const key = getRowKey(row);
       const existing = byRow.get(key) || { data: {}, rowEl: null };
+      const rawData = { ...existing.data, ...readRowCells(row) };
       byRow.set(key, {
-        data: { ...existing.data, ...readRowCells(row) },
+        data: normalizeRows(headerMap, [rawData])[0] || rawData,
         rowEl: existing.rowEl || (role === "center" ? row : null) || row,
       });
     }
@@ -990,6 +992,19 @@ function readVisibleRowEntries(root) {
   addRows(leftRows, "left");
   addRows(rightRows, "right");
   return Array.from(byRow.values());
+}
+
+function getWritebackOwnerValue(rowData) {
+  const ownerEntry = Object.entries(rowData || {}).find(([key, value]) => {
+    const normalizedKey = normalizeWritebackText(key);
+    return value != null && (
+      normalizedKey === "owner"
+      || normalizedKey.includes("owner")
+      || normalizedKey.includes("besitzer")
+      || normalizedKey.includes("verantwortlich")
+    );
+  });
+  return ownerEntry ? String(ownerEntry[1] || "").trim() : "";
 }
 
 function rowMatchesWritebackJob(rowData, job) {
@@ -1002,6 +1017,41 @@ function rowMatchesWritebackJob(rowData, job) {
 
   const haystack = Object.values(rowData).map(normalizeWritebackText).join(" | ");
   return needles.some((needle) => haystack.includes(needle));
+}
+
+async function verifyWritebackOwner(job, expectedDisplayName) {
+  await sleep(1600);
+  const queueTitle = queueTitleForWriteback(job.queueType);
+  await openQueueByCardTitle(queueTitle);
+  const ticket = await findAndOpenWritebackTicket(job);
+  if (!ticket.found) {
+    return { matched: false, actualOwner: "", reason: "Ticket row not found after assignment" };
+  }
+
+  const actualOwner = getWritebackOwnerValue(ticket.rowData);
+  const expectedValues = [
+    job.selectedEmployeeJarvisOwnerCode,
+    job.selectedEmployeeJarvisInitials,
+    job.selectedEmployeeJarvisDisplayName,
+    job.selectedEmployeeName,
+    expectedDisplayName,
+  ].map(normalizeWritebackText).filter(Boolean);
+  const normalizedActual = normalizeWritebackText(actualOwner);
+
+  if (!normalizedActual) {
+    return {
+      matched: false,
+      actualOwner,
+      reason: `Owner column was empty or not visible after assignment. Row data keys: ${Object.keys(ticket.rowData || {}).join(", ")}`,
+    };
+  }
+
+  const matched = expectedValues.some((expected) => normalizedActual.includes(expected) || expected.includes(normalizedActual));
+  return {
+    matched,
+    actualOwner,
+    reason: matched ? "Owner verified after assignment" : `Owner mismatch after assignment: expected one of [${expectedValues.join(", ")}], got "${actualOwner}"`,
+  };
 }
 
 async function findAndOpenWritebackTicket(job) {
@@ -1168,11 +1218,18 @@ async function executeWritebackJob(job) {
   await clickAssignConfirmForWriteback();
   await closeWritebackDialogIfOpen();
 
+  steps.push("verify_owner");
+  const verification = await verifyWritebackOwner(job, displayName);
+  if (!verification.matched) {
+    throw new Error(verification.reason);
+  }
+
   return {
     ok: true,
     success: true,
     steps,
-    actualOwnerCode: job.selectedEmployeeJarvisOwnerCode || null,
+    actualOwnerCode: verification.actualOwner || job.selectedEmployeeJarvisOwnerCode || null,
+    verification,
   };
 }
 

@@ -1141,7 +1141,7 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
 
         const scored = candidates.map((employee) => {
           let score = 1000;
-          const reasons = [];
+          let reasons = [];
           const stats = empStats[employee];
           const history = historyMap.get(employee);
           const prefs = empPrefsMap.get(employee);

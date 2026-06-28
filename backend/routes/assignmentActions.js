@@ -239,14 +239,31 @@ router.post('/tickets/:queueItemId/writeback', requirePageAccess('odin_logic', '
       reason: 'manual_ticket_writeback',
     }));
     const validation = await validateCreatedAction(action);
+    const hydratedAction = await assignmentActionRepository.findById(action.id);
+
+    if (validation && validation.valid === false) {
+      return res.status(409).json({
+        ok: false,
+        error: 'Writeback validation failed',
+        detail: validation.errors.join('; '),
+        action: hydratedAction,
+        validation,
+        execution: {
+          attempted: false,
+          reason: 'Jarvis writeback was not queued because validation failed. Check writeback settings, queue enablement, crawler freshness, and the employee Jarvis mapping.',
+        },
+      });
+    }
 
     res.status(201).json({
       ok: true,
-      action: await assignmentActionRepository.findById(action.id),
+      action: hydratedAction,
       validation,
       execution: {
         attempted: false,
-        reason: 'Writeback action created and validated. The Jarvis crawler will pick it up and execute it from the active Jarvis tab.',
+        reason: hydratedAction?.execution_status === 'approved_for_execution'
+          ? 'Writeback action is approved. The Jarvis crawler will pick it up and execute it from the active Jarvis tab.'
+          : 'Writeback action was created, but it is not yet approved for crawler execution.',
       },
     });
   } catch (err) {
