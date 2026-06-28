@@ -45,7 +45,9 @@ function normalizeStatus(
 async function loadFilesSafe(handoverId: number) {
   try {
     const { data } = await api.get(`/handover/${handoverId}/files`);
-    return data || [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.files)) return data.files;
+    return [];
   } catch {
     return [];
   }

@@ -12,9 +12,10 @@ import {
   Send,
   Sparkles,
   Ticket as TicketIcon,
+  UserCheck,
 } from "lucide-react";
 
-import { QueueApi, type Ticket } from "../../api/queue";
+import { QueueApi, getWritebackBlockDisplay, isWritebackButtonDisabled, type Ticket, type WritebackEmployee } from "../../api/queue";
 import { fetchDashboardCriticalWorkload } from "../../api/criticalWorkload";
 import type { CriticalWorkloadSnapshot, CriticalWorkloadTicket } from "../../types/criticalWorkload";
 import { EnterpriseCard, EnterpriseHeader, EnterprisePageShell } from "../layout/EnterpriseLayout";
@@ -158,6 +159,11 @@ const PAGE_COPY: Record<LanguageCode, {
   resetSuccess: string;
   resetAllSuccess: string;
   actionUnavailable: string;
+  ownerSelectLabel: string;
+  ownerSelectPlaceholder: string;
+  setOdinOwner: string;
+  setOdinOwnerFirst: string;
+  setOdinOwnerSuccess: string;
 }> = {
   de: {
     title: "Tickets",
@@ -199,6 +205,11 @@ const PAGE_COPY: Record<LanguageCode, {
     resetSuccess: "ODIN-Zuweisung wurde zurückgenommen.",
     resetAllSuccess: "ODIN-Zuweisungen wurden zurückgenommen.",
     actionUnavailable: "Nur für ODIN-zugewiesene Queue-Tickets verfügbar.",
+    ownerSelectLabel: "Writeback-Test Owner",
+    ownerSelectPlaceholder: "Mitarbeiter auswählen",
+    setOdinOwner: "ODIN-Test-Owner setzen",
+    setOdinOwnerFirst: "Bitte zuerst einen Writeback-Test Owner auswählen.",
+    setOdinOwnerSuccess: "ODIN-Test-Owner wurde gesetzt. Jetzt Writeback anstoßen, damit der Crawler Jarvis aktualisiert.",
   },
   en: {
     title: "Tickets",
@@ -240,6 +251,11 @@ const PAGE_COPY: Record<LanguageCode, {
     resetSuccess: "ODIN assignment was reset.",
     resetAllSuccess: "ODIN assignments were reset.",
     actionUnavailable: "Only available for ODIN-assigned queue tickets.",
+    ownerSelectLabel: "Writeback test owner",
+    ownerSelectPlaceholder: "Select employee",
+    setOdinOwner: "Set ODIN test owner",
+    setOdinOwnerFirst: "Please select a writeback test owner first.",
+    setOdinOwnerSuccess: "ODIN test owner was set. Trigger writeback next so the crawler updates Jarvis.",
   },
 };
 
@@ -491,16 +507,20 @@ function TicketRow({
   copy,
   onHandover,
   onWriteback,
+  onSetOdinOwner,
   onResetAssignment,
   busyAction,
+  selectedWritebackEmployeeId,
 }: {
   ticket: DisplayTicket;
   language: LanguageCode;
   copy: typeof PAGE_COPY[LanguageCode];
   onHandover: (ticket: Ticket, type: HandoverType) => void;
   onWriteback: (ticket: DisplayTicket) => void;
+  onSetOdinOwner: (ticket: DisplayTicket) => void;
   onResetAssignment: (ticket: DisplayTicket) => void;
   busyAction: "writeback" | "reset" | null;
+  selectedWritebackEmployeeId: number | null;
 }) {
   const remainingTone = ticket.remainingMs == null
     ? "text-slate-400"
@@ -571,10 +591,24 @@ function TicketRow({
             ODIN
           </ContextMenu.Label>
           <ContextMenu.Item
-            disabled={!ticket.canWriteback || busyAction != null}
+            disabled={!ticket.queueItemId || busyAction != null}
             className="relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-white/10 focus:text-white data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45"
             onSelect={(event) => {
-              if (!ticket.canWriteback || busyAction != null) {
+              if (!ticket.queueItemId || busyAction != null) {
+                event.preventDefault();
+                return;
+              }
+              onSetOdinOwner(ticket);
+            }}
+          >
+            <UserCheck className="h-3.5 w-3.5 text-emerald-300" />
+            {selectedWritebackEmployeeId ? copy.setOdinOwner : copy.setOdinOwnerFirst}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            disabled={isWritebackButtonDisabled(ticket.canWriteback, busyAction)}
+            className="relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-white/10 focus:text-white data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45"
+            onSelect={(event) => {
+              if (isWritebackButtonDisabled(ticket.canWriteback, busyAction)) {
                 event.preventDefault();
                 return;
               }
@@ -628,6 +662,8 @@ const Tickets: React.FC = () => {
   const [ticketActionBusy, setTicketActionBusy] = useState<string | null>(null);
   const [ticketActionMessage, setTicketActionMessage] = useState<string | null>(null);
   const [ticketActionError, setTicketActionError] = useState<string | null>(null);
+  const [writebackEmployees, setWritebackEmployees] = useState<WritebackEmployee[]>([]);
+  const [selectedWritebackEmployeeId, setSelectedWritebackEmployeeId] = useState<number | null>(null);
 
   const activeScope: TicketScope = useMemo(() => {
     const type = searchParams.get("type");
@@ -681,19 +717,43 @@ const Tickets: React.FC = () => {
     }
   }, [copy.error]);
 
+  useEffect(() => {
+    let cancelled = false;
+    QueueApi.getWritebackEmployees()
+      .then((employees) => {
+        if (cancelled) return;
+        setWritebackEmployees(employees);
+        setSelectedWritebackEmployeeId((current) => current ?? employees[0]?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setWritebackEmployees([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const describeApiError = useCallback((err: unknown) => {
-    const maybe = err as { response?: { data?: { error?: string; detail?: string } }; message?: string };
-    return maybe.response?.data?.detail || maybe.response?.data?.error || maybe.message || copy.error;
+    const maybe = err as { response?: { data?: { error?: string; detail?: string; message?: string; reason?: string } }; message?: string };
+    const blocked = getWritebackBlockDisplay(maybe.response?.data as any);
+    return blocked || maybe.response?.data?.message || maybe.response?.data?.detail || maybe.response?.data?.error || maybe.message || copy.error;
   }, [copy.error]);
 
   const handleTicketWriteback = useCallback(async (ticket: DisplayTicket) => {
     if (!ticket.queueItemId) return;
     const busyKey = `${ticket.source}-${ticket.id}-writeback`;
+    if (ticketActionBusy === busyKey) return;
     setTicketActionBusy(busyKey);
     setTicketActionMessage(null);
     setTicketActionError(null);
     try {
       const result = await QueueApi.triggerTicketWriteback(ticket.queueItemId);
+      const blocked = getWritebackBlockDisplay(result);
+      if (blocked) {
+        setTicketActionError(blocked);
+        return;
+      }
       const validationSuffix = result.validation && !result.validation.valid
         ? ` (${result.validation.errors.join("; ")})`
         : "";
@@ -704,7 +764,30 @@ const Tickets: React.FC = () => {
     } finally {
       setTicketActionBusy(null);
     }
-  }, [copy.writebackSuccess, describeApiError, load]);
+  }, [copy.writebackSuccess, describeApiError, load, ticketActionBusy]);
+
+  const handleSetOdinOwner = useCallback(async (ticket: DisplayTicket) => {
+    if (!ticket.queueItemId) return;
+    if (!selectedWritebackEmployeeId) {
+      setTicketActionMessage(null);
+      setTicketActionError(copy.setOdinOwnerFirst);
+      return;
+    }
+
+    const busyKey = `${ticket.source}-${ticket.id}-writeback`;
+    setTicketActionBusy(busyKey);
+    setTicketActionMessage(null);
+    setTicketActionError(null);
+    try {
+      const result = await QueueApi.setTicketOdinOwner(ticket.queueItemId, selectedWritebackEmployeeId);
+      setTicketActionMessage(result.message || copy.setOdinOwnerSuccess);
+      await load(true);
+    } catch (err) {
+      setTicketActionError(describeApiError(err));
+    } finally {
+      setTicketActionBusy(null);
+    }
+  }, [copy.setOdinOwnerFirst, copy.setOdinOwnerSuccess, describeApiError, load, selectedWritebackEmployeeId]);
 
   const handleResetAssignment = useCallback(async (ticket: DisplayTicket) => {
     if (!ticket.queueItemId) return;
@@ -976,6 +1059,22 @@ const Tickets: React.FC = () => {
           />
         </div>
 
+        <label className="flex min-w-[260px] flex-col gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+          {copy.ownerSelectLabel}
+          <select
+            value={selectedWritebackEmployeeId ?? ""}
+            onChange={(event) => setSelectedWritebackEmployeeId(event.target.value ? Number(event.target.value) : null)}
+            className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-100 outline-none transition focus:border-cyan-300/30"
+          >
+            <option value="">{copy.ownerSelectPlaceholder}</option>
+            {writebackEmployees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name || employee.jarvisDisplayName || employee.email || employee.id}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <button
           type="button"
           onClick={() => void handleResetAllAssignments()}
@@ -1032,8 +1131,10 @@ const Tickets: React.FC = () => {
               copy={copy}
               onHandover={openHandover}
               onWriteback={handleTicketWriteback}
+              onSetOdinOwner={handleSetOdinOwner}
               onResetAssignment={handleResetAssignment}
               busyAction={ticketActionBusy === `${ticket.source}-${ticket.id}-writeback` ? "writeback" : ticketActionBusy === `${ticket.source}-${ticket.id}-reset` ? "reset" : null}
+              selectedWritebackEmployeeId={selectedWritebackEmployeeId}
             />
           ))}
         </div>

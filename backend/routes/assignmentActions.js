@@ -33,6 +33,78 @@ function firstText(...values) {
   return null;
 }
 
+function buildWritebackBlockedResponse({
+  reason,
+  message,
+  ticketId,
+  executionStatus,
+  action = null,
+  validation = null,
+}) {
+  return {
+    error: 'WRITEBACK_BLOCKED',
+    reason,
+    message,
+    ticketId: ticketId == null ? null : String(ticketId),
+    executionStatus,
+    ...(action ? { action } : {}),
+    ...(validation ? { validation } : {}),
+  };
+}
+
+function classifyValidationBlock(errors = []) {
+  const text = errors.join('; ');
+  const lower = text.toLowerCase();
+
+  if (lower.includes('stale') || lower.includes('fresh')) {
+    return {
+      reason: 'stale_crawler_snapshot',
+      message: 'Stale crawler snapshot. Please refresh Jarvis data before writeback.',
+      executionStatus: 'validation_failed',
+    };
+  }
+  if (lower.includes('eligible') || lower.includes('mapping') || lower.includes('jarvis identity') || lower.includes('pilot')) {
+    return {
+      reason: 'employee_not_eligible',
+      message: text || 'Employee is not eligible for writeback.',
+      executionStatus: 'validation_failed',
+    };
+  }
+  if (lower.includes('owner') || lower.includes('conflict') || lower.includes('overwrite')) {
+    return {
+      reason: 'existing_owner_detected',
+      message: text || 'Existing owner detected. Manual review is required.',
+      executionStatus: 'blocked_existing_owner',
+    };
+  }
+  if (lower.includes('manual')) {
+    return {
+      reason: 'manual_confirmation_required',
+      message: text || 'Manual confirmation required before writeback.',
+      executionStatus: 'waiting_for_manual_confirmation',
+    };
+  }
+
+  return {
+    reason: 'writeback_validation_failed',
+    message: text || 'Writeback safety validation blocked execution.',
+    executionStatus: 'validation_failed',
+  };
+}
+
+async function loadRunningWritebackAction(activityNumber) {
+  const { rows } = await pool.query(
+    `SELECT *
+       FROM assignment_actions
+      WHERE activity_number = $1
+        AND execution_status IN ('executing','unassigning','reassigning')
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [activityNumber]
+  );
+  return rows[0] || null;
+}
+
 function employeeDisplayName(employee) {
   return firstText(
     employee?.name,
@@ -146,6 +218,20 @@ function employeeFromAssignedTicket(row) {
   };
 }
 
+function publicWritebackEmployee(employee) {
+  return {
+    id: employee.id,
+    name: employeeDisplayName(employee),
+    email: firstText(employee.email),
+    jarvisDisplayName: firstText(employee.jarvis_display_name),
+    jarvisOwnerCode: firstText(employee.jarvis_owner_code),
+    jarvisInitials: firstText(employee.jarvis_initials),
+    assignmentEligible: employee.assignment_eligible !== false,
+    autoAssignable: employee.auto_assignable !== false,
+    blocked: employee.blocked === true,
+  };
+}
+
 /* ─────────────────────────────────────── */
 /* GET /api/assignment-actions             */
 /* List all actions with optional filters  */
@@ -198,6 +284,40 @@ router.get('/audit', async (req, res) => {
 /* POST /api/assignment-actions/reconcile  */
 /* Compare snapshot state with ODIN state  */
 /* ─────────────────────────────────────── */
+/* --------------------------------------- */
+/* GET /api/assignment-actions/writeback-employees */
+/* Employees selectable for manual ODIN writeback testing. */
+/* --------------------------------------- */
+router.get('/writeback-employees', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         id,
+         NULLIF(trim(concat_ws(' ', first_name, last_name)), '') AS name,
+         first_name,
+         last_name,
+         email,
+         auto_assignable,
+         assignment_eligible,
+         blocked,
+         jarvis_display_name,
+         jarvis_owner_code,
+         jarvis_initials
+       FROM users
+       WHERE is_root = FALSE
+         AND COALESCE(approved, TRUE) = TRUE
+         AND NULLIF(trim(COALESCE(jarvis_display_name, '')), '') IS NOT NULL
+         AND NULLIF(trim(COALESCE(jarvis_owner_code, '')), '') IS NOT NULL
+       ORDER BY LOWER(NULLIF(trim(concat_ws(' ', first_name, last_name)), '')), id ASC`
+    );
+
+    res.json({ employees: rows.map(publicWritebackEmployee) });
+  } catch (err) {
+    console.error('[assignment-actions] GET /writeback-employees error:', err.message);
+    res.status(500).json({ error: 'Failed to load writeback employees' });
+  }
+});
+
 router.post('/reconcile', requirePageAccess('odin_logic', 'write'), async (req, res) => {
   try {
     const result = await reconcileAssignmentState();
@@ -229,6 +349,34 @@ router.post('/tickets/:queueItemId/writeback', requirePageAccess('odin_logic', '
     }
 
     const settings = await loadWritebackSettings();
+    if (!settings.enabled) {
+      return res.status(409).json(buildWritebackBlockedResponse({
+        reason: 'writeback_disabled',
+        message: 'Assignment writeback is disabled in settings.',
+        ticketId: queueItemId,
+        executionStatus: 'skipped',
+      }));
+    }
+    if (settings.mode === 'shadow_only') {
+      return res.status(409).json(buildWritebackBlockedResponse({
+        reason: 'shadow_only_mode',
+        message: 'Shadow mode is active. Jarvis will not be changed.',
+        ticketId: queueItemId,
+        executionStatus: 'shadow_validated',
+      }));
+    }
+
+    const runningAction = await loadRunningWritebackAction(ticketActivityNumber(ticket));
+    if (runningAction) {
+      return res.status(409).json(buildWritebackBlockedResponse({
+        reason: 'execution_already_running',
+        message: 'A writeback execution is already running for this ticket.',
+        ticketId: queueItemId,
+        executionStatus: 'executing',
+        action: runningAction,
+      }));
+    }
+
     const requestedBy = req.user?.name || req.user?.email || 'unknown';
     const action = await assignmentActionRepository.create(buildTicketActionFields({
       ticket,
@@ -242,17 +390,13 @@ router.post('/tickets/:queueItemId/writeback', requirePageAccess('odin_logic', '
     const hydratedAction = await assignmentActionRepository.findById(action.id);
 
     if (validation && validation.valid === false) {
-      return res.status(409).json({
-        ok: false,
-        error: 'Writeback validation failed',
-        detail: validation.errors.join('; '),
+      const block = classifyValidationBlock(validation.errors || []);
+      return res.status(409).json(buildWritebackBlockedResponse({
+        ...block,
+        ticketId: queueItemId,
         action: hydratedAction,
         validation,
-        execution: {
-          attempted: false,
-          reason: 'Jarvis writeback was not queued because validation failed. Check writeback settings, queue enablement, crawler freshness, and the employee Jarvis mapping.',
-        },
-      });
+      }));
     }
 
     res.status(201).json({
@@ -269,6 +413,61 @@ router.post('/tickets/:queueItemId/writeback', requirePageAccess('odin_logic', '
   } catch (err) {
     console.error('[assignment-actions] POST /tickets/:queueItemId/writeback error:', err.message);
     res.status(500).json({ error: 'Ticket writeback failed', detail: err.message });
+  }
+});
+
+/* --------------------------------------- */
+/* POST /api/assignment-actions/tickets/:queueItemId/odin-owner */
+/* Set a local ODIN owner so a single ticket can be tested before broad rollout. */
+/* --------------------------------------- */
+router.post('/tickets/:queueItemId/odin-owner', requirePageAccess('odin_logic', 'write'), async (req, res) => {
+  try {
+    const queueItemId = parseInt(req.params.queueItemId, 10);
+    const employeeId = parseInt(req.body?.employeeId, 10);
+    if (!Number.isInteger(queueItemId)) return res.status(400).json({ error: 'Invalid queue item id' });
+    if (!Number.isInteger(employeeId)) return res.status(400).json({ error: 'employeeId is required' });
+
+    const ticket = await loadQueueItem(queueItemId);
+    if (!ticket) return res.status(404).json({ error: 'Queue ticket not found' });
+
+    const employee = await loadEmployeeWithJarvisFields(employeeId);
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    const jarvisOwnerCode = firstText(employee.jarvis_owner_code);
+    const jarvisDisplayName = firstText(employee.jarvis_display_name);
+    if (!jarvisOwnerCode || !jarvisDisplayName) {
+      return res.status(409).json(buildWritebackBlockedResponse({
+        reason: 'employee_not_eligible',
+        message: 'Employee has no complete Jarvis mapping. Configure Jarvis display name and owner code first.',
+        ticketId: queueItemId,
+        executionStatus: 'skipped',
+      }));
+    }
+
+    const ownerValue = jarvisOwnerCode || jarvisDisplayName || employeeDisplayName(employee);
+    const { rows } = await pool.query(
+      `UPDATE queue_items
+          SET assigned_worker_id = $2,
+              assigned_at = NOW(),
+              owner = $3,
+              updated_at = NOW()
+        WHERE id = $1
+          AND active = TRUE
+        RETURNING *`,
+      [queueItemId, employeeId, ownerValue]
+    );
+
+    if (!rows[0]) return res.status(404).json({ error: 'Queue ticket not found' });
+
+    res.json({
+      ok: true,
+      ticket: rows[0],
+      employee: publicWritebackEmployee(employee),
+      message: `ODIN test owner set to ${employeeDisplayName(employee) || jarvisDisplayName}. Use writeback to let the crawler update Jarvis.`,
+    });
+  } catch (err) {
+    console.error('[assignment-actions] POST /tickets/:queueItemId/odin-owner error:', err.message);
+    res.status(500).json({ error: 'Failed to set ODIN ticket owner', detail: err.message });
   }
 });
 

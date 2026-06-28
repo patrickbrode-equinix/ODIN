@@ -618,16 +618,32 @@ router.get('/decisions/:decisionId', async (req, res) => {
 
 router.get('/tickets/:ticketId/explanation', async (req, res) => {
   try {
+    const ticketId = String(req.params.ticketId || '');
+    const runId = req.query.runId ? parseInt(req.query.runId) : null;
     const result = await assignmentExplanationService.getTicketExplanation(
-      req.params.ticketId,
-      req.query.runId ? parseInt(req.query.runId) : null
+      ticketId,
+      runId
     );
     if (!result.found) {
-      return res.status(404).json({ ok: false, error: result.message });
+      return res.json({
+        ticketId,
+        runId,
+        explanation: null,
+        decisionTrace: [],
+        message: 'No assignment explanation available yet.',
+        found: false,
+      });
     }
-    res.json({ ok: true, ...result });
+    res.json({ ticketId, runId, ...result });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.json({
+      ticketId: String(req.params.ticketId || ''),
+      runId: req.query.runId ? parseInt(req.query.runId) : null,
+      explanation: null,
+      decisionTrace: [],
+      message: 'No assignment explanation available yet.',
+      found: false,
+    });
   }
 });
 

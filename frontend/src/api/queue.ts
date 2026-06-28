@@ -29,10 +29,14 @@ export interface QueueStats {
 
 export interface TicketWritebackResult {
     ok: boolean;
+    error?: string;
+    reason?: string;
     action?: Record<string, any> | null;
     validation?: { valid: boolean; errors: string[] } | null;
     execution?: { attempted: boolean; reason?: string };
+    executionStatus?: string;
     message?: string;
+    ticketId?: string | number | null;
 }
 
 export interface TicketResetAllResult extends TicketWritebackResult {
@@ -42,11 +46,45 @@ export interface TicketResetAllResult extends TicketWritebackResult {
     actions?: Record<string, any>[];
 }
 
+export interface WritebackEmployee {
+    id: number;
+    name: string;
+    email?: string | null;
+    jarvisDisplayName?: string | null;
+    jarvisOwnerCode?: string | null;
+    jarvisInitials?: string | null;
+    assignmentEligible?: boolean;
+    autoAssignable?: boolean;
+    blocked?: boolean;
+}
+
 export interface GroupSummary {
     group: string;
     count: number;
     overdue: number;
     critical12h: number;
+}
+
+const pendingWritebacks = new Map<string, Promise<TicketWritebackResult>>();
+
+export function getWritebackBlockDisplay(result: Partial<TicketWritebackResult> | null | undefined): string | null {
+    if (!result || result.error !== "WRITEBACK_BLOCKED") return null;
+    const labels: Record<string, string> = {
+        shadow_only_mode: "Shadow mode active",
+        writeback_disabled: "Assignment writeback disabled",
+        manual_confirmation_required: "Manual confirmation required",
+        existing_owner_detected: "Existing owner detected",
+        stale_crawler_snapshot: "Stale crawler snapshot",
+        employee_not_eligible: "Employee not eligible",
+        no_pending_assignment_action: "No pending assignment action",
+        execution_already_running: "Writeback already running",
+    };
+    const label = labels[String(result.reason || "")] || "Writeback blocked";
+    return result.message ? `${label}: ${result.message}` : label;
+}
+
+export function isWritebackButtonDisabled(canWriteback: boolean, busyAction: string | null | undefined): boolean {
+    return !canWriteback || busyAction != null;
 }
 
 export const QueueApi = {
@@ -84,8 +122,24 @@ export const QueueApi = {
     },
 
     triggerTicketWriteback: async (ticketId: number | string): Promise<TicketWritebackResult> => {
-        const res = await api.post(`/assignment-actions/tickets/${ticketId}/writeback`);
-        return res.data;
+        const key = String(ticketId);
+        const existing = pendingWritebacks.get(key);
+        if (existing) return existing;
+
+        const request = api.post(`/assignment-actions/tickets/${ticketId}/writeback`)
+            .then((res) => res.data)
+            .catch((err) => {
+                if (err?.response?.status === 409 && err.response?.data?.error === "WRITEBACK_BLOCKED") {
+                    return err.response.data;
+                }
+                throw err;
+            })
+            .finally(() => {
+                pendingWritebacks.delete(key);
+            });
+
+        pendingWritebacks.set(key, request);
+        return request;
     },
 
     resetTicketAssignment: async (ticketId: number | string): Promise<TicketWritebackResult> => {
@@ -95,6 +149,16 @@ export const QueueApi = {
 
     resetAllTicketAssignments: async (): Promise<TicketResetAllResult> => {
         const res = await api.post("/assignment-actions/tickets/reset-all");
+        return res.data;
+    },
+
+    getWritebackEmployees: async (): Promise<WritebackEmployee[]> => {
+        const res = await api.get("/assignment-actions/writeback-employees");
+        return asArray(res.data?.employees, "QueueApi.getWritebackEmployees") as WritebackEmployee[];
+    },
+
+    setTicketOdinOwner: async (ticketId: number | string, employeeId: number | string): Promise<TicketWritebackResult> => {
+        const res = await api.post(`/assignment-actions/tickets/${ticketId}/odin-owner`, { employeeId });
         return res.data;
     },
 };

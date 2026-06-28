@@ -45,6 +45,13 @@ function buildCommitAt(commitDate, commitTime) {
   }
 }
 
+function emptyHandoverFilesResponse(handoverId) {
+  return {
+    handoverId,
+    files: [],
+  };
+}
+
 /* ———————————————————————————————— */
 /* GET – LIST HANDOVER                              */
 /* Requires: handover:view                          */
@@ -228,6 +235,50 @@ router.post(
     } catch (err) {
       console.error("HANDOVER INSERT ERROR:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+/* ------------------------------------------------ */
+/* GET - FILES                                      */
+/* Requires: handover:view                          */
+/* ------------------------------------------------ */
+
+router.get(
+  "/:id/files",
+  requireAuth,
+  requirePageAccess("handover", "view"),
+  async (req, res) => {
+    const handoverId = safeId(req.params.id);
+    if (!Number.isInteger(handoverId) || handoverId <= 0) {
+      return res.json(emptyHandoverFilesResponse(handoverId || null));
+    }
+
+    try {
+      const result = await db.query(
+        `
+        SELECT
+          id,
+          handover_id AS "handoverId",
+          filename,
+          created_at AS "createdAt"
+        FROM handover_files
+        WHERE handover_id = $1
+        ORDER BY created_at ASC, id ASC
+        `,
+        [handoverId]
+      );
+
+      res.json({
+        handoverId,
+        files: result.rows || [],
+      });
+    } catch (err) {
+      if (err?.code === "42P01" || /handover_files/i.test(String(err?.message || ""))) {
+        return res.json(emptyHandoverFilesResponse(handoverId));
+      }
+      console.error("HANDOVER FILES GET ERROR:", err);
+      res.json(emptyHandoverFilesResponse(handoverId));
     }
   }
 );
