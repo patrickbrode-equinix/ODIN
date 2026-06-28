@@ -865,7 +865,7 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
   const activeEmployees = employees.filter((employee) => !shiftExcludedSet.has(employee));
   planReport.activeEmployees = activeEmployees.length;
   const targetHours = parseTargetHoursValue(planConfig.monthly_target_hours, 174);
-  const employeeTargetHours = Object.fromEntries(activeEmployees.map((employee) => [employee, targetHours]));
+  const employeeBaseTargetHours = Object.fromEntries(activeEmployees.map((employee) => [employee, targetHours]));
   const employeeTargetRes = await pool.query(
     `SELECT employee_name, target_hours
      FROM shiftplan_employee_monthly_targets
@@ -874,9 +874,14 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
   );
   for (const row of employeeTargetRes.rows) {
     const employeeName = resolveEmployeeName(row.employee_name, employeeNameLookup);
-    if (!employeeName || !(employeeName in employeeTargetHours)) continue;
-    employeeTargetHours[employeeName] = parseTargetHoursValue(row.target_hours, targetHours);
+    if (!employeeName || !(employeeName in employeeBaseTargetHours)) continue;
+    employeeBaseTargetHours[employeeName] = parseTargetHoursValue(row.target_hours, targetHours);
   }
+  const employeeTargetHours = Object.fromEntries(activeEmployees.map((employee) => {
+    const carriedBalance = Number.parseFloat(String(carryState[employee]?.hourBalance ?? 0)) || 0;
+    const adjustedTarget = Math.max(0, employeeBaseTargetHours[employee] - carriedBalance);
+    return [employee, Number(adjustedTarget.toFixed(2))];
+  }));
   const baselineShiftSlots = buildShiftSlots(shiftDefs, staffingRules);
   const holidayMap = buildHessenHolidayMap(year);
   const totalWeekendBlocks = countWeekendBlocks(year, mon, numDays);
@@ -1848,21 +1853,17 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
       date: `${month}-${String(numDays).padStart(2, '0')}`,
       shift: null,
       employee: employee,
-      severity: 'critical',
+      severity: 'warning',
       type: 'target_hours_shortfall',
-      message: `${employee}: Monatliche Sollzeit um ${missingHours.toFixed(2)} Stunden unterschritten`,
+      message: `${employee}: Monatliche Zielzeit um ${missingHours.toFixed(2)} Stunden unterschritten; wird in der Jahresbilanz ausgeglichen`,
     });
   }
 
   const targetShortfalls = activeEmployees
     .map((employee) => ({ employee, actualHours: Number(empHours[employee].toFixed(2)), targetHours: employeeTargetHours[employee] }))
     .filter((entry) => entry.actualHours < entry.targetHours);
-  if (targetShortfalls.length > 0 && !options.allowShortfall) {
-    const preview = targetShortfalls.slice(0, 8).map((entry) => `${entry.employee}: ${entry.actualHours}/${entry.targetHours}h`).join(', ');
-    const error = new Error(`Plan nicht gespeichert: ${targetShortfalls.length} Mitarbeiter unterschreiten die Mindeststunden (${preview})`);
-    error.code = 'TARGET_HOURS_SHORTFALL';
-    error.details = targetShortfalls;
-    throw error;
+  if (targetShortfalls.length > 0) {
+    planReport.targetShortfalls = targetShortfalls;
   }
 
   const fairness = {};
@@ -1888,7 +1889,10 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
     'Wochenanker aktiv: Neue Serien werden zur nächsten Montagkante ausgerichtet',
     `Abwesenheitsgutschrift: Urlaub, Krank und Seminar zählen mit ${CREDITED_ABSENCE_HOURS} Stunden pro Werktag`,
     `Freitage nach Nacht: ${rotation.free_days_after_night || 0}, nach Wochenendarbeit: ${rotation.free_days_after_weekend || 0}`,
-    `Monatliche Sollzeit: ${targetHours} Stunden`,
+    `Monatliche Zielzeit: ${targetHours} Stunden; Unterstunden werden in Jahresplanungen fortgeschrieben`,
+    targetShortfalls.length > 0
+      ? `Monatliche Unterstunden: ${targetShortfalls.length} Mitarbeiter werden in der Jahresbilanz weitergefuehrt`
+      : 'Monatliche Zielzeit erreicht oder uebertroffen',
     `Fairnessregeln: Nächte=${fairnessRules.balance_nights ? 'Ja' : 'Nein'}, Wochenenden=${fairnessRules.balance_weekends ? 'Ja' : 'Nein'}`,
     `Wünsche berücksichtigt: ${planConfig.respect_employee_wishes ? 'Ja' : 'Nein'} (Gewichtung ${planConfig.soft_wishes_priority}%)`,
     `Harte Regeln Priorität: ${planConfig.hard_rules_priority}%`,
@@ -1912,6 +1916,7 @@ export async function generateShiftPlan(year, mon, numDays, createdBy, options =
       lastWorkedShiftCode: empLastWorkedShiftCode[employee],
       lastWorkedShiftType: empLastWorkedShiftType[employee],
       forcedNextShiftCode: empForcedNextShiftCode[employee],
+      hourBalance: Number(((Number.parseFloat(String(carryState[employee]?.hourBalance ?? 0)) || 0) + empHours[employee] - employeeBaseTargetHours[employee]).toFixed(2)),
     }])),
     configSnapshot: {
       employees: employees.length,
